@@ -1,0 +1,7 @@
+<div class="empty-state">
+  <p>No items yet.</p>
+  <a class="button button--primary" href="/admin/collections/{{collection.slug}}/create"
+    hx-get="/admin/collections/{{collection.slug}}/create" hx-target="body" hx-push-url="true">
+    Create your first {{collection.singular_name}}
+  </a>
+</div>

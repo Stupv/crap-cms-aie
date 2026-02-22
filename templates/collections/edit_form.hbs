@@ -1,0 +1,26 @@
+<form
+  {{#if editing}}
+    hx-put="/admin/collections/{{collection.slug}}/{{document.id}}"
+    action="/admin/collections/{{collection.slug}}/{{document.id}}"
+    method="post"
+  {{else}}
+    hx-post="/admin/collections/{{collection.slug}}"
+    action="/admin/collections/{{collection.slug}}"
+    method="post"
+  {{/if}}
+  hx-target="body"
+  class="form"
+  novalidate
+>
+  {{#if editing}}
+  <input type="hidden" name="_method" value="PUT" />
+  {{/if}}
+
+  {{#each fields}}
+  <div class="form__field">
+    {{{render_field this}}}
+  </div>
+  {{/each}}
+
+  {{> collections/edit_actions}}
+</form>

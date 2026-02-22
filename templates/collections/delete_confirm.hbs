@@ -1,0 +1,26 @@
+<div class="card">
+  <div class="card__body">
+    <p>Are you sure you want to delete this {{collection.singular_name}}?</p>
+    {{#if title_value}}
+    <p><strong>{{title_value}}</strong></p>
+    {{else}}
+    <p><strong>{{document_id}}</strong></p>
+    {{/if}}
+
+    <div class="form__actions">
+      <crap-confirm message="This action cannot be undone. Are you sure you want to delete this {{collection.singular_name}}?">
+        <form hx-delete="/admin/collections/{{collection.slug}}/{{document_id}}"
+              action="/admin/collections/{{collection.slug}}/{{document_id}}"
+              method="post"
+              hx-target="body">
+          <input type="hidden" name="_method" value="DELETE" />
+          <button type="submit" class="button button--danger">Delete</button>
+        </form>
+      </crap-confirm>
+      <a class="button button--ghost" href="/admin/collections/{{collection.slug}}"
+        hx-get="/admin/collections/{{collection.slug}}" hx-target="body" hx-push-url="true">
+        Cancel
+      </a>
+    </div>
+  </div>
+</div>

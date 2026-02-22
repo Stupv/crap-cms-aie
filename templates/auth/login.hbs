@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="/static/styles.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <title>Login - Crap MS</title>
+</head>
+
+<body class="auth-page">
+  <div class="auth-card">
+    <div class="auth-card__header">
+      <span class="material-symbols-outlined auth-card__icon">memory</span>
+      <h1 class="auth-card__title">Crap MS</h1>
+    </div>
+
+    {{#if error}}
+    <div class="auth-card__error">{{error}}</div>
+    {{/if}}
+
+    {{#if disable_local}}
+    <p class="auth-card__message">Use your organization's sign-in method to authenticate.</p>
+    {{else}}
+    <form class="auth-card__form" method="POST" action="/admin/login">
+      {{#if collections}}
+      {{#if show_collection_picker}}
+      <div class="form__field">
+        <label for="collection">Account type</label>
+        <select name="collection" id="collection">
+          {{#each collections}}
+          <option value="{{this.slug}}" {{#if this.selected}}selected{{/if}}>{{this.display_name}}</option>
+          {{/each}}
+        </select>
+      </div>
+      {{else}}
+      <input type="hidden" name="collection" value="{{collections.[0].slug}}" />
+      {{/if}}
+      {{/if}}
+
+      <div class="form__field">
+        <label for="email">Email</label>
+        <input type="email" name="email" id="email" placeholder="you@example.com" required value="{{email}}" autocomplete="email" />
+      </div>
+
+      <div class="form__field">
+        <label for="password">Password</label>
+        <input type="password" name="password" id="password" placeholder="Password" required autocomplete="current-password" />
+      </div>
+
+      <button type="submit" class="btn btn--primary auth-card__submit">Sign in</button>
+    </form>
+    {{/if}}
+  </div>
+</body>
+</html>

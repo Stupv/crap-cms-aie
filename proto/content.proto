@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package crap;
+
+import "google/protobuf/struct.proto";
+
+service ContentAPI {
+  rpc Find (FindRequest) returns (FindResponse);
+  rpc FindByID (FindByIDRequest) returns (FindByIDResponse);
+  rpc Create (CreateRequest) returns (CreateResponse);
+  rpc Update (UpdateRequest) returns (UpdateResponse);
+  rpc Delete (DeleteRequest) returns (DeleteResponse);
+  rpc GetGlobal (GetGlobalRequest) returns (GetGlobalResponse);
+  rpc UpdateGlobal (UpdateGlobalRequest) returns (UpdateGlobalResponse);
+  rpc Login (LoginRequest) returns (LoginResponse);
+  rpc Me (MeRequest) returns (MeResponse);
+}
+
+message FindRequest {
+  string collection = 1;
+  map<string, string> filters = 2;
+  optional string order_by = 3;
+  optional int64 limit = 4;
+  optional int64 offset = 5;
+  optional string where = 6;
+}
+
+message FindResponse {
+  repeated Document documents = 1;
+  int64 total = 2;
+}
+
+message FindByIDRequest {
+  string collection = 1;
+  string id = 2;
+}
+
+message FindByIDResponse {
+  optional Document document = 1;
+}
+
+message CreateRequest {
+  string collection = 1;
+  google.protobuf.Struct data = 2;
+}
+
+message CreateResponse {
+  Document document = 1;
+}
+
+message UpdateRequest {
+  string collection = 1;
+  string id = 2;
+  google.protobuf.Struct data = 3;
+}
+
+message UpdateResponse {
+  Document document = 1;
+}
+
+message DeleteRequest {
+  string collection = 1;
+  string id = 2;
+}
+
+message DeleteResponse {
+  bool success = 1;
+}
+
+message GetGlobalRequest {
+  string slug = 1;
+}
+
+message GetGlobalResponse {
+  Document document = 1;
+}
+
+message UpdateGlobalRequest {
+  string slug = 1;
+  google.protobuf.Struct data = 2;
+}
+
+message UpdateGlobalResponse {
+  Document document = 1;
+}
+
+message LoginRequest {
+  string collection = 1;
+  string email = 2;
+  string password = 3;
+}
+
+message LoginResponse {
+  string token = 1;
+  Document user = 2;
+}
+
+message MeRequest {
+  string token = 1;
+}
+
+message MeResponse {
+  Document user = 1;
+}
+
+message Document {
+  string id = 1;
+  string collection = 2;
+  google.protobuf.Struct fields = 3;
+  optional string created_at = 4;
+  optional string updated_at = 5;
+}

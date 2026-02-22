@@ -1,0 +1,9 @@
+<div class="form__actions">
+  <button type="submit" class="button button--primary">
+    {{#if editing}}Update{{else}}Create{{/if}} {{collection.singular_name}}
+  </button>
+  <a class="button button--ghost" href="/admin/collections/{{collection.slug}}"
+    hx-get="/admin/collections/{{collection.slug}}" hx-target="body" hx-push-url="true">
+    Cancel
+  </a>
+</div>

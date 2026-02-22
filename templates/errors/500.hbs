@@ -1,0 +1,11 @@
+{{#> layout/base title="Server Error"}}
+<div class="error-page">
+  <h1>500</h1>
+  <p>Something went wrong. Please try again.</p>
+  {{#if message}}<p class="error-detail">{{message}}</p>{{/if}}
+  <a class="button button--primary" href="/admin"
+    hx-get="/admin" hx-target="body" hx-push-url="true">
+    Go to Dashboard
+  </a>
+</div>
+{{/layout/base}}

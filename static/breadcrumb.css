@@ -1,0 +1,10 @@
+.breadcrumb > ul {
+  list-style-type: none;
+  padding: unset;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.breadcrumb > ul > li:after {
+  content: "/";
+}

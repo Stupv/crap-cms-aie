@@ -1,0 +1,619 @@
+use anyhow::{Context, Result};
+use mlua::{Lua, Table, Value, Function};
+use std::path::Path;
+
+use crate::core::{
+    SharedRegistry,
+    field::{FieldType, FieldDefinition, FieldAccess, FieldAdmin, FieldHooks, SelectOption},
+    collection::{AuthStrategy, CollectionAccess, CollectionAuth, CollectionDefinition, GlobalDefinition, CollectionLabels, CollectionAdmin, CollectionHooks},
+};
+
+/// Register the `crap` global table with sub-tables for collections, globals, log, util.
+pub fn register_api(lua: &Lua, registry: SharedRegistry, _config_dir: &Path) -> Result<()> {
+    let crap = lua.create_table().context("Failed to create crap table")?;
+
+    // crap.collections
+    let collections_table = lua.create_table()?;
+    let reg_clone = registry.clone();
+    let define_collection = lua.create_function(move |lua, (slug, config): (String, Table)| {
+        let def = parse_collection_definition(lua, &slug, &config)
+            .map_err(|e| mlua::Error::RuntimeError(format!(
+                "Failed to parse collection '{}': {}", slug, e
+            )))?;
+        let mut reg = reg_clone.write()
+            .map_err(|e| mlua::Error::RuntimeError(format!("Registry lock poisoned: {}", e)))?;
+        reg.register_collection(def);
+        Ok(())
+    })?;
+    collections_table.set("define", define_collection)?;
+    crap.set("collections", collections_table)?;
+
+    // crap.globals
+    let globals_table = lua.create_table()?;
+    let reg_clone = registry.clone();
+    let define_global = lua.create_function(move |lua, (slug, config): (String, Table)| {
+        let def = parse_global_definition(lua, &slug, &config)
+            .map_err(|e| mlua::Error::RuntimeError(format!(
+                "Failed to parse global '{}': {}", slug, e
+            )))?;
+        let mut reg = reg_clone.write()
+            .map_err(|e| mlua::Error::RuntimeError(format!("Registry lock poisoned: {}", e)))?;
+        reg.register_global(def);
+        Ok(())
+    })?;
+    globals_table.set("define", define_global)?;
+    crap.set("globals", globals_table)?;
+
+    // crap.log
+    let log_table = lua.create_table()?;
+    let log_info = lua.create_function(|_, msg: String| {
+        tracing::info!("[lua] {}", msg);
+        Ok(())
+    })?;
+    let log_warn = lua.create_function(|_, msg: String| {
+        tracing::warn!("[lua] {}", msg);
+        Ok(())
+    })?;
+    let log_error = lua.create_function(|_, msg: String| {
+        tracing::error!("[lua] {}", msg);
+        Ok(())
+    })?;
+    log_table.set("info", log_info)?;
+    log_table.set("warn", log_warn)?;
+    log_table.set("error", log_error)?;
+    crap.set("log", log_table)?;
+
+    // crap.util
+    let util_table = lua.create_table()?;
+
+    let slugify_fn = lua.create_function(|_, s: String| {
+        Ok(slugify(&s))
+    })?;
+    util_table.set("slugify", slugify_fn)?;
+
+    let nanoid_fn = lua.create_function(|_, ()| {
+        Ok(nanoid::nanoid!())
+    })?;
+    util_table.set("nanoid", nanoid_fn)?;
+
+    let json_encode_fn: Function = lua.create_function(|lua, value: Value| {
+        let json_value = lua_to_json(lua, &value)?;
+        serde_json::to_string(&json_value)
+            .map_err(|e| mlua::Error::RuntimeError(format!("JSON encode error: {}", e)))
+    })?;
+    util_table.set("json_encode", json_encode_fn)?;
+
+    let json_decode_fn = lua.create_function(|lua, s: String| {
+        let value: serde_json::Value = serde_json::from_str(&s)
+            .map_err(|e| mlua::Error::RuntimeError(format!("JSON decode error: {}", e)))?;
+        json_to_lua(lua, &value)
+    })?;
+    util_table.set("json_decode", json_decode_fn)?;
+
+    crap.set("util", util_table)?;
+
+    // _crap_event_hooks — Lua-side storage for registered global hooks
+    let event_hooks = lua.create_table()?;
+    lua.globals().set("_crap_event_hooks", event_hooks)?;
+
+    // crap.hooks
+    let hooks_table = lua.create_table()?;
+
+    // crap.hooks.register(event, fn) — append fn to _crap_event_hooks[event]
+    let register_fn = lua.create_function(|lua, (event, func): (String, Function)| {
+        let globals = lua.globals();
+        let event_hooks: Table = globals.get("_crap_event_hooks")?;
+        let list: Table = match event_hooks.get::<Value>(event.as_str())? {
+            Value::Table(t) => t,
+            _ => {
+                let t = lua.create_table()?;
+                event_hooks.set(event.as_str(), t.clone())?;
+                t
+            }
+        };
+        let len = list.raw_len();
+        list.set(len + 1, func)?;
+        Ok(())
+    })?;
+    hooks_table.set("register", register_fn)?;
+
+    // crap.hooks.remove(event, fn) — find and remove fn using rawequal
+    let remove_fn = lua.create_function(|lua, (event, func): (String, Function)| {
+        let globals = lua.globals();
+        let event_hooks: Table = globals.get("_crap_event_hooks")?;
+        let list: Table = match event_hooks.get::<Value>(event.as_str())? {
+            Value::Table(t) => t,
+            _ => return Ok(()),
+        };
+        // Find the index of the matching function using rawequal
+        let rawequal: Function = globals.get("rawequal")?;
+        let len = list.raw_len();
+        let mut remove_idx = None;
+        for i in 1..=len {
+            let entry: Value = list.raw_get(i)?;
+            let eq: bool = rawequal.call((entry, func.clone()))?;
+            if eq {
+                remove_idx = Some(i);
+                break;
+            }
+        }
+        // Remove by shifting elements down
+        if let Some(idx) = remove_idx {
+            let table_remove: Function = lua.load("table.remove").eval()?;
+            table_remove.call::<()>((list, idx))?;
+        }
+        Ok(())
+    })?;
+    hooks_table.set("remove", remove_fn)?;
+
+    crap.set("hooks", hooks_table)?;
+
+    lua.globals().set("crap", crap)?;
+    Ok(())
+}
+
+fn slugify(s: &str) -> String {
+    s.to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+fn get_table(tbl: &Table, key: &str) -> mlua::Result<Table> {
+    tbl.get(key)
+}
+
+fn get_string(tbl: &Table, key: &str) -> Option<String> {
+    tbl.get::<Option<String>>(key).ok().flatten()
+}
+
+fn get_bool(tbl: &Table, key: &str, default: bool) -> bool {
+    tbl.get::<bool>(key).unwrap_or(default)
+}
+
+fn get_string_val(tbl: &Table, key: &str) -> mlua::Result<String> {
+    tbl.get(key)
+}
+
+fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Result<CollectionDefinition> {
+    let labels = if let Ok(labels_tbl) = get_table(config, "labels") {
+        CollectionLabels {
+            singular: get_string(&labels_tbl, "singular"),
+            plural: get_string(&labels_tbl, "plural"),
+        }
+    } else {
+        CollectionLabels::default()
+    };
+
+    let timestamps = get_bool(config, "timestamps", true);
+
+    let admin = if let Ok(admin_tbl) = get_table(config, "admin") {
+        let list_searchable_fields = if let Ok(tbl) = get_table(&admin_tbl, "list_searchable_fields") {
+            tbl.sequence_values::<String>().filter_map(|r| r.ok()).collect()
+        } else {
+            Vec::new()
+        };
+        CollectionAdmin {
+            use_as_title: get_string(&admin_tbl, "use_as_title"),
+            default_sort: get_string(&admin_tbl, "default_sort"),
+            hidden: get_bool(&admin_tbl, "hidden", false),
+            list_searchable_fields,
+        }
+    } else {
+        CollectionAdmin::default()
+    };
+
+    let mut fields = if let Ok(fields_tbl) = get_table(config, "fields") {
+        parse_fields(&fields_tbl)?
+    } else {
+        Vec::new()
+    };
+
+    let hooks = if let Ok(hooks_tbl) = get_table(config, "hooks") {
+        parse_hooks(&hooks_tbl)?
+    } else {
+        CollectionHooks::default()
+    };
+
+    // Parse auth: true | { token_expiry = 3600 }
+    let auth = parse_collection_auth(config);
+
+    // Parse access control
+    let access = parse_access_config(config);
+
+    // If auth enabled and no email field defined, inject one at index 0
+    if let Some(ref a) = auth {
+        if a.enabled && !fields.iter().any(|f| f.name == "email") {
+            fields.insert(0, FieldDefinition {
+                name: "email".to_string(),
+                field_type: FieldType::Email,
+                required: true,
+                unique: true,
+                validate: None,
+                default_value: None,
+                options: Vec::new(),
+                admin: FieldAdmin {
+                    placeholder: Some("user@example.com".to_string()),
+                    ..Default::default()
+                },
+                hooks: FieldHooks::default(),
+                access: FieldAccess::default(),
+                relationship: None,
+                fields: Vec::new(),
+            });
+        }
+    }
+
+    Ok(CollectionDefinition {
+        slug: slug.to_string(),
+        labels,
+        timestamps,
+        fields,
+        admin,
+        hooks,
+        auth,
+        access,
+    })
+}
+
+fn parse_global_definition(_lua: &Lua, slug: &str, config: &Table) -> Result<GlobalDefinition> {
+    let labels = if let Ok(labels_tbl) = get_table(config, "labels") {
+        CollectionLabels {
+            singular: get_string(&labels_tbl, "singular"),
+            plural: get_string(&labels_tbl, "plural"),
+        }
+    } else {
+        CollectionLabels::default()
+    };
+
+    let fields = if let Ok(fields_tbl) = get_table(config, "fields") {
+        parse_fields(&fields_tbl)?
+    } else {
+        Vec::new()
+    };
+
+    let hooks = if let Ok(hooks_tbl) = get_table(config, "hooks") {
+        parse_hooks(&hooks_tbl)?
+    } else {
+        CollectionHooks::default()
+    };
+
+    let access = parse_access_config(config);
+
+    Ok(GlobalDefinition {
+        slug: slug.to_string(),
+        labels,
+        fields,
+        hooks,
+        access,
+    })
+}
+
+fn parse_access_config(config: &Table) -> CollectionAccess {
+    let access_tbl = match get_table(config, "access") {
+        Ok(t) => t,
+        Err(_) => return CollectionAccess::default(),
+    };
+    CollectionAccess {
+        read: get_string(&access_tbl, "read"),
+        create: get_string(&access_tbl, "create"),
+        update: get_string(&access_tbl, "update"),
+        delete: get_string(&access_tbl, "delete"),
+    }
+}
+
+fn parse_field_access(access_tbl: &Table) -> FieldAccess {
+    FieldAccess {
+        read: get_string(access_tbl, "read"),
+        create: get_string(access_tbl, "create"),
+        update: get_string(access_tbl, "update"),
+    }
+}
+
+fn parse_collection_auth(config: &Table) -> Option<CollectionAuth> {
+    let val: Value = config.get("auth").ok()?;
+    match val {
+        Value::Boolean(true) => Some(CollectionAuth {
+            enabled: true,
+            ..Default::default()
+        }),
+        Value::Boolean(false) | Value::Nil => None,
+        Value::Table(tbl) => {
+            let token_expiry = tbl.get::<u64>("token_expiry").unwrap_or(7200);
+            let disable_local = get_bool(&tbl, "disable_local", false);
+            let strategies = parse_auth_strategies(&tbl);
+            Some(CollectionAuth {
+                enabled: true,
+                token_expiry,
+                strategies,
+                disable_local,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn parse_auth_strategies(tbl: &Table) -> Vec<AuthStrategy> {
+    let strategies_tbl = match get_table(tbl, "strategies") {
+        Ok(t) => t,
+        Err(_) => return Vec::new(),
+    };
+    let mut strategies = Vec::new();
+    for entry in strategies_tbl.sequence_values::<Table>() {
+        if let Ok(strat_tbl) = entry {
+            if let (Some(name), Some(authenticate)) = (
+                get_string(&strat_tbl, "name"),
+                get_string(&strat_tbl, "authenticate"),
+            ) {
+                strategies.push(AuthStrategy { name, authenticate });
+            }
+        }
+    }
+    strategies
+}
+
+fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
+    let mut fields = Vec::new();
+
+    for pair in fields_tbl.clone().sequence_values::<Table>() {
+        let field_tbl = pair?;
+        let name: String = get_string_val(&field_tbl, "name")
+            .map_err(|_| anyhow::anyhow!("Field missing 'name'"))?;
+        let type_str: String = get_string_val(&field_tbl, "type").unwrap_or_else(|_| "text".to_string());
+        let field_type = FieldType::from_str(&type_str);
+
+        let required = get_bool(&field_tbl, "required", false);
+        let unique = get_bool(&field_tbl, "unique", false);
+        let validate = get_string(&field_tbl, "validate");
+
+        let default_value = {
+            let val: Value = field_tbl.get("default_value").unwrap_or(Value::Nil);
+            match val {
+                Value::Nil => None,
+                Value::Boolean(b) => Some(serde_json::Value::Bool(b)),
+                Value::Integer(i) => Some(serde_json::Value::Number(serde_json::Number::from(i))),
+                Value::Number(n) => serde_json::Number::from_f64(n)
+                    .map(serde_json::Value::Number),
+                Value::String(s) => Some(serde_json::Value::String(s.to_str()?.to_string())),
+                _ => None,
+            }
+        };
+
+        let options = if let Ok(opts_tbl) = get_table(&field_tbl, "options") {
+            parse_select_options(&opts_tbl)?
+        } else {
+            Vec::new()
+        };
+
+        let admin = if let Ok(admin_tbl) = get_table(&field_tbl, "admin") {
+            FieldAdmin {
+                placeholder: get_string(&admin_tbl, "placeholder"),
+                description: get_string(&admin_tbl, "description"),
+                hidden: get_bool(&admin_tbl, "hidden", false),
+                readonly: get_bool(&admin_tbl, "readonly", false),
+                width: get_string(&admin_tbl, "width"),
+            }
+        } else {
+            FieldAdmin::default()
+        };
+
+        let hooks = if let Ok(hooks_tbl) = get_table(&field_tbl, "hooks") {
+            parse_field_hooks(&hooks_tbl)?
+        } else {
+            FieldHooks::default()
+        };
+
+        let access = if let Ok(access_tbl) = get_table(&field_tbl, "access") {
+            parse_field_access(&access_tbl)
+        } else {
+            FieldAccess::default()
+        };
+
+        // Parse relationship config
+        let relationship = if field_type == FieldType::Relationship {
+            if let Ok(rel_tbl) = get_table(&field_tbl, "relationship") {
+                let collection = get_string(&rel_tbl, "collection").unwrap_or_default();
+                let has_many = get_bool(&rel_tbl, "has_many", false);
+                Some(crate::core::field::RelationshipConfig { collection, has_many })
+            } else {
+                // Legacy flat syntax: relation_to + has_many on the field itself
+                get_string(&field_tbl, "relation_to").map(|collection| {
+                    let has_many = get_bool(&field_tbl, "has_many", false);
+                    crate::core::field::RelationshipConfig { collection, has_many }
+                })
+            }
+        } else {
+            None
+        };
+
+        // Parse sub-fields for Array type (recursive)
+        let sub_fields = if field_type == FieldType::Array {
+            if let Ok(sub_fields_tbl) = get_table(&field_tbl, "fields") {
+                parse_fields(&sub_fields_tbl)?
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+
+        fields.push(FieldDefinition {
+            name,
+            field_type,
+            required,
+            unique,
+            validate,
+            default_value,
+            options,
+            admin,
+            hooks,
+            access,
+            relationship,
+            fields: sub_fields,
+        });
+    }
+
+    Ok(fields)
+}
+
+fn parse_select_options(opts_tbl: &Table) -> Result<Vec<SelectOption>> {
+    let mut options = Vec::new();
+    for pair in opts_tbl.clone().sequence_values::<Table>() {
+        let opt = pair?;
+        let label = get_string_val(&opt, "label").unwrap_or_default();
+        let value = get_string_val(&opt, "value").unwrap_or_default();
+        options.push(SelectOption { label, value });
+    }
+    Ok(options)
+}
+
+fn parse_field_hooks(hooks_tbl: &Table) -> Result<FieldHooks> {
+    Ok(FieldHooks {
+        before_validate: parse_string_list(hooks_tbl, "before_validate")?,
+        before_change: parse_string_list(hooks_tbl, "before_change")?,
+        after_change: parse_string_list(hooks_tbl, "after_change")?,
+        after_read: parse_string_list(hooks_tbl, "after_read")?,
+    })
+}
+
+fn parse_hooks(hooks_tbl: &Table) -> Result<CollectionHooks> {
+    Ok(CollectionHooks {
+        before_validate: parse_string_list(hooks_tbl, "before_validate")?,
+        before_change: parse_string_list(hooks_tbl, "before_change")?,
+        after_change: parse_string_list(hooks_tbl, "after_change")?,
+        before_read: parse_string_list(hooks_tbl, "before_read")?,
+        after_read: parse_string_list(hooks_tbl, "after_read")?,
+        before_delete: parse_string_list(hooks_tbl, "before_delete")?,
+        after_delete: parse_string_list(hooks_tbl, "after_delete")?,
+    })
+}
+
+fn parse_string_list(tbl: &Table, key: &str) -> Result<Vec<String>> {
+    if let Ok(list_tbl) = get_table(tbl, key) {
+        let mut items = Vec::new();
+        for pair in list_tbl.sequence_values::<String>() {
+            items.push(pair?);
+        }
+        Ok(items)
+    } else {
+        Ok(Vec::new())
+    }
+}
+
+/// Convert a Lua value to a serde_json::Value.
+pub fn lua_to_json(_lua: &Lua, value: &Value) -> mlua::Result<serde_json::Value> {
+    match value {
+        Value::Nil => Ok(serde_json::Value::Null),
+        Value::Boolean(b) => Ok(serde_json::Value::Bool(*b)),
+        Value::Integer(i) => Ok(serde_json::Value::Number((*i).into())),
+        Value::Number(n) => {
+            serde_json::Number::from_f64(*n)
+                .map(serde_json::Value::Number)
+                .ok_or_else(|| mlua::Error::RuntimeError("Invalid float value".into()))
+        }
+        Value::String(s) => Ok(serde_json::Value::String(s.to_str()?.to_string())),
+        Value::Table(t) => {
+            let len = t.raw_len();
+            if len > 0 {
+                let mut arr = Vec::new();
+                for i in 1..=len {
+                    let v: Value = t.raw_get(i)?;
+                    arr.push(lua_to_json(_lua, &v)?);
+                }
+                Ok(serde_json::Value::Array(arr))
+            } else {
+                let mut map = serde_json::Map::new();
+                for pair in t.clone().pairs::<String, Value>() {
+                    let (k, v) = pair?;
+                    map.insert(k, lua_to_json(_lua, &v)?);
+                }
+                Ok(serde_json::Value::Object(map))
+            }
+        }
+        _ => Ok(serde_json::Value::Null),
+    }
+}
+
+/// Convert a serde_json::Value to a Lua value.
+pub fn json_to_lua(lua: &Lua, value: &serde_json::Value) -> mlua::Result<Value> {
+    match value {
+        serde_json::Value::Null => Ok(Value::Nil),
+        serde_json::Value::Bool(b) => Ok(Value::Boolean(*b)),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Ok(Value::Integer(i))
+            } else if let Some(f) = n.as_f64() {
+                Ok(Value::Number(f))
+            } else {
+                Ok(Value::Nil)
+            }
+        }
+        serde_json::Value::String(s) => {
+            Ok(Value::String(lua.create_string(s)?))
+        }
+        serde_json::Value::Array(arr) => {
+            let tbl = lua.create_table()?;
+            for (i, v) in arr.iter().enumerate() {
+                tbl.set(i + 1, json_to_lua(lua, v)?)?;
+            }
+            Ok(Value::Table(tbl))
+        }
+        serde_json::Value::Object(map) => {
+            let tbl = lua.create_table()?;
+            for (k, v) in map {
+                tbl.set(k.as_str(), json_to_lua(lua, v)?)?;
+            }
+            Ok(Value::Table(tbl))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slugify_basic() {
+        assert_eq!(slugify("Hello World"), "hello-world");
+    }
+
+    #[test]
+    fn slugify_special_chars() {
+        assert_eq!(slugify("Hello, World!"), "hello-world");
+    }
+
+    #[test]
+    fn slugify_multiple_spaces() {
+        assert_eq!(slugify("hello   world"), "hello-world");
+    }
+
+    #[test]
+    fn slugify_leading_trailing() {
+        assert_eq!(slugify("  hello  "), "hello");
+    }
+
+    #[test]
+    fn slugify_already_clean() {
+        assert_eq!(slugify("hello-world"), "hello-world");
+    }
+
+    #[test]
+    fn slugify_empty() {
+        assert_eq!(slugify(""), "");
+    }
+
+    #[test]
+    fn slugify_unicode() {
+        assert_eq!(slugify("Caf\u{00e9} Latt\u{00e9}"), "caf\u{00e9}-latt\u{00e9}");
+    }
+}

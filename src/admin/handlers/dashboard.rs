@@ -1,0 +1,58 @@
+use axum::{
+    extract::State,
+    response::Html,
+    Extension,
+};
+
+use crate::admin::AdminState;
+use crate::core::auth::Claims;
+
+pub async fn index(
+    State(state): State<AdminState>,
+    claims: Option<Extension<Claims>>,
+) -> Html<String> {
+    let mut collection_cards = Vec::new();
+    let mut global_cards = Vec::new();
+    {
+        let reg = match state.registry.read() {
+            Ok(r) => r,
+            Err(e) => return Html(format!("<h1>Error</h1><pre>Registry lock poisoned: {}</pre>", e)),
+        };
+        for (slug, def) in &reg.collections {
+            let count = crate::db::ops::count_documents(&state.pool, slug, def, &[])
+                .unwrap_or(0);
+            collection_cards.push(serde_json::json!({
+                "slug": slug,
+                "display_name": def.display_name(),
+                "singular_name": def.singular_name(),
+                "count": count,
+            }));
+        }
+        for (slug, def) in &reg.globals {
+            global_cards.push(serde_json::json!({
+                "slug": slug,
+                "display_name": def.display_name(),
+            }));
+        }
+    }
+    collection_cards.sort_by(|a, b| a["slug"].as_str().cmp(&b["slug"].as_str()));
+    global_cards.sort_by(|a, b| a["slug"].as_str().cmp(&b["slug"].as_str()));
+
+    let user = claims.map(|Extension(c)| serde_json::json!({
+        "email": c.email,
+        "id": c.sub,
+        "collection": c.collection,
+    }));
+
+    let data = serde_json::json!({
+        "title": "Dashboard",
+        "collections": collection_cards,
+        "globals": global_cards,
+        "user": user,
+    });
+
+    match state.render("dashboard/index", &data) {
+        Ok(html) => Html(html),
+        Err(e) => Html(format!("<h1>Error</h1><pre>{}</pre>", e)),
+    }
+}

@@ -1,0 +1,33 @@
+{{#> layout/base title="Dashboard"}}
+<h1>Dashboard</h1>
+
+<div class="cards">
+  {{#each collections}}
+  <a class="card" href="/admin/collections/{{this.slug}}"
+    hx-get="/admin/collections/{{this.slug}}" hx-target="body" hx-push-url="true">
+    <div class="card__header">
+      <span class="material-symbols-outlined">folder</span>
+      <h3>{{this.display_name}}</h3>
+    </div>
+    <div class="card__body">
+      <p>{{this.count}} item(s)</p>
+    </div>
+  </a>
+  {{/each}}
+</div>
+
+{{#if globals}}
+<h2>Globals</h2>
+<div class="cards">
+  {{#each globals}}
+  <a class="card" href="/admin/globals/{{this.slug}}"
+    hx-get="/admin/globals/{{this.slug}}" hx-target="body" hx-push-url="true">
+    <div class="card__header">
+      <span class="material-symbols-outlined">settings</span>
+      <h3>{{this.display_name}}</h3>
+    </div>
+  </a>
+  {{/each}}
+</div>
+{{/if}}
+{{/layout/base}}

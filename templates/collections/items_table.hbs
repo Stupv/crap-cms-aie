@@ -1,0 +1,14 @@
+<table class="table">
+  <thead>
+    <tr>
+      <th>{{#if collection.title_field}}{{collection.title_field}}{{else}}ID{{/if}}</th>
+      <th>Created</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {{#each items}}
+    {{> collections/items_row collection=../collection}}
+    {{/each}}
+  </tbody>
+</table>

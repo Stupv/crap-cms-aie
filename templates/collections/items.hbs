@@ -1,0 +1,44 @@
+{{#> layout/base title=page_title}}
+<div class="page-header">
+  <h1>{{collection.display_name}}</h1>
+  <a class="button button--primary" href="/admin/collections/{{collection.slug}}/create"
+    hx-get="/admin/collections/{{collection.slug}}/create" hx-target="body" hx-push-url="true">
+    <span class="material-symbols-outlined">add</span>
+    Create {{collection.singular_name}}
+  </a>
+</div>
+
+<div class="search-bar">
+  <form class="search-bar__form"
+        action="/admin/collections/{{collection.slug}}"
+        hx-get="/admin/collections/{{collection.slug}}"
+        hx-target="body"
+        hx-push-url="true"
+        hx-trigger="submit">
+    <span class="material-symbols-outlined search-bar__icon">search</span>
+    <input
+      type="text"
+      name="search"
+      value="{{search}}"
+      placeholder="Search {{collection.display_name}}..."
+      class="search-bar__input"
+    />
+    {{#if search}}
+    <a class="search-bar__clear"
+       href="/admin/collections/{{collection.slug}}"
+       hx-get="/admin/collections/{{collection.slug}}"
+       hx-target="body"
+       hx-push-url="true">
+      <span class="material-symbols-outlined">close</span>
+    </a>
+    {{/if}}
+  </form>
+</div>
+
+{{#if items}}
+{{> collections/items_table}}
+{{> components/pagination}}
+{{else}}
+{{> collections/items_empty}}
+{{/if}}
+{{/layout/base}}

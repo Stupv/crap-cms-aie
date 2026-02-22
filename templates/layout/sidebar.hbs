@@ -1,0 +1,23 @@
+<aside class="sidebar">
+  <nav class="sidebar__navigation">
+    <ul>
+      <li>
+        <a class="link link--ghost" href="/admin"
+          hx-get="/admin" hx-target="body" hx-push-url="true">
+          <span class="material-symbols-outlined">dashboard</span>
+          Dashboard
+        </a>
+      </li>
+      {{#each collections}}
+      <li>
+        {{> layout/sidebar_item}}
+      </li>
+      {{/each}}
+      {{#each globals}}
+      <li>
+        {{> layout/sidebar_global_item}}
+      </li>
+      {{/each}}
+    </ul>
+  </nav>
+</aside>

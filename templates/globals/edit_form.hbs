@@ -1,0 +1,14 @@
+<form hx-post="/admin/globals/{{global.slug}}"
+      action="/admin/globals/{{global.slug}}"
+      method="post"
+      hx-target="body"
+      class="form"
+      novalidate>
+  {{#each fields}}
+  <div class="form__field">
+    {{{render_field this}}}
+  </div>
+  {{/each}}
+
+  {{> globals/edit_actions}}
+</form>

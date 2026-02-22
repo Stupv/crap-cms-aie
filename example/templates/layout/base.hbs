@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="/static/styles.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <script src="https://unpkg.com/htmx.org@1.9.12" integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2" crossorigin="anonymous"></script>
+  <script src="/static/components.js" defer></script>
+
+  <title>{{title}} - Crap MS</title>
+</head>
+
+<body>
+  <div class="layout">
+    {{> layout/header}}
+    {{> layout/sidebar}}
+    <main id="main" class="main">
+      {{> @partial-block }}
+    </main>
+  </div>
+
+  <crap-toast></crap-toast>
+</body>
+</html>

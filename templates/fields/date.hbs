@@ -1,0 +1,15 @@
+<label for="field-{{name}}">
+  {{label}}
+  {{#if required}}<span class="required">*</span>{{/if}}
+</label>
+<input
+  type="date"
+  id="field-{{name}}"
+  name="{{name}}"
+  value="{{value}}"
+  {{#if required}}required{{/if}}
+  {{#if readonly}}readonly{{/if}}
+  {{#if error}}class="form__input--error"{{/if}}
+/>
+{{#if error}}<p class="form__error">{{error}}</p>{{/if}}
+{{#if description}}<p class="form__help">{{description}}</p>{{/if}}
