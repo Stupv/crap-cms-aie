@@ -27,13 +27,13 @@
     {{/if}}
 
     {{#if disable_local}}
-    <p class="auth-card__message">Use your organization's sign-in method to authenticate.</p>
+    <p class="auth-card__message">{{t "disable_local_message"}}</p>
     {{else}}
     <form class="auth-card__form" method="POST" action="/admin/login">
       {{#if collections}}
       {{#if show_collection_picker}}
       <div class="form__field">
-        <label for="collection">Account type</label>
+        <label for="collection">{{t "account_type"}}</label>
         <select name="collection" id="collection">
           {{#each collections}}
           <option value="{{this.slug}}" {{#if this.selected}}selected{{/if}}>{{this.display_name}}</option>
@@ -46,19 +46,19 @@
       {{/if}}
 
       <div class="form__field">
-        <label for="email">Email</label>
+        <label for="email">{{t "email"}}</label>
         <input type="email" name="email" id="email" placeholder="you@example.com" required value="{{email}}" autocomplete="email" />
       </div>
 
       <div class="form__field">
-        <label for="password">Password</label>
+        <label for="password">{{t "password"}}</label>
         <input type="password" name="password" id="password" placeholder="Password" required autocomplete="current-password" />
       </div>
 
-      <button type="submit" class="button button--primary auth-card__submit">Sign in</button>
+      <button type="submit" class="button button--primary auth-card__submit">{{t "login"}}</button>
 
       {{#if show_forgot_password}}
-      <p class="auth-card__link"><a href="/admin/forgot-password">Forgot password?</a></p>
+      <p class="auth-card__link"><a href="/admin/forgot-password">{{t "forgot_password"}}</a></p>
       {{/if}}
     </form>
     {{/if}}

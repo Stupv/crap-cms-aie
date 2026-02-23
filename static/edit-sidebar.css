@@ -86,3 +86,39 @@
   width: 14px;
   height: 14px;
 }
+
+/* Locale selector (pill-style tabs in sidebar) */
+
+.locale-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.locale-selector__item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 12px;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: var(--transition-colors);
+  cursor: pointer;
+}
+
+.locale-selector__item:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-bg);
+}
+
+.locale-selector__item--active {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-bg);
+  font-weight: 600;
+}

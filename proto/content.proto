@@ -30,6 +30,7 @@ message FindRequest {
   optional int64 offset = 5;
   optional string where = 6;
   optional int32 depth = 7;
+  optional string locale = 8;
 }
 
 message FindResponse {
@@ -41,6 +42,7 @@ message FindByIDRequest {
   string collection = 1;
   string id = 2;
   optional int32 depth = 3;
+  optional string locale = 4;
 }
 
 message FindByIDResponse {
@@ -50,6 +52,7 @@ message FindByIDResponse {
 message CreateRequest {
   string collection = 1;
   google.protobuf.Struct data = 2;
+  optional string locale = 3;
 }
 
 message CreateResponse {
@@ -60,6 +63,7 @@ message UpdateRequest {
   string collection = 1;
   string id = 2;
   google.protobuf.Struct data = 3;
+  optional string locale = 4;
 }
 
 message UpdateResponse {
@@ -77,6 +81,7 @@ message DeleteResponse {
 
 message GetGlobalRequest {
   string slug = 1;
+  optional string locale = 2;
 }
 
 message GetGlobalResponse {
@@ -86,6 +91,7 @@ message GetGlobalResponse {
 message UpdateGlobalRequest {
   string slug = 1;
   google.protobuf.Struct data = 2;
+  optional string locale = 3;
 }
 
 message UpdateGlobalResponse {
@@ -195,6 +201,7 @@ message FieldInfo {
   repeated FieldInfo fields = 8;
   optional int32 relationship_max_depth = 9;
   repeated BlockInfo blocks = 10;
+  bool localized = 11;
 }
 
 message BlockInfo {

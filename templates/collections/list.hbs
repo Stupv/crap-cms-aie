@@ -1,5 +1,5 @@
 {{#> layout/base title="Collections"}}
-<h1>Collections</h1>
+<h1>{{t "collections"}}</h1>
 
 <div class="cards">
   {{#each collections}}
@@ -10,7 +10,7 @@
       <h3>{{this.display_name}}</h3>
     </div>
     <div class="card__body">
-      <p>{{this.field_count}} field(s)</p>
+      <p>{{t "fields_count" count=this.field_count}}</p>
     </div>
   </a>
   {{/each}}

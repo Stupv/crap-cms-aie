@@ -1,7 +1,7 @@
 //! Collection and global definition types parsed from Lua configuration files.
 
 use serde::{Deserialize, Serialize};
-use super::field::FieldDefinition;
+use super::field::{FieldDefinition, LocalizedString};
 use super::upload::CollectionUpload;
 
 /// Controls live event broadcasting for a collection or global.
@@ -78,9 +78,9 @@ impl Default for CollectionAuth {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CollectionLabels {
     #[serde(default)]
-    pub singular: Option<String>,
+    pub singular: Option<LocalizedString>,
     #[serde(default)]
-    pub plural: Option<String>,
+    pub plural: Option<LocalizedString>,
 }
 
 /// Admin UI display options (title field, default sort, visibility, searchable fields).
@@ -146,15 +146,35 @@ fn default_true() -> bool {
 }
 
 impl CollectionDefinition {
-    /// Get the display label (plural form, falls back to slug).
+    /// Get the display label (plural form, falls back to slug). Uses default resolution.
     pub fn display_name(&self) -> &str {
-        self.labels.plural.as_deref()
+        self.labels.plural.as_ref()
+            .map(|ls| ls.resolve_default())
+            .filter(|s| !s.is_empty())
             .unwrap_or(&self.slug)
     }
 
-    /// Get the singular label (falls back to slug).
+    /// Get the singular label (falls back to slug). Uses default resolution.
     pub fn singular_name(&self) -> &str {
-        self.labels.singular.as_deref()
+        self.labels.singular.as_ref()
+            .map(|ls| ls.resolve_default())
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&self.slug)
+    }
+
+    /// Get the display label resolved for a specific locale.
+    pub fn display_name_for(&self, locale: &str, default_locale: &str) -> &str {
+        self.labels.plural.as_ref()
+            .map(|ls| ls.resolve(locale, default_locale))
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&self.slug)
+    }
+
+    /// Get the singular label resolved for a specific locale.
+    pub fn singular_name_for(&self, locale: &str, default_locale: &str) -> &str {
+        self.labels.singular.as_ref()
+            .map(|ls| ls.resolve(locale, default_locale))
+            .filter(|s| !s.is_empty())
             .unwrap_or(&self.slug)
     }
 
@@ -191,9 +211,19 @@ pub struct GlobalDefinition {
 }
 
 impl GlobalDefinition {
-    /// Get the display label (singular, falls back to slug).
+    /// Get the display label (singular, falls back to slug). Uses default resolution.
     pub fn display_name(&self) -> &str {
-        self.labels.singular.as_deref()
+        self.labels.singular.as_ref()
+            .map(|ls| ls.resolve_default())
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&self.slug)
+    }
+
+    /// Get the display label resolved for a specific locale.
+    pub fn display_name_for(&self, locale: &str, default_locale: &str) -> &str {
+        self.labels.singular.as_ref()
+            .map(|ls| ls.resolve(locale, default_locale))
+            .filter(|s| !s.is_empty())
             .unwrap_or(&self.slug)
     }
 }
@@ -206,8 +236,8 @@ mod tests {
         CollectionDefinition {
             slug: slug.to_string(),
             labels: CollectionLabels {
-                singular: singular.map(|s| s.to_string()),
-                plural: plural.map(|s| s.to_string()),
+                singular: singular.map(|s| LocalizedString::Plain(s.to_string())),
+                plural: plural.map(|s| LocalizedString::Plain(s.to_string())),
             },
             timestamps: true,
             fields: Vec::new(),

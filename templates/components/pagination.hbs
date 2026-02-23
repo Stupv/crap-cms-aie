@@ -3,16 +3,16 @@
   {{#if has_prev}}
   <a class="button button--ghost" href="{{prev_url}}"
     hx-get="{{prev_url}}" hx-target="body" hx-push-url="true">
-    Previous
+    {{t "previous"}}
   </a>
   {{/if}}
 
-  <span class="pagination__info">Page {{page}} of {{total_pages}}</span>
+  <span class="pagination__info">{{t "page_of" page=page total=total_pages}}</span>
 
   {{#if has_next}}
   <a class="button button--ghost" href="{{next_url}}"
     hx-get="{{next_url}}" hx-target="body" hx-push-url="true">
-    Next
+    {{t "next"}}
   </a>
   {{/if}}
 </nav>

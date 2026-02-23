@@ -2,6 +2,7 @@
 
 pub mod server;
 pub mod templates;
+pub mod translations;
 pub mod handlers;
 
 use std::path::PathBuf;

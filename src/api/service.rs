@@ -7,7 +7,7 @@ use tonic::{Request, Response, Status};
 use tonic::metadata::MetadataMap;
 use tokio_stream::{Stream, StreamExt, wrappers::BroadcastStream};
 
-use crate::config::{EmailConfig, ServerConfig};
+use crate::config::{EmailConfig, LocaleConfig, ServerConfig};
 use crate::core::SharedRegistry;
 use crate::core::auth::{self, AuthUser};
 use crate::core::email::{self, EmailRenderer};
@@ -15,7 +15,7 @@ use crate::core::event::EventBus;
 use crate::core::upload;
 use crate::db::DbPool;
 use crate::db::{ops, query};
-use crate::db::query::{AccessResult, FindQuery, Filter, FilterOp, FilterClause};
+use crate::db::query::{AccessResult, FindQuery, Filter, FilterOp, FilterClause, LocaleContext};
 use crate::hooks::lifecycle::{self, HookContext, HookEvent, HookRunner};
 use super::content;
 use super::content::content_api_server::ContentApi;
@@ -32,6 +32,7 @@ pub struct ContentService {
     email_renderer: std::sync::Arc<EmailRenderer>,
     server_config: ServerConfig,
     event_bus: Option<EventBus>,
+    locale_config: LocaleConfig,
 }
 
 impl ContentService {
@@ -45,6 +46,7 @@ impl ContentService {
         email_renderer: std::sync::Arc<EmailRenderer>,
         server_config: ServerConfig,
         event_bus: Option<EventBus>,
+        locale_config: LocaleConfig,
     ) -> Self {
         Self {
             pool,
@@ -57,6 +59,7 @@ impl ContentService {
             email_renderer,
             server_config,
             event_bus,
+            locale_config,
         }
     }
 
@@ -89,7 +92,7 @@ impl ContentService {
             reg.get_collection(&claims.collection)?.clone()
         };
         let conn = self.pool.get().ok()?;
-        let doc = query::find_by_id(&conn, &claims.collection, &def, &claims.sub).ok()??;
+        let doc = query::find_by_id(&conn, &claims.collection, &def, &claims.sub, None).ok()??;
         Some(AuthUser { claims, user_doc: doc })
     }
 
@@ -288,16 +291,17 @@ fn field_def_to_proto(field: &crate::core::field::FieldDefinition) -> content::F
         relationship_collection: field.relationship.as_ref().map(|r| r.collection.clone()),
         relationship_has_many: field.relationship.as_ref().map(|r| r.has_many),
         options: field.options.iter().map(|o| content::SelectOptionInfo {
-            label: o.label.clone(),
+            label: o.label.resolve_default().to_string(),
             value: o.value.clone(),
         }).collect(),
         fields: field.fields.iter().map(field_def_to_proto).collect(),
         relationship_max_depth: field.relationship.as_ref().and_then(|r| r.max_depth),
         blocks: field.blocks.iter().map(|bd| content::BlockInfo {
             block_type: bd.block_type.clone(),
-            label: bd.label.clone(),
+            label: bd.label.as_ref().map(|ls| ls.resolve_default().to_string()),
             fields: bd.fields.iter().map(field_def_to_proto).collect(),
         }).collect(),
+        localized: field.localized,
     }
 }
 
@@ -348,8 +352,10 @@ impl ContentApi for ContentService {
             offset: req.offset,
         };
 
+        let locale_ctx = LocaleContext::from_locale_string(req.locale.as_deref(), &self.locale_config);
+
         // Validate filter/order_by fields early for a clear INVALID_ARGUMENT status
-        query::validate_query_fields(&def, &find_query)
+        query::validate_query_fields(&def, &find_query, locale_ctx.as_ref())
             .map_err(|e| Status::invalid_argument(e.to_string()))?;
 
         let depth = req.depth.unwrap_or(0).max(0).min(self.max_depth);
@@ -364,8 +370,8 @@ impl ContentApi for ContentService {
         let def_owned = def;
         let (documents, total) = tokio::task::spawn_blocking(move || {
             runner.fire_before_read(&hooks, &collection, "find", HashMap::new())?;
-            let mut docs = ops::find_documents(&pool, &collection, &def_owned, &find_query)?;
-            let total = ops::count_documents(&pool, &collection, &def_owned, &filters)?;
+            let mut docs = ops::find_documents(&pool, &collection, &def_owned, &find_query, locale_ctx.as_ref())?;
+            let total = ops::count_documents(&pool, &collection, &def_owned, &filters, locale_ctx.as_ref())?;
             // Hydrate join table data (has-many relationships and arrays)
             let conn = pool.get().context("DB connection for hydration")?;
             for doc in &mut docs {
@@ -432,6 +438,7 @@ impl ContentApi for ContentService {
         }
 
         let depth = req.depth.unwrap_or(self.default_depth).max(0).min(self.max_depth);
+        let locale_ctx = LocaleContext::from_locale_string(req.locale.as_deref(), &self.locale_config);
 
         let pool = self.pool.clone();
         let runner = self.hook_runner.clone();
@@ -457,10 +464,10 @@ impl ContentApi for ContentService {
                     op: FilterOp::Equals(id.clone()),
                 }));
                 let query = FindQuery { filters, ..Default::default() };
-                let docs = ops::find_documents(&pool, &collection, &def_owned, &query)?;
+                let docs = ops::find_documents(&pool, &collection, &def_owned, &query, locale_ctx.as_ref())?;
                 docs.into_iter().next()
             } else {
-                ops::find_document_by_id(&pool, &collection, &def_owned, &id)?
+                ops::find_document_by_id(&pool, &collection, &def_owned, &id, locale_ctx.as_ref())?
             };
             // Hydrate join table data (has-many relationships and arrays)
             if let Some(ref mut d) = doc {
@@ -550,6 +557,8 @@ impl ContentApi for ContentService {
             None
         };
 
+        let locale_ctx = LocaleContext::from_locale_string(req.locale.as_deref(), &self.locale_config);
+
         let pool = self.pool.clone();
         let runner = self.hook_runner.clone();
         let hooks = def.hooks.clone();
@@ -567,12 +576,13 @@ impl ContentApi for ContentService {
                 data: data.iter()
                     .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
                     .collect(),
+                locale: None,
             };
             let final_ctx = runner.run_before_write(
                 &hooks, &def_owned.fields, hook_ctx, &tx, &collection, None,
             )?;
             let final_data = lifecycle::hook_ctx_to_string_map(&final_ctx);
-            let doc = query::create(&tx, &collection, &def_owned, &final_data)?;
+            let doc = query::create(&tx, &collection, &def_owned, &final_data, locale_ctx.as_ref())?;
 
             // Save join table data (has-many relationships and arrays)
             query::save_join_table_data(&tx, &collection, &def_owned, &doc.id, &join_data)?;
@@ -676,6 +686,8 @@ impl ContentApi for ContentService {
             None
         };
 
+        let locale_ctx = LocaleContext::from_locale_string(req.locale.as_deref(), &self.locale_config);
+
         let pool = self.pool.clone();
         let runner = self.hook_runner.clone();
         let hooks = def.hooks.clone();
@@ -694,12 +706,13 @@ impl ContentApi for ContentService {
                 data: data.iter()
                     .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
                     .collect(),
+                locale: None,
             };
             let final_ctx = runner.run_before_write(
                 &hooks, &def_owned.fields, hook_ctx, &tx, &collection, Some(&id),
             )?;
             let final_data = lifecycle::hook_ctx_to_string_map(&final_ctx);
-            let doc = query::update(&tx, &collection, &def_owned, &id, &final_data)?;
+            let doc = query::update(&tx, &collection, &def_owned, &id, &final_data, locale_ctx.as_ref())?;
 
             // Save join table data (has-many relationships and arrays)
             query::save_join_table_data(&tx, &collection, &def_owned, &doc.id, &join_data)?;
@@ -776,6 +789,7 @@ impl ContentApi for ContentService {
                 collection: collection.clone(),
                 operation: "delete".to_string(),
                 data: [("id".to_string(), serde_json::Value::String(id.clone()))].into(),
+                locale: None,
             };
             runner.run_hooks_with_conn(
                 &hooks, HookEvent::BeforeDelete, hook_ctx, &tx,
@@ -822,6 +836,8 @@ impl ContentApi for ContentService {
             return Err(Status::permission_denied("Read access denied"));
         }
 
+        let locale_ctx = LocaleContext::from_locale_string(req.locale.as_deref(), &self.locale_config);
+
         let pool = self.pool.clone();
         let runner = self.hook_runner.clone();
         let hooks = def.hooks.clone();
@@ -830,7 +846,7 @@ impl ContentApi for ContentService {
         let slug = req.slug.clone();
         let doc = tokio::task::spawn_blocking(move || {
             runner.fire_before_read(&hooks, &slug, "get_global", HashMap::new())?;
-            let doc = ops::get_global(&pool, &slug, &def)?;
+            let doc = ops::get_global(&pool, &slug, &def, locale_ctx.as_ref())?;
             let doc = runner.apply_after_read(&hooks, &fields, &slug, "get_global", doc);
             Ok::<_, anyhow::Error>(doc)
         }).await
@@ -877,6 +893,8 @@ impl ContentApi for ContentService {
             }
         }
 
+        let locale_ctx = LocaleContext::from_locale_string(req.locale.as_deref(), &self.locale_config);
+
         let pool = self.pool.clone();
         let runner = self.hook_runner.clone();
         let hooks = def.hooks.clone();
@@ -893,13 +911,14 @@ impl ContentApi for ContentService {
                 data: data.iter()
                     .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
                     .collect(),
+                locale: None,
             };
             let global_table = format!("_global_{}", slug);
             let final_ctx = runner.run_before_write(
                 &hooks, &def_owned.fields, hook_ctx, &tx, &global_table, Some("default"),
             )?;
             let final_data = lifecycle::hook_ctx_to_string_map(&final_ctx);
-            let doc = query::update_global(&tx, &slug, &def_owned, &final_data)?;
+            let doc = query::update_global(&tx, &slug, &def_owned, &final_data, locale_ctx.as_ref())?;
             tx.commit().context("Commit transaction")?;
             Ok::<_, anyhow::Error>(doc)
         }).await
@@ -1190,8 +1209,8 @@ impl ContentApi for ContentService {
         let mut collections: Vec<content::CollectionInfo> = reg.collections.values()
             .map(|def| content::CollectionInfo {
                 slug: def.slug.clone(),
-                singular_label: def.labels.singular.clone(),
-                plural_label: def.labels.plural.clone(),
+                singular_label: def.labels.singular.as_ref().map(|ls| ls.resolve_default().to_string()),
+                plural_label: def.labels.plural.as_ref().map(|ls| ls.resolve_default().to_string()),
                 timestamps: def.timestamps,
                 auth: def.is_auth_collection(),
                 upload: def.is_upload_collection(),
@@ -1202,8 +1221,8 @@ impl ContentApi for ContentService {
         let mut globals: Vec<content::GlobalInfo> = reg.globals.values()
             .map(|def| content::GlobalInfo {
                 slug: def.slug.clone(),
-                singular_label: def.labels.singular.clone(),
-                plural_label: def.labels.plural.clone(),
+                singular_label: def.labels.singular.as_ref().map(|ls| ls.resolve_default().to_string()),
+                plural_label: def.labels.plural.as_ref().map(|ls| ls.resolve_default().to_string()),
             })
             .collect();
         globals.sort_by(|a, b| a.slug.cmp(&b.slug));
@@ -1225,8 +1244,8 @@ impl ContentApi for ContentService {
             let def = self.get_global_def(&req.slug)?;
             Ok(Response::new(content::DescribeCollectionResponse {
                 slug: def.slug.clone(),
-                singular_label: def.labels.singular.clone(),
-                plural_label: def.labels.plural.clone(),
+                singular_label: def.labels.singular.as_ref().map(|ls| ls.resolve_default().to_string()),
+                plural_label: def.labels.plural.as_ref().map(|ls| ls.resolve_default().to_string()),
                 timestamps: false,
                 auth: false,
                 fields: def.fields.iter().map(field_def_to_proto).collect(),
@@ -1236,8 +1255,8 @@ impl ContentApi for ContentService {
             let def = self.get_collection_def(&req.slug)?;
             Ok(Response::new(content::DescribeCollectionResponse {
                 slug: def.slug.clone(),
-                singular_label: def.labels.singular.clone(),
-                plural_label: def.labels.plural.clone(),
+                singular_label: def.labels.singular.as_ref().map(|ls| ls.resolve_default().to_string()),
+                plural_label: def.labels.plural.as_ref().map(|ls| ls.resolve_default().to_string()),
                 timestamps: def.timestamps,
                 auth: def.is_auth_collection(),
                 fields: def.fields.iter().map(field_def_to_proto).collect(),
@@ -1409,7 +1428,7 @@ impl ContentApi for ContentService {
         let id = claims.sub.clone();
         let doc = tokio::task::spawn_blocking(move || {
             let conn = pool.get().context("DB connection")?;
-            query::find_by_id(&conn, &collection, &def, &id)
+            query::find_by_id(&conn, &collection, &def, &id, None)
         }).await
             .map_err(|e| Status::internal(format!("Task error: {}", e)))?
             .map_err(|e| Status::internal(format!("Query error: {}", e)))?;

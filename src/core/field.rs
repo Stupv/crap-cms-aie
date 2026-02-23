@@ -1,6 +1,42 @@
 //! Field types and definitions. Each field maps to a column (or join table) in SQLite.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+/// A string that can be plain or per-locale.
+/// Plain: `"Title"` — works like before.
+/// Localized: `{ en = "Title", de = "Titel" }` — resolved at render time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum LocalizedString {
+    Plain(String),
+    Localized(HashMap<String, String>),
+}
+
+impl LocalizedString {
+    /// Resolve to a single string for the given locale, with fallback to default locale.
+    pub fn resolve(&self, locale: &str, default_locale: &str) -> &str {
+        match self {
+            LocalizedString::Plain(s) => s,
+            LocalizedString::Localized(map) => {
+                map.get(locale)
+                    .or_else(|| map.get(default_locale))
+                    .map(|s| s.as_str())
+                    .unwrap_or("")
+            }
+        }
+    }
+
+    /// Resolve using the default locale only (for when locale config is disabled).
+    pub fn resolve_default(&self) -> &str {
+        match self {
+            LocalizedString::Plain(s) => s,
+            LocalizedString::Localized(map) => {
+                map.values().next().map(|s| s.as_str()).unwrap_or("")
+            }
+        }
+    }
+}
 
 /// Supported field types. Each variant maps to a SQLite column type (or join table for Array/Blocks/has-many).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -100,7 +136,7 @@ impl FieldType {
 /// A label/value pair for select field options.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectOption {
-    pub label: String,
+    pub label: LocalizedString,
     pub value: String,
 }
 
@@ -110,16 +146,18 @@ pub struct BlockDefinition {
     pub block_type: String,
     pub fields: Vec<FieldDefinition>,
     #[serde(default)]
-    pub label: Option<String>,
+    pub label: Option<LocalizedString>,
 }
 
 /// Admin UI display hints for a field (placeholder, description, visibility, width).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FieldAdmin {
     #[serde(default)]
-    pub placeholder: Option<String>,
+    pub label: Option<LocalizedString>,
     #[serde(default)]
-    pub description: Option<String>,
+    pub placeholder: Option<LocalizedString>,
+    #[serde(default)]
+    pub description: Option<LocalizedString>,
     #[serde(default)]
     pub hidden: bool,
     #[serde(default)]
@@ -193,6 +231,8 @@ pub struct FieldDefinition {
     pub fields: Vec<FieldDefinition>,
     #[serde(default)]
     pub blocks: Vec<BlockDefinition>,
+    #[serde(default)]
+    pub localized: bool,
 }
 
 impl FieldDefinition {

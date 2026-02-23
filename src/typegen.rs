@@ -116,6 +116,7 @@ fn render_collection(out: &mut String, col: &CollectionDefinition) {
     writeln!(out, "---@field order_by? {}", order_by_union.join("|")).unwrap();
     writeln!(out, "---@field limit? integer").unwrap();
     writeln!(out, "---@field offset? integer").unwrap();
+    writeln!(out, "---@field locale? string").unwrap();
     out.push('\n');
 }
 
@@ -239,7 +240,7 @@ mod tests {
     use crate::core::collection::{
         CollectionAccess, CollectionAdmin, CollectionHooks, CollectionLabels,
     };
-    use crate::core::field::{FieldAccess, FieldAdmin, FieldHooks, SelectOption};
+    use crate::core::field::{FieldAccess, FieldAdmin, FieldHooks, LocalizedString, SelectOption};
 
     fn text_field(name: &str, required: bool) -> FieldDefinition {
         FieldDefinition {
@@ -256,6 +257,7 @@ mod tests {
             relationship: None,
             fields: vec![],
             blocks: vec![],
+            localized: false,
         }
     }
 
@@ -270,7 +272,7 @@ mod tests {
             options: opts
                 .iter()
                 .map(|v| SelectOption {
-                    label: v.to_string(),
+                    label: LocalizedString::Plain(v.to_string()),
                     value: v.to_string(),
                 })
                 .collect(),
@@ -280,6 +282,7 @@ mod tests {
             relationship: None,
             fields: vec![],
             blocks: vec![],
+            localized: false,
         }
     }
 
@@ -298,6 +301,7 @@ mod tests {
             relationship: None,
             fields: vec![],
             blocks: vec![],
+            localized: false,
         }
     }
 

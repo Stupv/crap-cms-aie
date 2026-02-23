@@ -11,7 +11,7 @@
       <div class="theme-picker__dropdown" data-theme-dropdown>
         <button type="button" class="theme-picker__option" data-theme-value="">
           <span class="theme-picker__swatch" style="background:#f4f7fc"></span>
-          Light
+          {{t "light"}}
         </button>
         <button type="button" class="theme-picker__option" data-theme-value="tokyo-night">
           <span class="theme-picker__swatch" style="background:#1a1b26"></span>
@@ -30,7 +30,7 @@
     {{#if user}}
     <span class="header__email">{{user.email}}</span>
     <form method="POST" action="/admin/logout" class="header__logout-form">
-      <button type="submit" class="button button--ghost button--small">Logout</button>
+      <button type="submit" class="button button--ghost button--small">{{t "logout"}}</button>
     </form>
     {{/if}}
   </div>

@@ -547,6 +547,76 @@ create_with_upload() {
   }" "$ADDR" crap.ContentAPI/Create
 }
 
+# ── Locale ───────────────────────────────────────────────────
+
+# Find posts with a specific locale (returns flat field names for that locale)
+find_posts_locale() {
+  local locale="${1:?Usage: find_posts_locale <locale> (e.g., en, de, all)}"
+  grpcurl -plaintext -d "{
+    \"collection\": \"posts\",
+    \"locale\": \"$locale\"
+  }" "$ADDR" crap.ContentAPI/Find
+}
+
+# Find a post by ID with locale
+find_post_by_id_locale() {
+  local id="${1:?Usage: find_post_by_id_locale <id> <locale>}"
+  local locale="${2:?Usage: find_post_by_id_locale <id> <locale>}"
+  grpcurl -plaintext -d "{
+    \"collection\": \"posts\",
+    \"id\": \"$id\",
+    \"locale\": \"$locale\"
+  }" "$ADDR" crap.ContentAPI/FindByID
+}
+
+# Create a post in a specific locale
+create_post_locale() {
+  local locale="${1:?Usage: create_post_locale <locale>}"
+  grpcurl -plaintext -d "{
+    \"collection\": \"posts\",
+    \"locale\": \"$locale\",
+    \"data\": {
+      \"title\": \"Hallo Welt\",
+      \"slug\": \"hallo-welt\",
+      \"status\": \"draft\",
+      \"content\": \"Dies ist mein erster Beitrag.\"
+    }
+  }" "$ADDR" crap.ContentAPI/Create
+}
+
+# Update a post in a specific locale
+update_post_locale() {
+  local id="${1:?Usage: update_post_locale <id> <locale>}"
+  local locale="${2:?Usage: update_post_locale <id> <locale>}"
+  grpcurl -plaintext -d "{
+    \"collection\": \"posts\",
+    \"id\": \"$id\",
+    \"locale\": \"$locale\",
+    \"data\": {
+      \"title\": \"Hallo Welt (Aktualisiert)\"
+    }
+  }" "$ADDR" crap.ContentAPI/Update
+}
+
+# Get a global with locale
+get_site_settings_locale() {
+  local locale="${1:?Usage: get_site_settings_locale <locale>}"
+  grpcurl -plaintext -d "{
+    \"slug\": \"site_settings\",
+    \"locale\": \"$locale\"
+  }" "$ADDR" crap.ContentAPI/GetGlobal
+}
+
+# Update a global in a specific locale
+update_site_settings_locale() {
+  local locale="${1:?Usage: update_site_settings_locale <locale>}"
+  grpcurl -plaintext -d "{
+    \"slug\": \"site_settings\",
+    \"locale\": \"$locale\",
+    \"data\": {\"site_name\": \"Meine Seite\", \"tagline\": \"Ein CMS\"}
+  }" "$ADDR" crap.ContentAPI/UpdateGlobal
+}
+
 # ── Subscribe (Live Updates) ──────────────────────────────────
 
 # Subscribe to all mutation events (streams indefinitely)

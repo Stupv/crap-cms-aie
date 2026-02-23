@@ -37,7 +37,7 @@ pub async fn start_server(
     let content_service = service::ContentService::new(
         pool, registry, hook_runner, jwt_secret, depth_config,
         config.email.clone(), email_renderer, config.server.clone(),
-        event_bus,
+        event_bus, config.locale.clone(),
     );
 
     let reflection_service = tonic_reflection::server::Builder::configure()

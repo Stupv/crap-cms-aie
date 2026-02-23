@@ -6,10 +6,16 @@ use include_dir::{include_dir, Dir};
 use std::path::Path;
 use std::sync::Arc;
 
+use super::translations::Translations;
+
 static TEMPLATES_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates");
 
 /// Create a Handlebars instance with embedded defaults, config overlays, and helpers.
-pub fn create_handlebars(config_dir: &Path, dev_mode: bool) -> Result<Arc<Handlebars<'static>>> {
+pub fn create_handlebars(
+    config_dir: &Path,
+    dev_mode: bool,
+    translations: Arc<Translations>,
+) -> Result<Arc<Handlebars<'static>>> {
     let mut hbs = Handlebars::new();
     hbs.set_dev_mode(dev_mode);
     hbs.set_strict_mode(false);
@@ -26,6 +32,7 @@ pub fn create_handlebars(config_dir: &Path, dev_mode: bool) -> Result<Arc<Handle
     // Register helpers
     hbs.register_helper("render_field", Box::new(RenderFieldHelper));
     hbs.register_helper("eq", Box::new(EqHelper));
+    hbs.register_helper("t", Box::new(TranslationHelper { translations }));
 
     Ok(Arc::new(hbs))
 }
@@ -135,5 +142,45 @@ impl HelperDef for EqHelper {
         let b = h.param(1).map(|p| p.value());
         let result = a == b;
         Ok(ScopedJson::Derived(serde_json::Value::Bool(result)))
+    }
+}
+
+/// Handlebars helper for admin UI translations.
+/// Usage: `{{t "key"}}` or with interpolation: `{{t "key" name=value}}`
+/// Interpolation replaces `{{var}}` placeholders in the translation string.
+struct TranslationHelper {
+    translations: Arc<Translations>,
+}
+
+impl HelperDef for TranslationHelper {
+    fn call_inner<'reg: 'rc, 'rc>(
+        &self,
+        h: &Helper<'rc>,
+        _r: &'reg Handlebars<'reg>,
+        _ctx: &'rc handlebars::Context,
+        _rc: &mut RenderContext<'reg, 'rc>,
+    ) -> Result<ScopedJson<'rc>, RenderError> {
+        let key = h.param(0)
+            .and_then(|p| p.value().as_str())
+            .unwrap_or("");
+
+        let hash = h.hash();
+        if hash.is_empty() {
+            let translated = self.translations.get(key);
+            Ok(ScopedJson::Derived(serde_json::Value::String(translated.to_string())))
+        } else {
+            let mut params = std::collections::HashMap::new();
+            for (k, v) in hash {
+                let val = match v.value() {
+                    serde_json::Value::String(s) => s.clone(),
+                    serde_json::Value::Number(n) => n.to_string(),
+                    serde_json::Value::Bool(b) => b.to_string(),
+                    other => other.to_string(),
+                };
+                params.insert(k.to_string(), val);
+            }
+            let translated = self.translations.get_interpolated(key, &params);
+            Ok(ScopedJson::Derived(serde_json::Value::String(translated)))
+        }
     }
 }

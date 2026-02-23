@@ -6,10 +6,46 @@ use rusqlite::params_from_iter;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use crate::config::LocaleConfig;
 use crate::core::{CollectionDefinition, Document};
 use crate::core::collection::GlobalDefinition;
-use crate::core::field::FieldType;
+use crate::core::field::{FieldDefinition, FieldType};
 use super::document::row_to_document;
+
+/// How to handle localized fields in a query.
+#[derive(Debug, Clone)]
+pub enum LocaleMode {
+    /// Return only the default locale (or no locales if disabled). Flat field names.
+    Default,
+    /// Return a specific locale. Flat field names.
+    Single(String),
+    /// Return all locales. Nested objects: { en: "val", de: "val" }.
+    All,
+}
+
+/// Locale context for query functions: combines config + mode.
+#[derive(Debug, Clone)]
+pub struct LocaleContext {
+    pub mode: LocaleMode,
+    pub config: LocaleConfig,
+}
+
+impl LocaleContext {
+    /// Build a `LocaleContext` from an optional locale string and config.
+    /// Returns `None` if localization is disabled (empty `locales` vec).
+    /// `"all"` → `All`, a specific code → `Single`, `None` → `Default`.
+    pub fn from_locale_string(locale: Option<&str>, config: &LocaleConfig) -> Option<Self> {
+        if !config.is_enabled() {
+            return None;
+        }
+        let mode = match locale {
+            Some("all") => LocaleMode::All,
+            Some(l) => LocaleMode::Single(l.to_string()),
+            None => LocaleMode::Default,
+        };
+        Some(Self { mode, config: config.clone() })
+    }
+}
 
 /// Result of an access control check.
 #[derive(Debug, Clone)]
@@ -80,8 +116,8 @@ pub fn validate_field_name(field: &str, valid_columns: &HashSet<String>) -> Resu
 }
 
 /// Validate all filter fields and order_by in a FindQuery against a collection definition.
-pub fn validate_query_fields(def: &CollectionDefinition, query: &FindQuery) -> Result<()> {
-    let valid: HashSet<String> = get_column_names(def).into_iter().collect();
+pub fn validate_query_fields(def: &CollectionDefinition, query: &FindQuery, locale_ctx: Option<&LocaleContext>) -> Result<()> {
+    let valid = get_valid_filter_columns(def, locale_ctx);
 
     for clause in &query.filters {
         match clause {
@@ -103,26 +139,35 @@ pub fn validate_query_fields(def: &CollectionDefinition, query: &FindQuery) -> R
 }
 
 /// Find documents matching a query.
-pub fn find(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition, query: &FindQuery) -> Result<Vec<Document>> {
-    validate_query_fields(def, query)?;
-    let column_names = get_column_names(def);
+pub fn find(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition, query: &FindQuery, locale_ctx: Option<&LocaleContext>) -> Result<Vec<Document>> {
+    validate_query_fields(def, query, locale_ctx)?;
 
-    let mut sql = format!("SELECT {} FROM {}", column_names.join(", "), slug);
+    let (select_exprs, result_names) = match locale_ctx {
+        Some(ctx) if ctx.config.is_enabled() => get_locale_select_columns(&def.fields, def.timestamps, ctx),
+        _ => {
+            let names = get_column_names(def);
+            (names.clone(), names)
+        }
+    };
+
+    let mut sql = format!("SELECT {} FROM {}", select_exprs.join(", "), slug);
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
-    let where_clause = build_where_clause(&query.filters, &mut params)?;
+    // Build WHERE with locale-resolved column names
+    let resolved_filters = resolve_filters(&query.filters, def, locale_ctx);
+    let where_clause = build_where_clause(&resolved_filters, &mut params)?;
     if !where_clause.is_empty() {
         sql.push_str(&where_clause);
     }
 
     if let Some(ref order) = query.order_by {
-        // Parse "-field" as "field DESC"
         let (col, dir) = if let Some(stripped) = order.strip_prefix('-') {
             (stripped, "DESC")
         } else {
             (order.as_str(), "ASC")
         };
-        sql.push_str(&format!(" ORDER BY {} {}", col, dir));
+        let resolved_col = resolve_filter_column(col, def, locale_ctx);
+        sql.push_str(&format!(" ORDER BY {} {}", resolved_col, dir));
     }
 
     if let Some(limit) = query.limit {
@@ -138,29 +183,52 @@ pub fn find(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition,
     let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
     let rows = stmt.query_map(params_from_iter(param_refs.iter()), |row| {
-        row_to_document(row, &column_names)
+        row_to_document(row, &result_names)
     }).with_context(|| format!("Failed to execute query on '{}'", slug))?;
 
     let mut documents = Vec::new();
     for row in rows {
-        documents.push(row?);
+        let mut doc = row?;
+        if let Some(ctx) = locale_ctx {
+            if ctx.config.is_enabled() {
+                if let LocaleMode::All = ctx.mode {
+                    group_locale_fields(&mut doc, &def.fields, &ctx.config);
+                }
+            }
+        }
+        documents.push(doc);
     }
 
     Ok(documents)
 }
 
 /// Find a single document by ID.
-pub fn find_by_id(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition, id: &str) -> Result<Option<Document>> {
-    let column_names = get_column_names(def);
+pub fn find_by_id(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition, id: &str, locale_ctx: Option<&LocaleContext>) -> Result<Option<Document>> {
+    let (select_exprs, result_names) = match locale_ctx {
+        Some(ctx) if ctx.config.is_enabled() => get_locale_select_columns(&def.fields, def.timestamps, ctx),
+        _ => {
+            let names = get_column_names(def);
+            (names.clone(), names)
+        }
+    };
 
-    let sql = format!("SELECT {} FROM {} WHERE id = ?1", column_names.join(", "), slug);
+    let sql = format!("SELECT {} FROM {} WHERE id = ?1", select_exprs.join(", "), slug);
 
     let result = conn.query_row(&sql, [id], |row| {
-        row_to_document(row, &column_names)
+        row_to_document(row, &result_names)
     });
 
     match result {
-        Ok(doc) => Ok(Some(doc)),
+        Ok(mut doc) => {
+            if let Some(ctx) = locale_ctx {
+                if ctx.config.is_enabled() {
+                    if let LocaleMode::All = ctx.mode {
+                        group_locale_fields(&mut doc, &def.fields, &ctx.config);
+                    }
+                }
+            }
+            Ok(Some(doc))
+        }
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e).context(format!("Failed to find document {} in {}", id, slug)),
     }
@@ -172,6 +240,7 @@ pub fn create(
     slug: &str,
     def: &CollectionDefinition,
     data: &HashMap<String, String>,
+    locale_ctx: Option<&LocaleContext>,
 ) -> Result<Document> {
     let id = nanoid::nanoid!();
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -184,8 +253,9 @@ pub fn create(
     for field in &def.fields {
         if field.field_type == FieldType::Group {
             for sub in &field.fields {
-                let col_name = format!("{}__{}", field.name, sub.name);
-                if let Some(value) = data.get(&col_name) {
+                let data_key = format!("{}__{}", field.name, sub.name);
+                let col_name = locale_write_column(&data_key, sub, &locale_ctx);
+                if let Some(value) = data.get(&data_key) {
                     columns.push(col_name);
                     placeholders.push(format!("?{}", idx));
                     params.push(coerce_value(&sub.field_type, value));
@@ -202,14 +272,14 @@ pub fn create(
         if !field.has_parent_column() {
             continue;
         }
+        let col_name = locale_write_column(&field.name, field, &locale_ctx);
         if let Some(value) = data.get(&field.name) {
-            columns.push(field.name.clone());
+            columns.push(col_name);
             placeholders.push(format!("?{}", idx));
             params.push(coerce_value(&field.field_type, value));
             idx += 1;
         } else if field.field_type == FieldType::Checkbox {
-            // Absent checkbox = false
-            columns.push(field.name.clone());
+            columns.push(col_name);
             placeholders.push(format!("?{}", idx));
             params.push(Box::new(0i32));
             idx += 1;
@@ -239,8 +309,8 @@ pub fn create(
     conn.execute(&sql, params_from_iter(param_refs.iter()))
         .with_context(|| format!("Failed to insert into '{}'", slug))?;
 
-    // Return the created document (same connection — no second pool.get())
-    find_by_id(conn, slug, def, &id)?
+    // Return the created document with the same locale context
+    find_by_id(conn, slug, def, &id, locale_ctx)?
         .ok_or_else(|| anyhow::anyhow!("Failed to find newly created document"))
 }
 
@@ -251,6 +321,7 @@ pub fn update(
     def: &CollectionDefinition,
     id: &str,
     data: &HashMap<String, String>,
+    locale_ctx: Option<&LocaleContext>,
 ) -> Result<Document> {
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
@@ -261,8 +332,9 @@ pub fn update(
     for field in &def.fields {
         if field.field_type == FieldType::Group {
             for sub in &field.fields {
-                let col_name = format!("{}__{}", field.name, sub.name);
-                if let Some(value) = data.get(&col_name) {
+                let data_key = format!("{}__{}", field.name, sub.name);
+                let col_name = locale_write_column(&data_key, sub, &locale_ctx);
+                if let Some(value) = data.get(&data_key) {
                     set_clauses.push(format!("{} = ?{}", col_name, idx));
                     params.push(coerce_value(&sub.field_type, value));
                     idx += 1;
@@ -277,12 +349,13 @@ pub fn update(
         if !field.has_parent_column() {
             continue;
         }
+        let col_name = locale_write_column(&field.name, field, &locale_ctx);
         if let Some(value) = data.get(&field.name) {
-            set_clauses.push(format!("{} = ?{}", field.name, idx));
+            set_clauses.push(format!("{} = ?{}", col_name, idx));
             params.push(coerce_value(&field.field_type, value));
             idx += 1;
         } else if field.field_type == FieldType::Checkbox {
-            set_clauses.push(format!("{} = ?{}", field.name, idx));
+            set_clauses.push(format!("{} = ?{}", col_name, idx));
             params.push(Box::new(0i32));
             idx += 1;
         }
@@ -295,7 +368,7 @@ pub fn update(
     }
 
     if set_clauses.is_empty() {
-        return find_by_id(conn, slug, def, id)?
+        return find_by_id(conn, slug, def, id, locale_ctx)?
             .ok_or_else(|| anyhow::anyhow!("Document not found"));
     }
 
@@ -312,8 +385,7 @@ pub fn update(
     conn.execute(&sql, params_from_iter(param_refs.iter()))
         .with_context(|| format!("Failed to update document {} in '{}'", id, slug))?;
 
-    // Return the updated document (same connection — no second pool.get())
-    find_by_id(conn, slug, def, id)?
+    find_by_id(conn, slug, def, id, locale_ctx)?
         .ok_or_else(|| anyhow::anyhow!("Document not found after update"))
 }
 
@@ -326,9 +398,8 @@ pub fn delete(conn: &rusqlite::Connection, slug: &str, id: &str) -> Result<()> {
 }
 
 /// Count documents in a collection.
-pub fn count(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition, filters: &[FilterClause]) -> Result<i64> {
-    // Validate filter fields
-    let valid: HashSet<String> = get_column_names(def).into_iter().collect();
+pub fn count(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition, filters: &[FilterClause], locale_ctx: Option<&LocaleContext>) -> Result<i64> {
+    let valid = get_valid_filter_columns(def, locale_ctx);
     for clause in filters {
         match clause {
             FilterClause::Single(f) => validate_field_name(&f.field, &valid)?,
@@ -343,7 +414,8 @@ pub fn count(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition
     let mut sql = format!("SELECT COUNT(*) FROM {}", slug);
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
-    let where_clause = build_where_clause(filters, &mut params)?;
+    let resolved_filters = resolve_filters(filters, def, locale_ctx);
+    let where_clause = build_where_clause(&resolved_filters, &mut params)?;
     if !where_clause.is_empty() {
         sql.push_str(&where_clause);
     }
@@ -395,15 +467,32 @@ pub fn count_where_field_eq(
 // ── Globals ──────────────────────────────────────────────────────────────────
 
 /// Get the single global document from `_global_{slug}`.
-pub fn get_global(conn: &rusqlite::Connection, slug: &str, def: &GlobalDefinition) -> Result<Document> {
+pub fn get_global(conn: &rusqlite::Connection, slug: &str, def: &GlobalDefinition, locale_ctx: Option<&LocaleContext>) -> Result<Document> {
     let table_name = format!("_global_{}", slug);
-    let column_names = get_global_column_names(def);
 
-    let sql = format!("SELECT {} FROM {} WHERE id = 'default'", column_names.join(", "), table_name);
+    let (select_exprs, result_names) = match locale_ctx {
+        Some(ctx) if ctx.config.is_enabled() => get_locale_select_columns(&def.fields, true, ctx),
+        _ => {
+            let names = get_global_column_names(def);
+            (names.clone(), names)
+        }
+    };
 
-    conn.query_row(&sql, [], |row| {
-        row_to_document(row, &column_names)
-    }).with_context(|| format!("Failed to get global '{}'", slug))
+    let sql = format!("SELECT {} FROM {} WHERE id = 'default'", select_exprs.join(", "), table_name);
+
+    let mut doc = conn.query_row(&sql, [], |row| {
+        row_to_document(row, &result_names)
+    }).with_context(|| format!("Failed to get global '{}'", slug))?;
+
+    if let Some(ctx) = locale_ctx {
+        if ctx.config.is_enabled() {
+            if let LocaleMode::All = ctx.mode {
+                group_locale_fields(&mut doc, &def.fields, &ctx.config);
+            }
+        }
+    }
+
+    Ok(doc)
 }
 
 /// Update the single global document in `_global_{slug}`. Returns the updated document.
@@ -412,6 +501,7 @@ pub fn update_global(
     slug: &str,
     def: &GlobalDefinition,
     data: &HashMap<String, String>,
+    locale_ctx: Option<&LocaleContext>,
 ) -> Result<Document> {
     let table_name = format!("_global_{}", slug);
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -421,23 +511,23 @@ pub fn update_global(
     let mut idx = 1;
 
     for field in &def.fields {
+        let col_name = locale_write_column(&field.name, field, &locale_ctx);
         if let Some(value) = data.get(&field.name) {
-            set_clauses.push(format!("{} = ?{}", field.name, idx));
+            set_clauses.push(format!("{} = ?{}", col_name, idx));
             params.push(coerce_value(&field.field_type, value));
             idx += 1;
         } else if field.field_type == FieldType::Checkbox {
-            set_clauses.push(format!("{} = ?{}", field.name, idx));
+            set_clauses.push(format!("{} = ?{}", col_name, idx));
             params.push(Box::new(0i32));
             idx += 1;
         }
     }
 
-    // Globals always have timestamps (migration always creates them)
     set_clauses.push(format!("updated_at = ?{}", idx));
     params.push(Box::new(now));
 
     if set_clauses.is_empty() {
-        return get_global(conn, slug, def);
+        return get_global(conn, slug, def, locale_ctx);
     }
 
     let sql = format!(
@@ -451,7 +541,7 @@ pub fn update_global(
     conn.execute(&sql, params_from_iter(param_refs.iter()))
         .with_context(|| format!("Failed to update global '{}'", slug))?;
 
-    get_global(conn, slug, def)
+    get_global(conn, slug, def, locale_ctx)
 }
 
 fn get_global_column_names(def: &GlobalDefinition) -> Vec<String> {
@@ -459,7 +549,6 @@ fn get_global_column_names(def: &GlobalDefinition) -> Vec<String> {
     for field in &def.fields {
         names.push(field.name.clone());
     }
-    // Globals always have timestamps
     names.push("created_at".to_string());
     names.push("updated_at".to_string());
     names
@@ -799,6 +888,213 @@ pub fn get_column_names(def: &CollectionDefinition) -> Vec<String> {
     names
 }
 
+/// Get locale-aware SELECT expressions and result column names for a collection.
+/// Returns (select_exprs, result_names) where:
+/// - select_exprs: SQL expressions for the SELECT clause (may include aliases/COALESCE)
+/// - result_names: column names in the result set (used by row_to_document)
+pub fn get_locale_select_columns(
+    fields: &[FieldDefinition],
+    timestamps: bool,
+    locale_ctx: &LocaleContext,
+) -> (Vec<String>, Vec<String>) {
+    let mut select_exprs = vec!["id".to_string()];
+    let mut result_names = vec!["id".to_string()];
+
+    for field in fields {
+        if field.field_type == FieldType::Group {
+            for sub in &field.fields {
+                let base = format!("{}__{}", field.name, sub.name);
+                let is_localized = (field.localized || sub.localized) && locale_ctx.config.is_enabled();
+                if is_localized {
+                    add_locale_columns(&mut select_exprs, &mut result_names, &base, locale_ctx);
+                } else {
+                    select_exprs.push(base.clone());
+                    result_names.push(base);
+                }
+            }
+        } else if field.has_parent_column() {
+            if field.localized && locale_ctx.config.is_enabled() {
+                add_locale_columns(&mut select_exprs, &mut result_names, &field.name, locale_ctx);
+            } else {
+                select_exprs.push(field.name.clone());
+                result_names.push(field.name.clone());
+            }
+        }
+    }
+
+    if timestamps {
+        select_exprs.push("created_at".to_string());
+        result_names.push("created_at".to_string());
+        select_exprs.push("updated_at".to_string());
+        result_names.push("updated_at".to_string());
+    }
+
+    (select_exprs, result_names)
+}
+
+/// Add SELECT expressions for a localized field based on the locale mode.
+fn add_locale_columns(
+    select_exprs: &mut Vec<String>,
+    result_names: &mut Vec<String>,
+    field_name: &str,
+    locale_ctx: &LocaleContext,
+) {
+    match &locale_ctx.mode {
+        LocaleMode::Default => {
+            let locale = &locale_ctx.config.default_locale;
+            // No fallback needed for default locale
+            select_exprs.push(format!("{}__{} AS {}", field_name, locale, field_name));
+            result_names.push(field_name.to_string());
+        }
+        LocaleMode::Single(locale) => {
+            if locale_ctx.config.fallback && *locale != locale_ctx.config.default_locale {
+                select_exprs.push(format!(
+                    "COALESCE({}__{}, {}__{}) AS {}",
+                    field_name, locale,
+                    field_name, locale_ctx.config.default_locale,
+                    field_name
+                ));
+            } else {
+                select_exprs.push(format!("{}__{} AS {}", field_name, locale, field_name));
+            }
+            result_names.push(field_name.to_string());
+        }
+        LocaleMode::All => {
+            // Select all locale columns — no alias, keep suffixed names
+            for locale in &locale_ctx.config.locales {
+                let col = format!("{}__{}", field_name, locale);
+                select_exprs.push(col.clone());
+                result_names.push(col);
+            }
+        }
+    }
+}
+
+/// Resolve filter clauses to use locale-specific column names.
+fn resolve_filters(filters: &[FilterClause], def: &CollectionDefinition, locale_ctx: Option<&LocaleContext>) -> Vec<FilterClause> {
+    filters.iter().map(|clause| {
+        match clause {
+            FilterClause::Single(f) => {
+                let resolved = resolve_filter_column(&f.field, def, locale_ctx);
+                FilterClause::Single(Filter { field: resolved, op: f.op.clone() })
+            }
+            FilterClause::Or(fs) => {
+                FilterClause::Or(fs.iter().map(|f| {
+                    let resolved = resolve_filter_column(&f.field, def, locale_ctx);
+                    Filter { field: resolved, op: f.op.clone() }
+                }).collect())
+            }
+        }
+    }).collect()
+}
+
+/// Group locale-suffixed fields into nested objects for `LocaleMode::All`.
+/// Converts `title__en: "Hello", title__de: "Hallo"` into `title: { en: "Hello", de: "Hallo" }`.
+fn group_locale_fields(doc: &mut Document, fields: &[FieldDefinition], locale_config: &LocaleConfig) {
+    for field in fields {
+        if field.field_type == FieldType::Group {
+            // For groups, each sub-field might be localized
+            // The group is already reconstructed by hydrate_document, so we handle it there.
+            // For All mode, we need to group sub-fields within the group.
+            for sub in &field.fields {
+                if (field.localized || sub.localized) && locale_config.is_enabled() {
+                    let base = format!("{}__{}", field.name, sub.name);
+                    let mut locale_map = serde_json::Map::new();
+                    for locale in &locale_config.locales {
+                        let col = format!("{}__{}", base, locale);
+                        if let Some(val) = doc.fields.remove(&col) {
+                            locale_map.insert(locale.clone(), val);
+                        }
+                    }
+                    if !locale_map.is_empty() {
+                        doc.fields.insert(base, serde_json::Value::Object(locale_map));
+                    }
+                }
+            }
+        } else if field.has_parent_column() && field.localized && locale_config.is_enabled() {
+            let mut locale_map = serde_json::Map::new();
+            for locale in &locale_config.locales {
+                let col = format!("{}__{}", field.name, locale);
+                if let Some(val) = doc.fields.remove(&col) {
+                    locale_map.insert(locale.clone(), val);
+                }
+            }
+            if !locale_map.is_empty() {
+                doc.fields.insert(field.name.clone(), serde_json::Value::Object(locale_map));
+            }
+        }
+    }
+}
+
+/// Map a flat field name to the actual locale-suffixed column name for writes.
+fn locale_write_column(field_name: &str, field: &FieldDefinition, locale_ctx: &Option<&LocaleContext>) -> String {
+    if let Some(ctx) = locale_ctx {
+        if field.localized && ctx.config.is_enabled() {
+            let locale = match &ctx.mode {
+                LocaleMode::Single(l) => l.as_str(),
+                _ => ctx.config.default_locale.as_str(),
+            };
+            return format!("{}__{}", field_name, locale);
+        }
+    }
+    field_name.to_string()
+}
+
+/// Get the set of valid filter column names, accounting for locale.
+/// Localized fields map their undecorated names to the locale-specific column.
+fn get_valid_filter_columns(def: &CollectionDefinition, locale_ctx: Option<&LocaleContext>) -> HashSet<String> {
+    let mut valid = HashSet::new();
+    valid.insert("id".to_string());
+    for field in &def.fields {
+        if field.field_type == FieldType::Group {
+            for sub in &field.fields {
+                valid.insert(format!("{}__{}", field.name, sub.name));
+            }
+        } else if field.has_parent_column() {
+            valid.insert(field.name.clone());
+        }
+    }
+    if def.timestamps {
+        valid.insert("created_at".to_string());
+        valid.insert("updated_at".to_string());
+    }
+    let _ = locale_ctx; // filter validation uses undecorated field names
+    valid
+}
+
+/// Map a filter field name to its actual column name in SQL, accounting for locale.
+fn resolve_filter_column(field_name: &str, def: &CollectionDefinition, locale_ctx: Option<&LocaleContext>) -> String {
+    if let Some(ctx) = locale_ctx {
+        if ctx.config.is_enabled() {
+            // Check if this field is localized
+            for field in &def.fields {
+                if field.field_type == FieldType::Group {
+                    let prefix = format!("{}__{}", field.name, "");
+                    if field_name.starts_with(&prefix) {
+                        let sub_name = &field_name[prefix.len()..];
+                        for sub in &field.fields {
+                            if sub.name == sub_name && (field.localized || sub.localized) {
+                                let locale = match &ctx.mode {
+                                    LocaleMode::Single(l) => l.as_str(),
+                                    _ => ctx.config.default_locale.as_str(),
+                                };
+                                return format!("{}__{}", field_name, locale);
+                            }
+                        }
+                    }
+                } else if field.name == field_name && field.localized {
+                    let locale = match &ctx.mode {
+                        LocaleMode::Single(l) => l.as_str(),
+                        _ => ctx.config.default_locale.as_str(),
+                    };
+                    return format!("{}__{}", field_name, locale);
+                }
+            }
+        }
+    }
+    field_name.to_string()
+}
+
 // ── Join table functions (has-many relationships + arrays) ────────────────────
 
 /// Set related IDs for a has-many relationship junction table.
@@ -1132,7 +1428,7 @@ pub fn populate_relationships(
                     populated.push(serde_json::Value::String(id.clone()));
                     continue;
                 }
-                match find_by_id(conn, &rel.collection, &rel_def, id)? {
+                match find_by_id(conn, &rel.collection, &rel_def, id, None)? {
                     Some(mut related_doc) => {
                         hydrate_document(conn, &rel.collection, &rel_def, &mut related_doc)?;
                         if let Some(ref uc) = rel_def.upload {
@@ -1163,7 +1459,7 @@ pub fn populate_relationships(
                 continue; // Already visited — keep as ID string
             }
 
-            match find_by_id(conn, &rel.collection, &rel_def, &id)? {
+            match find_by_id(conn, &rel.collection, &rel_def, &id, None)? {
                 Some(mut related_doc) => {
                     hydrate_document(conn, &rel.collection, &rel_def, &mut related_doc)?;
                     if let Some(ref uc) = rel_def.upload {

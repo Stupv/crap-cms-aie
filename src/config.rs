@@ -17,6 +17,7 @@ pub struct CrapConfig {
     pub upload: UploadConfig,
     pub email: EmailConfig,
     pub live: LiveConfig,
+    pub locale: LocaleConfig,
 }
 
 /// Controls relationship population depth defaults and limits.
@@ -83,6 +84,35 @@ impl Default for EmailConfig {
             from_address: "noreply@example.com".to_string(),
             from_name: "Crap CMS".to_string(),
         }
+    }
+}
+
+/// Internationalization / locale configuration.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct LocaleConfig {
+    /// Default locale code. Content without explicit locale uses this.
+    pub default_locale: String,
+    /// All supported locale codes. Empty = localization disabled.
+    pub locales: Vec<String>,
+    /// When true, reading a locale falls back to default_locale if the field is NULL.
+    pub fallback: bool,
+}
+
+impl Default for LocaleConfig {
+    fn default() -> Self {
+        Self {
+            default_locale: "en".to_string(),
+            locales: Vec::new(),
+            fallback: true,
+        }
+    }
+}
+
+impl LocaleConfig {
+    /// Returns true if localization is enabled (at least one locale defined).
+    pub fn is_enabled(&self) -> bool {
+        !self.locales.is_empty()
     }
 }
 

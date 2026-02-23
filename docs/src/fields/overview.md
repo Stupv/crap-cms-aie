@@ -45,8 +45,9 @@ Every field type accepts these properties:
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `placeholder` | string | `nil` | Input placeholder text |
-| `description` | string | `nil` | Help text displayed below the input |
+| `label` | string \| table | `nil` | UI label (defaults to title-cased field name). Supports [localized strings](../locale/overview.md#admin-label-localization). |
+| `placeholder` | string \| table | `nil` | Input placeholder text. Supports [localized strings](../locale/overview.md#admin-label-localization). |
+| `description` | string \| table | `nil` | Help text displayed below the input. Supports [localized strings](../locale/overview.md#admin-label-localization). |
 | `hidden` | boolean | `false` | Hide from admin UI forms |
 | `readonly` | boolean | `false` | Display but don't allow editing |
 | `width` | string | `nil` | Field width: `"full"`, `"half"`, or `"third"` |

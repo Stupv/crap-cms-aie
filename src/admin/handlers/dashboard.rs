@@ -22,7 +22,7 @@ pub async fn index(
             Err(e) => return Html(format!("<h1>Error</h1><pre>Registry lock poisoned: {}</pre>", e)),
         };
         for (slug, def) in &reg.collections {
-            let count = crate::db::ops::count_documents(&state.pool, slug, def, &[])
+            let count = crate::db::ops::count_documents(&state.pool, slug, def, &[], None)
                 .unwrap_or(0);
             collection_cards.push(serde_json::json!({
                 "slug": slug,

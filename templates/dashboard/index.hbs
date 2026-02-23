@@ -1,5 +1,5 @@
 {{#> layout/base title="Dashboard"}}
-<h1>Dashboard</h1>
+<h1>{{t "dashboard"}}</h1>
 
 <div class="cards">
   {{#each collections}}
@@ -17,7 +17,7 @@
 </div>
 
 {{#if globals}}
-<h2 style="margin-top: var(--space-xl);">Globals</h2>
+<h2 style="margin-top: var(--space-xl);">{{t "globals"}}</h2>
 <div class="cards">
   {{#each globals}}
   <a class="card" href="/admin/globals/{{this.slug}}"

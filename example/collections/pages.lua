@@ -13,6 +13,7 @@ crap.collections.define("pages", {
 			name = "title",
 			type = "text",
 			required = true,
+			localized = true, -- per-locale values when [locale] is configured
 		},
 		{
 			name = "slug",

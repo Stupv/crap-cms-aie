@@ -7,7 +7,7 @@ use std::path::Path;
 use crate::config::CrapConfig;
 use crate::core::{
     SharedRegistry,
-    field::{FieldType, FieldDefinition, FieldAccess, FieldAdmin, FieldHooks, SelectOption},
+    field::{FieldType, FieldDefinition, FieldAccess, FieldAdmin, FieldHooks, SelectOption, LocalizedString},
     collection::{AuthStrategy, CollectionAccess, CollectionAuth, CollectionDefinition, GlobalDefinition, CollectionLabels, CollectionAdmin, CollectionHooks, LiveSetting},
     upload::{CollectionUpload, ImageSize, ImageFit, FormatOptions, FormatQuality},
 };
@@ -284,6 +284,33 @@ pub fn register_api(lua: &Lua, registry: SharedRegistry, _config_dir: &Path, con
     config_table.set("get", config_get_fn)?;
     crap.set("config", config_table)?;
 
+    // crap.locale — locale configuration access
+    let locale_table = lua.create_table()?;
+    {
+        let default_locale = config.locale.default_locale.clone();
+        let get_default_fn = lua.create_function(move |_, ()| -> mlua::Result<String> {
+            Ok(default_locale.clone())
+        })?;
+        locale_table.set("get_default", get_default_fn)?;
+
+        let locales = config.locale.locales.clone();
+        let get_all_fn = lua.create_function(move |lua, ()| -> mlua::Result<Table> {
+            let tbl = lua.create_table()?;
+            for (i, l) in locales.iter().enumerate() {
+                tbl.set(i + 1, l.as_str())?;
+            }
+            Ok(tbl)
+        })?;
+        locale_table.set("get_all", get_all_fn)?;
+
+        let enabled = config.locale.is_enabled();
+        let is_enabled_fn = lua.create_function(move |_, ()| -> mlua::Result<bool> {
+            Ok(enabled)
+        })?;
+        locale_table.set("is_enabled", is_enabled_fn)?;
+    }
+    crap.set("locale", locale_table)?;
+
     // crap.email — outbound email sending via SMTP
     let email_table = lua.create_table()?;
     let email_config = config.email.clone();
@@ -335,6 +362,23 @@ fn get_string(tbl: &Table, key: &str) -> Option<String> {
     tbl.get::<Option<String>>(key).ok().flatten()
 }
 
+/// Parse a Lua value that is either a plain string or a `{locale = string}` table.
+fn get_localized_string(tbl: &Table, key: &str) -> Option<LocalizedString> {
+    match tbl.get::<Value>(key) {
+        Ok(Value::String(s)) => Some(LocalizedString::Plain(s.to_str().ok()?.to_string())),
+        Ok(Value::Table(t)) => {
+            let mut map = std::collections::HashMap::new();
+            for pair in t.pairs::<String, String>() {
+                if let Ok((k, v)) = pair {
+                    map.insert(k, v);
+                }
+            }
+            if map.is_empty() { None } else { Some(LocalizedString::Localized(map)) }
+        }
+        _ => None,
+    }
+}
+
 fn get_bool(tbl: &Table, key: &str, default: bool) -> bool {
     tbl.get::<bool>(key).unwrap_or(default)
 }
@@ -346,8 +390,8 @@ fn get_string_val(tbl: &Table, key: &str) -> mlua::Result<String> {
 fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Result<CollectionDefinition> {
     let labels = if let Ok(labels_tbl) = get_table(config, "labels") {
         CollectionLabels {
-            singular: get_string(&labels_tbl, "singular"),
-            plural: get_string(&labels_tbl, "plural"),
+            singular: get_localized_string(&labels_tbl, "singular"),
+            plural: get_localized_string(&labels_tbl, "plural"),
         }
     } else {
         CollectionLabels::default()
@@ -414,7 +458,7 @@ fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Result
                 default_value: None,
                 options: Vec::new(),
                 admin: FieldAdmin {
-                    placeholder: Some("user@example.com".to_string()),
+                    placeholder: Some(LocalizedString::Plain("user@example.com".to_string())),
                     ..Default::default()
                 },
                 hooks: FieldHooks::default(),
@@ -422,6 +466,7 @@ fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Result
                 relationship: None,
                 fields: Vec::new(),
                 blocks: Vec::new(),
+                localized: false,
             });
         }
     }
@@ -443,8 +488,8 @@ fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Result
 fn parse_global_definition(_lua: &Lua, slug: &str, config: &Table) -> Result<GlobalDefinition> {
     let labels = if let Ok(labels_tbl) = get_table(config, "labels") {
         CollectionLabels {
-            singular: get_string(&labels_tbl, "singular"),
-            plural: get_string(&labels_tbl, "plural"),
+            singular: get_localized_string(&labels_tbl, "singular"),
+            plural: get_localized_string(&labels_tbl, "plural"),
         }
     } else {
         CollectionLabels::default()
@@ -663,6 +708,7 @@ fn hidden_text_field(name: &str) -> FieldDefinition {
         relationship: None,
         fields: Vec::new(),
         blocks: Vec::new(),
+        localized: false,
     }
 }
 
@@ -682,6 +728,7 @@ fn hidden_number_field(name: &str) -> FieldDefinition {
         relationship: None,
         fields: Vec::new(),
         blocks: Vec::new(),
+        localized: false,
     }
 }
 
@@ -703,6 +750,7 @@ fn inject_upload_fields(fields: &mut Vec<FieldDefinition>, upload: &CollectionUp
             relationship: None,
             fields: Vec::new(),
             blocks: Vec::new(),
+            localized: false,
         },
         hidden_text_field("mime_type"),
         hidden_number_field("filesize"),
@@ -767,8 +815,9 @@ fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
 
         let admin = if let Ok(admin_tbl) = get_table(&field_tbl, "admin") {
             FieldAdmin {
-                placeholder: get_string(&admin_tbl, "placeholder"),
-                description: get_string(&admin_tbl, "description"),
+                label: get_localized_string(&admin_tbl, "label"),
+                placeholder: get_localized_string(&admin_tbl, "placeholder"),
+                description: get_localized_string(&admin_tbl, "description"),
                 hidden: get_bool(&admin_tbl, "hidden", false),
                 readonly: get_bool(&admin_tbl, "readonly", false),
                 width: get_string(&admin_tbl, "width"),
@@ -830,6 +879,8 @@ fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
             Vec::new()
         };
 
+        let localized = get_bool(&field_tbl, "localized", false);
+
         // Parse block definitions for Blocks type
         let block_defs = if field_type == FieldType::Blocks {
             if let Ok(blocks_tbl) = get_table(&field_tbl, "blocks") {
@@ -855,6 +906,7 @@ fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
             relationship,
             fields: sub_fields,
             blocks: block_defs,
+            localized,
         });
     }
 
@@ -865,7 +917,8 @@ fn parse_select_options(opts_tbl: &Table) -> Result<Vec<SelectOption>> {
     let mut options = Vec::new();
     for pair in opts_tbl.clone().sequence_values::<Table>() {
         let opt = pair?;
-        let label = get_string_val(&opt, "label").unwrap_or_default();
+        let label = get_localized_string(&opt, "label")
+            .unwrap_or_else(|| LocalizedString::Plain(String::new()));
         let value = get_string_val(&opt, "value").unwrap_or_default();
         options.push(SelectOption { label, value });
     }
@@ -912,7 +965,7 @@ fn parse_block_definitions(blocks_tbl: &Table) -> Result<Vec<crate::core::field:
         let block_tbl = entry?;
         let block_type: String = get_string_val(&block_tbl, "type")
             .map_err(|_| anyhow::anyhow!("Block definition missing 'type'"))?;
-        let label = get_string(&block_tbl, "label");
+        let label = get_localized_string(&block_tbl, "label");
         let fields = if let Ok(fields_tbl) = get_table(&block_tbl, "fields") {
             parse_fields(&fields_tbl)?
         } else {

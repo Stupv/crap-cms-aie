@@ -34,6 +34,11 @@ crap = {}
 --- | "blocks"       # Flexible content blocks
 --- | "point"        # GeoJSON point [lng, lat]
 
+--- A string that can be plain or per-locale.
+--- Plain: `"Title"` — used as-is.
+--- Localized: `{ en = "Title", de = "Titel" }` — resolved based on admin locale.
+--- @alias crap.LocalizedString string | table<string, string>
+
 --- @alias crap.FieldWidth "full" | "half" | "third"
 
 --- @class crap.RelationshipConfig
@@ -42,13 +47,13 @@ crap = {}
 --- @field max_depth? integer  Per-field max population depth. Limits depth regardless of request-level depth.
 
 --- @class crap.SelectOption
---- @field label string Display text in the admin UI.
+--- @field label crap.LocalizedString Display text in the admin UI.
 --- @field value string Stored value.
 
 --- @class crap.FieldAdmin
---- @field label?       string   UI label (defaults to field name).
---- @field description? string   Help text shown below the input.
---- @field placeholder? string   Input placeholder text.
+--- @field label?       crap.LocalizedString   UI label (defaults to field name).
+--- @field description? crap.LocalizedString   Help text shown below the input.
+--- @field placeholder? crap.LocalizedString   Input placeholder text.
 --- @field hidden?      boolean  Hide from admin UI (default: false).
 --- @field readonly?    boolean  Non-editable in admin (default: false).
 --- @field width?       crap.FieldWidth  Field width: "full", "half", or "third".
@@ -88,7 +93,7 @@ crap = {}
 
 --- @class crap.BlockDefinition
 --- @field type   string                    Block type identifier (required).
---- @field label? string                    Display label for the block type (defaults to type name).
+--- @field label? crap.LocalizedString      Display label for the block type (defaults to type name).
 --- @field fields crap.FieldDefinition[]    Fields within this block type.
 
 --- @class crap.FieldDefinition
@@ -114,8 +119,8 @@ crap = {}
 -- ── Collection Types ─────────────────────────────────────────
 
 --- @class crap.CollectionLabels
---- @field singular? string  Singular display name (e.g., "Post").
---- @field plural?   string  Plural display name (e.g., "Posts").
+--- @field singular? crap.LocalizedString  Singular display name (e.g., "Post" or `{ en = "Post", de = "Beitrag" }`).
+--- @field plural?   crap.LocalizedString  Plural display name (e.g., "Posts" or `{ en = "Posts", de = "Beiträge" }`).
 
 --- @class crap.CollectionAdmin
 --- @field use_as_title?           string    Field name to use as row label in lists.
@@ -240,6 +245,7 @@ crap = {}
 --- @field limit?    integer                Max results to return.
 --- @field offset?   integer                Number of results to skip.
 --- @field depth?    integer                Population depth for relationship fields (default: 0). 0 = IDs only.
+--- @field locale?   string                 Locale code for localized fields (e.g., "en", "de", "all"). Nil = default locale.
 
 --- @class crap.FindResult
 --- @field documents crap.Document[]  Matching documents.
@@ -252,6 +258,7 @@ crap = {}
 --- @field collection string                 Collection slug.
 --- @field operation  string                 The operation: "create", "update", "delete", "find", "find_by_id", "get_global", or "init".
 --- @field data       table<string, any>     Document data (mutable in before_* hooks). For read hooks, contains document fields.
+--- @field locale?    string                 Current locale code (nil if localization disabled or default locale).
 --- @field original_doc? crap.Document       Original document (on update).
 --- @field req?       crap.RequestContext     Request context (if available).
 
@@ -316,6 +323,7 @@ function crap.collections.find(collection, query) end
 
 --- @class crap.FindByIdOptions
 --- @field depth? integer  Population depth for relationship fields (default: 0). 0 = IDs only.
+--- @field locale? string  Locale code for localized fields (e.g., "en", "de", "all"). Nil = default locale.
 
 --- Find a single document by ID.
 --- Inside hooks, runs within the parent operation's transaction.
@@ -325,20 +333,28 @@ function crap.collections.find(collection, query) end
 --- @return crap.Document?
 function crap.collections.find_by_id(collection, id, opts) end
 
+--- @class crap.CreateOptions
+--- @field locale? string  Locale code for localized fields. Nil = default locale.
+
+--- @class crap.UpdateOptions
+--- @field locale? string  Locale code for localized fields. Nil = default locale.
+
 --- Create a new document.
 --- Inside hooks, runs within the parent operation's transaction.
 --- @param collection string           Collection slug.
 --- @param data       table<string, any> Field values.
+--- @param opts?      crap.CreateOptions  Optional options (e.g., `{ locale = "de" }`).
 --- @return crap.Document
-function crap.collections.create(collection, data) end
+function crap.collections.create(collection, data, opts) end
 
 --- Update an existing document.
 --- Inside hooks, runs within the parent operation's transaction.
 --- @param collection string           Collection slug.
 --- @param id         string           Document ID.
 --- @param data       table<string, any> Fields to update (partial).
+--- @param opts?      crap.UpdateOptions  Optional options (e.g., `{ locale = "de" }`).
 --- @return crap.Document
-function crap.collections.update(collection, id, data) end
+function crap.collections.update(collection, id, data, opts) end
 
 --- Delete a document.
 --- Inside hooks, runs within the parent operation's transaction.
@@ -359,16 +375,24 @@ crap.globals = {}
 --- @param config crap.GlobalConfig Global configuration.
 function crap.globals.define(slug, config) end
 
+--- @class crap.GlobalGetOptions
+--- @field locale? string  Locale code for localized fields. Nil = default locale.
+
+--- @class crap.GlobalUpdateOptions
+--- @field locale? string  Locale code for localized fields. Nil = default locale.
+
 --- Get a global's current value.
 --- @param slug string  Global slug.
+--- @param opts? crap.GlobalGetOptions  Optional options (e.g., `{ locale = "de" }`).
 --- @return crap.Document
-function crap.globals.get(slug) end
+function crap.globals.get(slug, opts) end
 
 --- Update a global's value.
 --- @param slug string              Global slug.
 --- @param data table<string, any>  Fields to update.
+--- @param opts? crap.GlobalUpdateOptions  Optional options (e.g., `{ locale = "de" }`).
 --- @return crap.Document
-function crap.globals.update(slug, data) end
+function crap.globals.update(slug, data, opts) end
 
 
 -- ── crap.hooks ───────────────────────────────────────────────
@@ -532,3 +556,24 @@ crap.config = {}
 --- @param key string  Dot-separated config key (e.g., "server.admin_port").
 --- @return any
 function crap.config.get(key) end
+
+
+-- ── crap.locale ─────────────────────────────────────────────
+
+--- Locale configuration access (read-only).
+--- Available in init.lua and hook functions.
+--- @class crap.locale
+crap.locale = {}
+
+--- Get the default locale code (e.g., "en").
+--- @return string
+function crap.locale.get_default() end
+
+--- Get all configured locale codes (e.g., {"en", "de", "fr"}).
+--- Returns an empty table if localization is disabled.
+--- @return string[]
+function crap.locale.get_all() end
+
+--- Check if localization is enabled (at least one locale configured).
+--- @return boolean
+function crap.locale.is_enabled() end

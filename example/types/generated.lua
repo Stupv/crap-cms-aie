@@ -75,6 +75,7 @@
 ---@field order_by? "id"|"-id"|"filename"|"-filename"|"mime_type"|"-mime_type"|"filesize"|"-filesize"|"width"|"-width"|"height"|"-height"|"url"|"-url"|"thumbnail_url"|"-thumbnail_url"|"thumbnail_width"|"-thumbnail_width"|"thumbnail_height"|"-thumbnail_height"|"thumbnail_webp_url"|"-thumbnail_webp_url"|"thumbnail_avif_url"|"-thumbnail_avif_url"|"card_url"|"-card_url"|"card_width"|"-card_width"|"card_height"|"-card_height"|"card_webp_url"|"-card_webp_url"|"card_avif_url"|"-card_avif_url"|"alt"|"-alt"
 ---@field limit? integer
 ---@field offset? integer
+---@field locale? string
 
 ---@class crap.data.Pages
 ---@field title string
@@ -123,6 +124,7 @@
 ---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"published"|"-published"|"seo__title"|"-seo__title"|"seo__description"|"-seo__description"|"seo__no_index"|"-seo__no_index"|"hero_image"|"-hero_image"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
+---@field locale? string
 
 ---@class crap.array_row.Slides
 ---@field title string
@@ -179,6 +181,7 @@
 ---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"status"|"-status"|"content"|"-content"|"featured_image"|"-featured_image"|"author"|"-author"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
+---@field locale? string
 
 ---@class crap.data.Tags
 ---@field name string
@@ -214,6 +217,7 @@
 ---@field order_by? "id"|"-id"|"name"|"-name"|"color"|"-color"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
+---@field locale? string
 
 ---@class crap.data.Users
 ---@field email string
@@ -252,6 +256,7 @@
 ---@field order_by? "id"|"-id"|"email"|"-email"|"name"|"-name"|"role"|"-role"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
+---@field locale? string
 
 ---@class crap.global_data.SiteSettings
 ---@field site_name string

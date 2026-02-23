@@ -16,7 +16,7 @@ fn setup() -> (tempfile::TempDir, crap_cms::db::DbPool, crap_cms::core::SharedRe
     let db_pool = pool::create_pool(tmp.path(), &config).unwrap();
 
     // Sync schema so tables exist
-    migrate::sync_all(&db_pool, &registry).unwrap();
+    migrate::sync_all(&db_pool, &registry, &config.locale).unwrap();
 
     let runner = HookRunner::new(&config_dir, registry.clone(), &config).unwrap();
     (tmp, db_pool, registry, runner)
@@ -256,7 +256,7 @@ fn constrained_find_filters_results() {
 
         let mut conn = pool.get().unwrap();
         let tx = conn.transaction().unwrap();
-        query::create(&tx, "posts", &posts, &data).unwrap();
+        query::create(&tx, "posts", &posts, &data, None).unwrap();
         tx.commit().unwrap();
     }
 
@@ -274,7 +274,7 @@ fn constrained_find_filters_results() {
         ..Default::default()
     };
 
-    let docs = ops::find_documents(&pool, "posts", &posts, &find_query).unwrap();
+    let docs = ops::find_documents(&pool, "posts", &posts, &find_query, None).unwrap();
 
     // Should only see draft posts
     assert_eq!(docs.len(), 2, "Expected 2 draft posts, got {}", docs.len());
@@ -303,7 +303,7 @@ fn access_check_plus_db_query_end_to_end() {
 
         let mut conn = pool.get().unwrap();
         let tx = conn.transaction().unwrap();
-        query::create(&tx, "posts", &posts, &data).unwrap();
+        query::create(&tx, "posts", &posts, &data, None).unwrap();
         tx.commit().unwrap();
     }
 
@@ -314,7 +314,7 @@ fn access_check_plus_db_query_end_to_end() {
     ).unwrap();
     assert!(matches!(result, query::AccessResult::Allowed));
 
-    let all_docs = ops::find_documents(&pool, "posts", &posts, &query::FindQuery::default()).unwrap();
+    let all_docs = ops::find_documents(&pool, "posts", &posts, &query::FindQuery::default(), None).unwrap();
     assert_eq!(all_docs.len(), 2);
 
     // Verify admin_only (Denied) blocks anonymous delete

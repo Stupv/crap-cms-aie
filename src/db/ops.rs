@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use crate::core::{CollectionDefinition, Document};
 use crate::core::collection::GlobalDefinition;
 use super::DbPool;
-use super::query::{self, FindQuery, FilterClause};
+use super::query::{self, FindQuery, FilterClause, LocaleContext};
 
 /// Find documents (read-only, no transaction needed).
 pub fn find_documents(
@@ -13,9 +13,10 @@ pub fn find_documents(
     slug: &str,
     def: &CollectionDefinition,
     find_query: &FindQuery,
+    locale_ctx: Option<&LocaleContext>,
 ) -> Result<Vec<Document>> {
     let conn = pool.get().context("Failed to get DB connection")?;
-    query::find(&conn, slug, def, find_query)
+    query::find(&conn, slug, def, find_query, locale_ctx)
 }
 
 /// Find a single document by ID (read-only, no transaction needed).
@@ -24,19 +25,20 @@ pub fn find_document_by_id(
     slug: &str,
     def: &CollectionDefinition,
     id: &str,
+    locale_ctx: Option<&LocaleContext>,
 ) -> Result<Option<Document>> {
     let conn = pool.get().context("Failed to get DB connection")?;
-    query::find_by_id(&conn, slug, def, id)
+    query::find_by_id(&conn, slug, def, id, locale_ctx)
 }
 
 /// Count documents (read-only, no transaction needed).
-pub fn count_documents(pool: &DbPool, slug: &str, def: &CollectionDefinition, filters: &[FilterClause]) -> Result<i64> {
+pub fn count_documents(pool: &DbPool, slug: &str, def: &CollectionDefinition, filters: &[FilterClause], locale_ctx: Option<&LocaleContext>) -> Result<i64> {
     let conn = pool.get().context("Failed to get DB connection")?;
-    query::count(&conn, slug, def, filters)
+    query::count(&conn, slug, def, filters, locale_ctx)
 }
 
 /// Get a global document (read-only, no transaction needed).
-pub fn get_global(pool: &DbPool, slug: &str, def: &GlobalDefinition) -> Result<Document> {
+pub fn get_global(pool: &DbPool, slug: &str, def: &GlobalDefinition, locale_ctx: Option<&LocaleContext>) -> Result<Document> {
     let conn = pool.get().context("Failed to get DB connection")?;
-    query::get_global(&conn, slug, def)
+    query::get_global(&conn, slug, def, locale_ctx)
 }

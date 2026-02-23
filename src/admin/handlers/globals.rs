@@ -1,10 +1,11 @@
 //! Global edit and update handlers.
 
 use axum::{
-    extract::{Form, Path, State},
+    extract::{Form, Path, Query, State},
     response::{Html, IntoResponse, Redirect},
     Extension,
 };
+use serde::Deserialize;
 use std::collections::HashMap;
 
 use anyhow::Context as _;
@@ -14,8 +15,40 @@ use crate::core::field::FieldType;
 use crate::core::upload;
 use crate::core::validate::ValidationError;
 use crate::db::{ops, query};
-use crate::db::query::AccessResult;
+use crate::db::query::{AccessResult, LocaleContext};
 use crate::hooks::lifecycle::{self, HookContext, HookEvent};
+
+/// Query parameters for locale selection on edit pages.
+#[derive(Debug, Deserialize)]
+pub struct LocaleParams {
+    pub locale: Option<String>,
+}
+
+/// Build locale template context from config + current locale.
+fn build_locale_template_data(
+    state: &AdminState,
+    requested_locale: Option<&str>,
+) -> (Option<LocaleContext>, serde_json::Value) {
+    let config = &state.config.locale;
+    if !config.is_enabled() {
+        return (None, serde_json::json!({}));
+    }
+    let current = requested_locale.unwrap_or(&config.default_locale);
+    let locale_ctx = LocaleContext::from_locale_string(Some(current), config);
+    let locales: Vec<serde_json::Value> = config.locales.iter().map(|l| {
+        serde_json::json!({
+            "value": l,
+            "label": l.to_uppercase(),
+            "selected": l == current,
+        })
+    }).collect();
+    let data = serde_json::json!({
+        "has_locales": true,
+        "current_locale": current,
+        "locales": locales,
+    });
+    (locale_ctx, data)
+}
 
 /// Extract the user document from AuthUser extension (for access checks).
 fn get_user_doc(auth_user: &Option<Extension<AuthUser>>) -> Option<&crate::core::Document> {
@@ -54,6 +87,7 @@ fn forbidden(state: &AdminState, message: &str) -> Html<String> {
 pub async fn edit_form(
     State(state): State<AdminState>,
     Path(slug): Path<String>,
+    Query(locale_params): Query<LocaleParams>,
     claims: Option<Extension<Claims>>,
     auth_user: Option<Extension<AuthUser>>,
 ) -> impl IntoResponse {
@@ -75,6 +109,8 @@ pub async fn edit_form(
         _ => {}
     }
 
+    let (locale_ctx, locale_data) = build_locale_template_data(&state, locale_params.locale.as_deref());
+
     let pool = state.pool.clone();
     let runner = state.hook_runner.clone();
     let hooks = def.hooks.clone();
@@ -83,7 +119,7 @@ pub async fn edit_form(
     let def_owned = def.clone();
     let read_result = tokio::task::spawn_blocking(move || {
         runner.fire_before_read(&hooks, &slug_owned, "get_global", HashMap::new())?;
-        let doc = ops::get_global(&pool, &slug_owned, &def_owned)?;
+        let doc = ops::get_global(&pool, &slug_owned, &def_owned, locale_ctx.as_ref())?;
         let doc = runner.apply_after_read(&hooks, &fields, &slug_owned, "get_global", doc);
         Ok::<_, anyhow::Error>(doc)
     }).await;
@@ -124,7 +160,7 @@ pub async fn edit_form(
     // Enrich relationship fields with options
     enrich_field_contexts(&mut fields, &def.fields, &doc_fields, &state);
 
-    let data = serde_json::json!({
+    let mut data = serde_json::json!({
         "page_title": def.display_name(),
         "collections": state.sidebar_collections(),
         "globals": state.sidebar_globals(),
@@ -143,6 +179,13 @@ pub async fn edit_form(
             { "label": def.display_name() },
         ],
     });
+
+    // Merge locale data into template context
+    if let Some(obj) = locale_data.as_object() {
+        for (k, v) in obj {
+            data[k] = v.clone();
+        }
+    }
 
     render_or_error(&state, "globals/edit", &data).into_response()
 }
@@ -173,6 +216,12 @@ pub async fn update_action(
         _ => {}
     }
 
+    // Extract locale before it enters hooks/regular data flow
+    let form_locale = form_data.remove("_locale");
+    let locale_ctx = LocaleContext::from_locale_string(
+        form_locale.as_deref(), &state.config.locale,
+    );
+
     // Strip field-level update-denied fields
     {
         let user_doc = get_user_doc(&auth_user);
@@ -200,17 +249,26 @@ pub async fn update_action(
             data: form_data.iter()
                 .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
                 .collect(),
+            locale: locale_ctx.as_ref().and_then(|ctx| match &ctx.mode {
+                query::LocaleMode::Single(l) => Some(l.clone()),
+                _ => None,
+            }),
         };
         let global_table = format!("_global_{}", slug_owned);
         let final_ctx = runner.run_before_write(
             &hooks, &def_owned.fields, hook_ctx, &tx, &global_table, Some("default"),
         )?;
         let final_data = lifecycle::hook_ctx_to_string_map(&final_ctx);
-        let doc = query::update_global(&tx, &slug_owned, &def_owned, &final_data)?;
+        let doc = query::update_global(&tx, &slug_owned, &def_owned, &final_data, locale_ctx.as_ref())?;
         tx.commit().context("Commit transaction")?;
         Ok::<_, anyhow::Error>(doc)
     }).await;
 
+    let locale_suffix = form_locale
+        .as_ref()
+        .filter(|_| state.config.locale.is_enabled())
+        .map(|l| format!("?locale={}", l))
+        .unwrap_or_default();
     match result {
         Ok(Ok(doc)) => {
             state.hook_runner.fire_after_event(
@@ -223,7 +281,7 @@ pub async fn update_action(
                 crate::core::event::EventOperation::Update,
                 slug.clone(), doc.id.clone(), doc.fields.clone(),
             );
-            redirect_response(&format!("/admin/globals/{}", slug))
+            redirect_response(&format!("/admin/globals/{}{}", slug, locale_suffix))
         }
         Ok(Err(e)) => {
             if let Some(ve) = e.downcast_ref::<ValidationError>() {
@@ -254,6 +312,20 @@ pub async fn update_action(
 
 // --- Helpers ---
 
+/// Auto-generate a label from a field name (e.g. "my_field" → "My Field").
+fn auto_label_from_name(name: &str) -> String {
+    name.split('_')
+        .map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().chain(c).collect(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Build field context objects for template rendering.
 fn build_field_contexts(
     fields: &[crate::core::field::FieldDefinition],
@@ -262,16 +334,9 @@ fn build_field_contexts(
 ) -> Vec<serde_json::Value> {
     fields.iter().map(|field| {
         let value = values.get(&field.name).cloned().unwrap_or_default();
-        let label = field.name.split('_')
-            .map(|w| {
-                let mut c = w.chars();
-                match c.next() {
-                    None => String::new(),
-                    Some(f) => f.to_uppercase().chain(c).collect(),
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" ");
+        let label = field.admin.label.as_ref()
+            .map(|ls| ls.resolve_default().to_string())
+            .unwrap_or_else(|| auto_label_from_name(&field.name));
 
         let mut ctx = serde_json::json!({
             "name": field.name,
@@ -279,8 +344,8 @@ fn build_field_contexts(
             "label": label,
             "required": field.required,
             "value": value,
-            "placeholder": field.admin.placeholder,
-            "description": field.admin.description,
+            "placeholder": field.admin.placeholder.as_ref().map(|ls| ls.resolve_default()),
+            "description": field.admin.description.as_ref().map(|ls| ls.resolve_default()),
             "readonly": field.admin.readonly,
         });
 
@@ -292,7 +357,7 @@ fn build_field_contexts(
             FieldType::Select => {
                 let options: Vec<_> = field.options.iter().map(|opt| {
                     serde_json::json!({
-                        "label": opt.label,
+                        "label": opt.label.resolve_default(),
                         "value": opt.value,
                         "selected": opt.value == value,
                     })
@@ -311,19 +376,13 @@ fn build_field_contexts(
             }
             FieldType::Array => {
                 let sub_fields: Vec<_> = field.fields.iter().map(|sf| {
+                    let sf_label = sf.admin.label.as_ref()
+                        .map(|ls| ls.resolve_default().to_string())
+                        .unwrap_or_else(|| auto_label_from_name(&sf.name));
                     serde_json::json!({
                         "name": sf.name,
                         "field_type": sf.field_type.as_str(),
-                        "label": sf.name.split('_')
-                            .map(|w| {
-                                let mut c = w.chars();
-                                match c.next() {
-                                    None => String::new(),
-                                    Some(f) => f.to_uppercase().chain(c).collect(),
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                            .join(" "),
+                        "label": sf_label,
                         "required": sf.required,
                     })
                 }).collect();
@@ -369,7 +428,7 @@ fn enrich_field_contexts(
                     if let Some(related_def) = reg.get_collection(&rc.collection) {
                         let title_field = related_def.title_field().map(|s| s.to_string());
                         let find_query = query::FindQuery::default();
-                        if let Ok(docs) = query::find(&conn, &rc.collection, related_def, &find_query) {
+                        if let Ok(docs) = query::find(&conn, &rc.collection, related_def, &find_query, None) {
                             let current_value = ctx.get("value")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
@@ -426,7 +485,7 @@ fn enrich_field_contexts(
                         let admin_thumbnail = related_def.upload.as_ref()
                             .and_then(|u| u.admin_thumbnail.as_ref().cloned());
                         let find_query = query::FindQuery::default();
-                        if let Ok(mut docs) = query::find(&conn, &rc.collection, related_def, &find_query) {
+                        if let Ok(mut docs) = query::find(&conn, &rc.collection, related_def, &find_query, None) {
                             if let Some(ref upload_config) = related_def.upload {
                                 if upload_config.enabled {
                                     for doc in &mut docs {

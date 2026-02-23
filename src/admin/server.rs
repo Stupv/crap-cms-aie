@@ -31,7 +31,11 @@ pub async fn start(
     jwt_secret: String,
     event_bus: Option<EventBus>,
 ) -> Result<()> {
-    let handlebars = super::templates::create_handlebars(&config_dir, config.admin.dev_mode)?;
+    let admin_locale = &config.locale.default_locale;
+    let translations = std::sync::Arc::new(
+        super::translations::Translations::load(&config_dir, admin_locale)
+    );
+    let handlebars = super::templates::create_handlebars(&config_dir, config.admin.dev_mode, translations)?;
     let email_renderer = std::sync::Arc::new(
         crate::core::email::EmailRenderer::new(&config_dir)?
     );
@@ -226,7 +230,7 @@ pub(crate) fn load_auth_user(
         reg.get_collection(&claims.collection)?.clone()
     };
     let conn = pool.get().ok()?;
-    let doc = query::find_by_id(&conn, &claims.collection, &def, &claims.sub).ok()??;
+    let doc = query::find_by_id(&conn, &claims.collection, &def, &claims.sub, None).ok()??;
     Some(AuthUser {
         claims: claims.clone(),
         user_doc: doc,

@@ -4,7 +4,7 @@
   <a class="button button--primary" href="/admin/collections/{{collection.slug}}/create"
     hx-get="/admin/collections/{{collection.slug}}/create" hx-target="body" hx-push-url="true">
     <span class="material-symbols-outlined">add</span>
-    Create {{collection.singular_name}}
+    {{t "create"}} {{collection.singular_name}}
   </a>
 </div>
 
@@ -20,7 +20,7 @@
       type="text"
       name="search"
       value="{{search}}"
-      placeholder="Search {{collection.display_name}}..."
+      placeholder="{{t "search_placeholder"}} {{collection.display_name}}..."
       class="search-bar__input"
     />
     {{#if search}}

@@ -43,6 +43,11 @@ on_init = []             # Lua function refs to run at startup (with CRUD access
 [live]
 enabled = true           # Enable SSE + gRPC Subscribe for live mutation events
 channel_capacity = 1024  # Broadcast channel buffer size
+
+[locale]
+default_locale = "en"    # Default locale code
+locales = ["en", "de"]   # Supported locales (empty = disabled)
+fallback = true          # Fall back to default locale if field is NULL
 ```
 
 ## Section Details
@@ -114,6 +119,21 @@ When configured, email enables password reset ("Forgot password?" link on login)
 | `channel_capacity` | integer | `1024` | Internal broadcast channel buffer size. Increase if subscribers lag. |
 
 See [Live Updates](../live-updates/overview.md) for full documentation.
+
+### `[locale]`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `default_locale` | string | `"en"` | Default locale code. Content without an explicit locale uses this. |
+| `locales` | string[] | `[]` (empty) | Supported locale codes. **Empty = localization disabled.** When empty, all fields behave as before (single value, no locale columns). |
+| `fallback` | boolean | `true` | When reading a non-default locale, fall back to the default locale value if the requested locale field is NULL. Uses `COALESCE` in SQL. |
+
+When locales are configured, any field with `localized = true` in its Lua definition gets one column per locale (`title__en`, `title__de`) instead of a single `title` column. The API accepts a `locale` parameter on Find, FindByID, Create, Update, GetGlobal, and UpdateGlobal to control which locale to read/write. The admin UI shows a locale selector in the edit sidebar.
+
+**Special locale values:**
+- `"all"` — returns all locales as nested objects: `{ title: { en: "Hello", de: "Hallo" } }`
+- Any locale code (e.g., `"en"`, `"de"`) — returns flat field names with that locale's values
+- Omitted — uses the default locale
 
 ## Example
 

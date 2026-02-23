@@ -15,7 +15,7 @@ use crate::core::field::FieldType;
 use crate::core::upload::{self, UploadedFile, ProcessedUpload};
 use crate::core::validate::ValidationError;
 use crate::db::{ops, query};
-use crate::db::query::{AccessResult, FindQuery, Filter, FilterOp, FilterClause};
+use crate::db::query::{AccessResult, FindQuery, Filter, FilterOp, FilterClause, LocaleContext};
 use crate::hooks::lifecycle::{self, HookContext, HookEvent};
 
 fn user_json(claims: &Option<Extension<Claims>>) -> Option<serde_json::Value> {
@@ -78,6 +78,40 @@ pub struct PaginationParams {
     pub page: Option<i64>,
     pub per_page: Option<i64>,
     pub search: Option<String>,
+}
+
+/// Query parameters for locale selection on edit pages.
+#[derive(Debug, Deserialize)]
+pub struct LocaleParams {
+    pub locale: Option<String>,
+}
+
+/// Build locale template context (selector data) from config + current locale.
+/// Returns `(locale_ctx_for_db, template_json)` where template_json has
+/// `has_locales`, `current_locale`, `locales` (array with value/label/selected).
+fn build_locale_template_data(
+    state: &AdminState,
+    requested_locale: Option<&str>,
+) -> (Option<LocaleContext>, serde_json::Value) {
+    let config = &state.config.locale;
+    if !config.is_enabled() {
+        return (None, serde_json::json!({}));
+    }
+    let current = requested_locale.unwrap_or(&config.default_locale);
+    let locale_ctx = LocaleContext::from_locale_string(Some(current), config);
+    let locales: Vec<serde_json::Value> = config.locales.iter().map(|l| {
+        serde_json::json!({
+            "value": l,
+            "label": l.to_uppercase(),
+            "selected": l == current,
+        })
+    }).collect();
+    let data = serde_json::json!({
+        "has_locales": true,
+        "current_locale": current,
+        "locales": locales,
+    });
+    (locale_ctx, data)
 }
 
 /// GET /admin/collections — list all registered collections
@@ -192,8 +226,8 @@ pub async fn list_items(
     let def_owned = def.clone();
     let read_result = tokio::task::spawn_blocking(move || {
         runner.fire_before_read(&hooks, &slug_owned, "find", HashMap::new())?;
-        let total = ops::count_documents(&pool, &slug_owned, &def_owned, &filters)?;
-        let mut docs = ops::find_documents(&pool, &slug_owned, &def_owned, &find_query)?;
+        let total = ops::count_documents(&pool, &slug_owned, &def_owned, &filters, None)?;
+        let mut docs = ops::find_documents(&pool, &slug_owned, &def_owned, &find_query, None)?;
         // Assemble sizes for upload collections
         if let Some(ref upload_config) = def_owned.upload {
             if upload_config.enabled {
@@ -313,6 +347,7 @@ pub async fn list_items(
 pub async fn create_form(
     State(state): State<AdminState>,
     Path(slug): Path<String>,
+    Query(locale_params): Query<LocaleParams>,
     claims: Option<Extension<Claims>>,
     auth_user: Option<Extension<AuthUser>>,
 ) -> impl IntoResponse {
@@ -352,6 +387,8 @@ pub async fn create_form(
         }));
     }
 
+    let (_locale_ctx, locale_data) = build_locale_template_data(&state, locale_params.locale.as_deref());
+
     let mut data = serde_json::json!({
         "page_title": format!("Create {}", def.singular_name()),
         "collections": state.sidebar_collections(),
@@ -370,6 +407,13 @@ pub async fn create_form(
             { "label": format!("Create {}", def.singular_name()) },
         ],
     });
+
+    // Merge locale data into template context
+    if let Some(obj) = locale_data.as_object() {
+        for (k, v) in obj {
+            data[k] = v.clone();
+        }
+    }
 
     // Add upload context for upload collections
     if def.is_upload_collection() {
@@ -483,6 +527,12 @@ pub async fn create_action(
     // Extract join table data (arrays + has-many relationships) from form
     let join_data = extract_join_data_from_form(&form_data, &def.fields);
 
+    // Extract locale before it enters hooks/regular data flow
+    let form_locale = form_data.remove("_locale");
+    let locale_ctx = LocaleContext::from_locale_string(
+        form_locale.as_deref(), &state.config.locale,
+    );
+
     let pool = state.pool.clone();
     let runner = state.hook_runner.clone();
     let hooks = def.hooks.clone();
@@ -500,12 +550,16 @@ pub async fn create_action(
             data: form_data.iter()
                 .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
                 .collect(),
+            locale: locale_ctx.as_ref().and_then(|ctx| match &ctx.mode {
+                query::LocaleMode::Single(l) => Some(l.clone()),
+                _ => None,
+            }),
         };
         let final_ctx = runner.run_before_write(
             &hooks, &def_owned.fields, hook_ctx, &tx, &slug_owned, None,
         )?;
         let final_data = lifecycle::hook_ctx_to_string_map(&final_ctx);
-        let doc = query::create(&tx, &slug_owned, &def_owned, &final_data)?;
+        let doc = query::create(&tx, &slug_owned, &def_owned, &final_data, locale_ctx.as_ref())?;
 
         // Save join table data (has-many relationships and arrays)
         if !join_data.is_empty() {
@@ -583,6 +637,7 @@ pub async fn create_action(
 pub async fn edit_form(
     State(state): State<AdminState>,
     Path((slug, id)): Path<(String, String)>,
+    Query(locale_params): Query<LocaleParams>,
     claims: Option<Extension<Claims>>,
     auth_user: Option<Extension<AuthUser>>,
 ) -> impl IntoResponse {
@@ -608,6 +663,8 @@ pub async fn edit_form(
         return forbidden(&state, "You don't have permission to view this item").into_response();
     }
 
+    let (locale_ctx, locale_data) = build_locale_template_data(&state, locale_params.locale.as_deref());
+
     let pool = state.pool.clone();
     let runner = state.hook_runner.clone();
     let hooks = def.hooks.clone();
@@ -630,10 +687,10 @@ pub async fn edit_form(
                 op: FilterOp::Equals(id_owned.clone()),
             }));
             let query = FindQuery { filters, ..Default::default() };
-            let docs = ops::find_documents(&pool, &slug_owned, &def_owned, &query)?;
+            let docs = ops::find_documents(&pool, &slug_owned, &def_owned, &query, locale_ctx.as_ref())?;
             docs.into_iter().next()
         } else {
-            ops::find_document_by_id(&pool, &slug_owned, &def_owned, &id_owned)?
+            ops::find_document_by_id(&pool, &slug_owned, &def_owned, &id_owned, locale_ctx.as_ref())?
         };
         // Assemble sizes for upload collections
         let doc = doc.map(|mut d| {
@@ -729,6 +786,13 @@ pub async fn edit_form(
             { "label": doc_title },
         ],
     });
+
+    // Merge locale data into template context
+    if let Some(obj) = locale_data.as_object() {
+        for (k, v) in obj {
+            data[k] = v.clone();
+        }
+    }
 
     // Add upload context for upload collections
     if def.is_upload_collection() {
@@ -843,6 +907,12 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
         None => return redirect_response("/admin/collections"),
     };
 
+    // Extract locale before it enters hooks/regular data flow
+    let form_locale = form_data.remove("_locale");
+    let locale_ctx = LocaleContext::from_locale_string(
+        form_locale.as_deref(), &state.config.locale,
+    );
+
     // Check update access
     match check_collection_access_or_forbid(
         state, def.access.update.as_deref(), auth_user, Some(id), None,
@@ -858,7 +928,7 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
         if let Some(ref upload_config) = def.upload {
             // Load old document to get old file paths for cleanup
             if let Ok(conn) = state.pool.get() {
-                if let Ok(Some(old_doc)) = query::find_by_id(&conn, slug, &def, id) {
+                if let Ok(Some(old_doc)) = query::find_by_id(&conn, slug, &def, id, None) {
                     old_doc_fields = Some(old_doc.fields.clone());
                 }
             }
@@ -930,12 +1000,16 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
             data: form_data.iter()
                 .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
                 .collect(),
+            locale: locale_ctx.as_ref().and_then(|ctx| match &ctx.mode {
+                query::LocaleMode::Single(l) => Some(l.clone()),
+                _ => None,
+            }),
         };
         let final_ctx = runner.run_before_write(
             &hooks, &def_owned.fields, hook_ctx, &tx, &slug_owned, Some(&id_owned),
         )?;
         let final_data = lifecycle::hook_ctx_to_string_map(&final_ctx);
-        let doc = query::update(&tx, &slug_owned, &def_owned, &id_owned, &final_data)?;
+        let doc = query::update(&tx, &slug_owned, &def_owned, &id_owned, &final_data, locale_ctx.as_ref())?;
 
         // Save join table data (has-many relationships and arrays)
         query::save_join_table_data(&tx, &slug_owned, &def_owned, &doc.id, &join_data)?;
@@ -953,6 +1027,11 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
         Ok::<_, anyhow::Error>(doc)
     }).await;
 
+    let locale_suffix = form_locale
+        .as_ref()
+        .filter(|_| state.config.locale.is_enabled())
+        .map(|l| format!("?locale={}", l))
+        .unwrap_or_default();
     match result {
         Ok(Ok(doc)) => {
             // If a new file was uploaded and old files exist, clean up old files
@@ -970,7 +1049,7 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
                 crate::core::event::EventOperation::Update,
                 slug.to_string(), id.to_string(), doc.fields.clone(),
             );
-            redirect_response(&format!("/admin/collections/{}/{}", slug, id))
+            redirect_response(&format!("/admin/collections/{}/{}{}", slug, id, locale_suffix))
         }
         Ok(Err(e)) => {
             if let Some(ve) = e.downcast_ref::<ValidationError>() {
@@ -1032,7 +1111,7 @@ pub async fn delete_confirm(
         _ => {}
     }
 
-    let document = match ops::find_document_by_id(&state.pool, &slug, &def, &id) {
+    let document = match ops::find_document_by_id(&state.pool, &slug, &def, &id, None) {
         Ok(Some(doc)) => doc,
         Ok(None) => return not_found(&state, &format!("Document '{}' not found", id)).into_response(),
         Err(e) => return server_error(&state, &format!("Query error: {}", e)).into_response(),
@@ -1093,7 +1172,7 @@ async fn delete_action_impl(state: &AdminState, slug: &str, id: &str, auth_user:
     // For upload collections, load the document before deleting to get file paths
     let upload_doc_fields = if def.is_upload_collection() {
         state.pool.get().ok()
-            .and_then(|conn| query::find_by_id(&conn, slug, &def, id).ok().flatten())
+            .and_then(|conn| query::find_by_id(&conn, slug, &def, id, None).ok().flatten())
             .map(|doc| doc.fields.clone())
     } else {
         None
@@ -1113,6 +1192,7 @@ async fn delete_action_impl(state: &AdminState, slug: &str, id: &str, auth_user:
             collection: slug_owned.clone(),
             operation: "delete".to_string(),
             data: [("id".to_string(), serde_json::Value::String(id_owned.clone()))].into(),
+            locale: None,
         };
         runner.run_hooks_with_conn(
             &hooks, HookEvent::BeforeDelete, hook_ctx, &tx,
@@ -1154,6 +1234,20 @@ async fn delete_action_impl(state: &AdminState, slug: &str, id: &str, auth_user:
 
 // --- Helpers ---
 
+/// Auto-generate a label from a field name (e.g. "my_field" → "My Field").
+fn auto_label_from_name(name: &str) -> String {
+    name.split('_')
+        .map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().chain(c).collect(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Build field context objects for template rendering.
 fn build_field_contexts(
     fields: &[crate::core::field::FieldDefinition],
@@ -1162,16 +1256,9 @@ fn build_field_contexts(
 ) -> Vec<serde_json::Value> {
     fields.iter().filter(|field| !field.admin.hidden).map(|field| {
         let value = values.get(&field.name).cloned().unwrap_or_default();
-        let label = field.name.split('_')
-            .map(|w| {
-                let mut c = w.chars();
-                match c.next() {
-                    None => String::new(),
-                    Some(f) => f.to_uppercase().chain(c).collect(),
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" ");
+        let label = field.admin.label.as_ref()
+            .map(|ls| ls.resolve_default().to_string())
+            .unwrap_or_else(|| auto_label_from_name(&field.name));
 
         let mut ctx = serde_json::json!({
             "name": field.name,
@@ -1179,8 +1266,8 @@ fn build_field_contexts(
             "label": label,
             "required": field.required,
             "value": value,
-            "placeholder": field.admin.placeholder,
-            "description": field.admin.description,
+            "placeholder": field.admin.placeholder.as_ref().map(|ls| ls.resolve_default()),
+            "description": field.admin.description.as_ref().map(|ls| ls.resolve_default()),
             "readonly": field.admin.readonly,
         });
 
@@ -1192,7 +1279,7 @@ fn build_field_contexts(
             FieldType::Select => {
                 let options: Vec<_> = field.options.iter().map(|opt| {
                     serde_json::json!({
-                        "label": opt.label,
+                        "label": opt.label.resolve_default(),
                         "value": opt.value,
                         "selected": opt.value == value,
                     })
@@ -1210,21 +1297,14 @@ fn build_field_contexts(
                 }
             }
             FieldType::Array => {
-                // Provide sub-field definitions for template rendering
                 let sub_fields: Vec<_> = field.fields.iter().map(|sf| {
+                    let sf_label = sf.admin.label.as_ref()
+                        .map(|ls| ls.resolve_default().to_string())
+                        .unwrap_or_else(|| auto_label_from_name(&sf.name));
                     serde_json::json!({
                         "name": sf.name,
                         "field_type": sf.field_type.as_str(),
-                        "label": sf.name.split('_')
-                            .map(|w| {
-                                let mut c = w.chars();
-                                match c.next() {
-                                    None => String::new(),
-                                    Some(f) => f.to_uppercase().chain(c).collect(),
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                            .join(" "),
+                        "label": sf_label,
                         "required": sf.required,
                     })
                 }).collect();
@@ -1235,24 +1315,17 @@ fn build_field_contexts(
                 let sub_fields: Vec<_> = field.fields.iter().map(|sf| {
                     let col_name = format!("{}__{}", field.name, sf.name);
                     let sub_value = values.get(&col_name).cloned().unwrap_or_default();
-                    let sub_label = sf.name.split('_')
-                        .map(|w| {
-                            let mut c = w.chars();
-                            match c.next() {
-                                None => String::new(),
-                                Some(f) => f.to_uppercase().chain(c).collect(),
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" ");
+                    let sub_label = sf.admin.label.as_ref()
+                        .map(|ls| ls.resolve_default().to_string())
+                        .unwrap_or_else(|| auto_label_from_name(&sf.name));
                     let mut sub_ctx = serde_json::json!({
                         "name": col_name,
                         "field_type": sf.field_type.as_str(),
                         "label": sub_label,
                         "required": sf.required,
                         "value": sub_value,
-                        "placeholder": sf.admin.placeholder,
-                        "description": sf.admin.description,
+                        "placeholder": sf.admin.placeholder.as_ref().map(|ls| ls.resolve_default()),
+                        "description": sf.admin.description.as_ref().map(|ls| ls.resolve_default()),
                         "readonly": sf.admin.readonly,
                     });
                     if sf.field_type == FieldType::Checkbox {
@@ -1262,7 +1335,7 @@ fn build_field_contexts(
                     if sf.field_type == FieldType::Select {
                         let options: Vec<_> = sf.options.iter().map(|opt| {
                             serde_json::json!({
-                                "label": opt.label,
+                                "label": opt.label.resolve_default(),
                                 "value": opt.value,
                                 "selected": opt.value == sub_value,
                             })
@@ -1284,25 +1357,19 @@ fn build_field_contexts(
             FieldType::Blocks => {
                 let block_defs: Vec<_> = field.blocks.iter().map(|bd| {
                     let block_fields: Vec<_> = bd.fields.iter().map(|sf| {
+                        let sf_label = sf.admin.label.as_ref()
+                            .map(|ls| ls.resolve_default().to_string())
+                            .unwrap_or_else(|| auto_label_from_name(&sf.name));
                         serde_json::json!({
                             "name": sf.name,
                             "field_type": sf.field_type.as_str(),
-                            "label": sf.name.split('_')
-                                .map(|w| {
-                                    let mut c = w.chars();
-                                    match c.next() {
-                                        None => String::new(),
-                                        Some(f) => f.to_uppercase().chain(c).collect(),
-                                    }
-                                })
-                                .collect::<Vec<_>>()
-                                .join(" "),
+                            "label": sf_label,
                             "required": sf.required,
                         })
                     }).collect();
                     serde_json::json!({
                         "block_type": bd.block_type,
-                        "label": bd.label.as_deref().unwrap_or(&bd.block_type),
+                        "label": bd.label.as_ref().map(|ls| ls.resolve_default()).unwrap_or(&bd.block_type),
                         "fields": block_fields,
                     })
                 }).collect();
@@ -1342,7 +1409,7 @@ fn enrich_field_contexts(
                     if let Some(related_def) = reg.get_collection(&rc.collection) {
                         let title_field = related_def.title_field().map(|s| s.to_string());
                         let find_query = query::FindQuery::default();
-                        if let Ok(docs) = query::find(&conn, &rc.collection, related_def, &find_query) {
+                        if let Ok(docs) = query::find(&conn, &rc.collection, related_def, &find_query, None) {
                             if rc.has_many {
                                 // Get selected IDs from hydrated document
                                 let selected_ids: std::collections::HashSet<String> = match doc_fields.get(&field_def.name) {
@@ -1424,7 +1491,7 @@ fn enrich_field_contexts(
                         let admin_thumbnail = related_def.upload.as_ref()
                             .and_then(|u| u.admin_thumbnail.as_ref().cloned());
                         let find_query = query::FindQuery::default();
-                        if let Ok(mut docs) = query::find(&conn, &rc.collection, related_def, &find_query) {
+                        if let Ok(mut docs) = query::find(&conn, &rc.collection, related_def, &find_query, None) {
                             // Assemble sizes for thumbnail lookup
                             if let Some(ref upload_config) = related_def.upload {
                                 if upload_config.enabled {
@@ -1509,7 +1576,7 @@ fn enrich_field_contexts(
                                 .unwrap_or("unknown");
                             let block_label = field_def.blocks.iter()
                                 .find(|bd| bd.block_type == block_type)
-                                .and_then(|bd| bd.label.as_deref())
+                                .and_then(|bd| bd.label.as_ref().map(|ls| ls.resolve_default()))
                                 .unwrap_or(block_type);
                             let block_def = field_def.blocks.iter()
                                 .find(|bd| bd.block_type == block_type);

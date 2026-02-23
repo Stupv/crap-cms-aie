@@ -5,6 +5,9 @@
       hx-target="body"
       class="form"
       novalidate>
+  {{#if has_locales}}
+  <input type="hidden" name="_locale" value="{{current_locale}}" />
+  {{/if}}
   {{#each fields}}
   <div class="form__field">
     {{{render_field this}}}

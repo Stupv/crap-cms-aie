@@ -18,6 +18,9 @@
   {{#if editing}}
   <input type="hidden" name="_method" value="PUT" />
   {{/if}}
+  {{#if has_locales}}
+  <input type="hidden" name="_locale" value="{{current_locale}}" />
+  {{/if}}
 
   {{#if is_upload}}
   <div class="upload-section">
@@ -33,7 +36,7 @@
     {{/if}}
     <div class="upload-section__input">
       <label for="upload-file">
-        {{#if editing}}Replace file{{else}}Upload file{{/if}}
+        {{#if editing}}{{t "replace_file"}}{{else}}{{t "upload_file"}}{{/if}}
         {{#unless editing}}<span class="form__required">*</span>{{/unless}}
       </label>
       <input type="file" id="upload-file" name="_file"

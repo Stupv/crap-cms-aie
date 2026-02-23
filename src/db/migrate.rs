@@ -3,12 +3,13 @@
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 
+use crate::config::LocaleConfig;
 use crate::core::SharedRegistry;
 use crate::core::field::FieldType;
 use super::DbPool;
 
 /// Sync all collection tables with their Lua definitions.
-pub fn sync_all(pool: &DbPool, registry: &SharedRegistry) -> Result<()> {
+pub fn sync_all(pool: &DbPool, registry: &SharedRegistry, locale_config: &LocaleConfig) -> Result<()> {
     let mut conn = pool.get().context("Failed to get DB connection")?;
     let tx = conn.transaction().context("Failed to start migration transaction")?;
 
@@ -25,11 +26,11 @@ pub fn sync_all(pool: &DbPool, registry: &SharedRegistry) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("Registry lock poisoned: {}", e))?;
 
     for (slug, def) in &reg.collections {
-        sync_collection_table(&tx, slug, def)?;
+        sync_collection_table(&tx, slug, def, locale_config)?;
     }
 
     for (slug, def) in &reg.globals {
-        sync_global_table(&tx, slug, def)?;
+        sync_global_table(&tx, slug, def, locale_config)?;
     }
 
     drop(reg);
@@ -42,17 +43,18 @@ fn sync_collection_table(
     conn: &rusqlite::Connection,
     slug: &str,
     def: &crate::core::CollectionDefinition,
+    locale_config: &LocaleConfig,
 ) -> Result<()> {
     let table_exists = table_exists(conn, slug)?;
 
     if !table_exists {
-        create_collection_table(conn, slug, def)?;
+        create_collection_table(conn, slug, def, locale_config)?;
     } else {
-        alter_collection_table(conn, slug, def)?;
+        alter_collection_table(conn, slug, def, locale_config)?;
     }
 
     // Sync join tables for has-many relationships and array fields
-    sync_join_tables(conn, slug, &def.fields)?;
+    sync_join_tables(conn, slug, &def.fields, locale_config)?;
 
     Ok(())
 }
@@ -61,6 +63,7 @@ fn sync_global_table(
     conn: &rusqlite::Connection,
     slug: &str,
     def: &crate::core::collection::GlobalDefinition,
+    locale_config: &LocaleConfig,
 ) -> Result<()> {
     let table_name = format!("_global_{}", slug);
     let table_exists = table_exists(conn, &table_name)?;
@@ -69,8 +72,16 @@ fn sync_global_table(
         let mut columns = vec!["id TEXT PRIMARY KEY".to_string()];
 
         for field in &def.fields {
-            let col = format!("{} {}", field.name, field.field_type.sqlite_type());
-            columns.push(col);
+            if field.localized && locale_config.is_enabled() {
+                // Localized fields get one column per locale
+                for locale in &locale_config.locales {
+                    let col = format!("{}__{} {}", field.name, locale, field.field_type.sqlite_type());
+                    columns.push(col);
+                }
+            } else {
+                let col = format!("{} {}", field.name, field.field_type.sqlite_type());
+                columns.push(col);
+            }
         }
 
         columns.push("created_at TEXT DEFAULT (datetime('now'))".to_string());
@@ -109,6 +120,7 @@ fn create_collection_table(
     conn: &rusqlite::Connection,
     slug: &str,
     def: &crate::core::CollectionDefinition,
+    locale_config: &LocaleConfig,
 ) -> Result<()> {
     let mut columns = vec!["id TEXT PRIMARY KEY".to_string()];
 
@@ -116,25 +128,34 @@ fn create_collection_table(
         // Group fields expand sub-fields as prefixed columns
         if field.field_type == FieldType::Group {
             for sub in &field.fields {
-                let col_name = format!("{}__{}", field.name, sub.name);
-                let mut col = format!("{} {}", col_name, sub.field_type.sqlite_type());
-                if sub.required {
-                    col.push_str(" NOT NULL");
-                }
-                if sub.unique {
-                    col.push_str(" UNIQUE");
-                }
-                if let Some(ref default) = sub.default_value {
-                    match default {
-                        serde_json::Value::String(s) => col.push_str(&format!(" DEFAULT '{}'", s)),
-                        serde_json::Value::Number(n) => col.push_str(&format!(" DEFAULT {}", n)),
-                        serde_json::Value::Bool(b) => col.push_str(&format!(" DEFAULT {}", if *b { 1 } else { 0 })),
-                        _ => {}
+                let base_col_name = format!("{}__{}", field.name, sub.name);
+                let is_localized = (field.localized || sub.localized) && locale_config.is_enabled();
+
+                if is_localized {
+                    for locale in &locale_config.locales {
+                        let col_name = format!("{}__{}", base_col_name, locale);
+                        let mut col = format!("{} {}", col_name, sub.field_type.sqlite_type());
+                        // Required only on default locale
+                        if sub.required && *locale == locale_config.default_locale {
+                            col.push_str(" NOT NULL");
+                        }
+                        if sub.unique {
+                            col.push_str(" UNIQUE");
+                        }
+                        append_default_value(&mut col, &sub.default_value, &sub.field_type);
+                        columns.push(col);
                     }
-                } else if sub.field_type == FieldType::Checkbox {
-                    col.push_str(" DEFAULT 0");
+                } else {
+                    let mut col = format!("{} {}", base_col_name, sub.field_type.sqlite_type());
+                    if sub.required {
+                        col.push_str(" NOT NULL");
+                    }
+                    if sub.unique {
+                        col.push_str(" UNIQUE");
+                    }
+                    append_default_value(&mut col, &sub.default_value, &sub.field_type);
+                    columns.push(col);
                 }
-                columns.push(col);
             }
             continue;
         }
@@ -142,24 +163,33 @@ fn create_collection_table(
         if !field.has_parent_column() {
             continue;
         }
-        let mut col = format!("{} {}", field.name, field.field_type.sqlite_type());
-        if field.required {
-            col.push_str(" NOT NULL");
-        }
-        if field.unique {
-            col.push_str(" UNIQUE");
-        }
-        if let Some(ref default) = field.default_value {
-            match default {
-                serde_json::Value::String(s) => col.push_str(&format!(" DEFAULT '{}'", s)),
-                serde_json::Value::Number(n) => col.push_str(&format!(" DEFAULT {}", n)),
-                serde_json::Value::Bool(b) => col.push_str(&format!(" DEFAULT {}", if *b { 1 } else { 0 })),
-                _ => {}
+
+        if field.localized && locale_config.is_enabled() {
+            // Localized fields get one column per locale
+            for locale in &locale_config.locales {
+                let col_name = format!("{}__{}", field.name, locale);
+                let mut col = format!("{} {}", col_name, field.field_type.sqlite_type());
+                // Required only on default locale
+                if field.required && *locale == locale_config.default_locale {
+                    col.push_str(" NOT NULL");
+                }
+                if field.unique {
+                    col.push_str(" UNIQUE");
+                }
+                append_default_value(&mut col, &field.default_value, &field.field_type);
+                columns.push(col);
             }
-        } else if field.field_type == FieldType::Checkbox {
-            col.push_str(" DEFAULT 0");
+        } else {
+            let mut col = format!("{} {}", field.name, field.field_type.sqlite_type());
+            if field.required {
+                col.push_str(" NOT NULL");
+            }
+            if field.unique {
+                col.push_str(" UNIQUE");
+            }
+            append_default_value(&mut col, &field.default_value, &field.field_type);
+            columns.push(col);
         }
-        columns.push(col);
     }
 
     // Auth collections get hidden system columns (not regular fields)
@@ -193,6 +223,7 @@ fn alter_collection_table(
     conn: &rusqlite::Connection,
     slug: &str,
     def: &crate::core::CollectionDefinition,
+    locale_config: &LocaleConfig,
 ) -> Result<()> {
     // Get existing columns
     let existing_columns = get_table_columns(conn, slug)?;
@@ -201,23 +232,28 @@ fn alter_collection_table(
         // Group fields expand sub-fields as prefixed columns
         if field.field_type == FieldType::Group {
             for sub in &field.fields {
-                let col_name = format!("{}__{}", field.name, sub.name);
-                if !existing_columns.contains(&col_name) {
-                    let mut col_def = sub.field_type.sqlite_type().to_string();
-                    if let Some(ref default) = sub.default_value {
-                        match default {
-                            serde_json::Value::String(s) => col_def.push_str(&format!(" DEFAULT '{}'", s)),
-                            serde_json::Value::Number(n) => col_def.push_str(&format!(" DEFAULT {}", n)),
-                            serde_json::Value::Bool(b) => col_def.push_str(&format!(" DEFAULT {}", if *b { 1 } else { 0 })),
-                            _ => {}
+                let base_col_name = format!("{}__{}", field.name, sub.name);
+                let is_localized = (field.localized || sub.localized) && locale_config.is_enabled();
+
+                if is_localized {
+                    for locale in &locale_config.locales {
+                        let col_name = format!("{}__{}", base_col_name, locale);
+                        if !existing_columns.contains(&col_name) {
+                            let mut col_def = sub.field_type.sqlite_type().to_string();
+                            append_default_value(&mut col_def, &sub.default_value, &sub.field_type);
+                            let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", slug, col_name, col_def);
+                            tracing::info!("Adding column to {}: {}", slug, col_name);
+                            conn.execute(&sql, [])
+                                .with_context(|| format!("Failed to add column {} to {}", col_name, slug))?;
                         }
-                    } else if sub.field_type == FieldType::Checkbox {
-                        col_def.push_str(" DEFAULT 0");
                     }
-                    let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", slug, col_name, col_def);
-                    tracing::info!("Adding column to {}: {}", slug, col_name);
+                } else if !existing_columns.contains(&base_col_name) {
+                    let mut col_def = sub.field_type.sqlite_type().to_string();
+                    append_default_value(&mut col_def, &sub.default_value, &sub.field_type);
+                    let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", slug, base_col_name, col_def);
+                    tracing::info!("Adding column to {}: {}", slug, base_col_name);
                     conn.execute(&sql, [])
-                        .with_context(|| format!("Failed to add column {} to {}", col_name, slug))?;
+                        .with_context(|| format!("Failed to add column {} to {}", base_col_name, slug))?;
                 }
             }
             continue;
@@ -226,19 +262,22 @@ fn alter_collection_table(
         if !field.has_parent_column() {
             continue;
         }
-        if !existing_columns.contains(&field.name) {
-            let mut col_def = field.field_type.sqlite_type().to_string();
-            if let Some(ref default) = field.default_value {
-                match default {
-                    serde_json::Value::String(s) => col_def.push_str(&format!(" DEFAULT '{}'", s)),
-                    serde_json::Value::Number(n) => col_def.push_str(&format!(" DEFAULT {}", n)),
-                    serde_json::Value::Bool(b) => col_def.push_str(&format!(" DEFAULT {}", if *b { 1 } else { 0 })),
-                    _ => {}
-                }
-            } else if field.field_type == FieldType::Checkbox {
-                col_def.push_str(" DEFAULT 0");
-            }
 
+        if field.localized && locale_config.is_enabled() {
+            for locale in &locale_config.locales {
+                let col_name = format!("{}__{}", field.name, locale);
+                if !existing_columns.contains(&col_name) {
+                    let mut col_def = field.field_type.sqlite_type().to_string();
+                    append_default_value(&mut col_def, &field.default_value, &field.field_type);
+                    let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", slug, col_name, col_def);
+                    tracing::info!("Adding column to {}: {}", slug, col_name);
+                    conn.execute(&sql, [])
+                        .with_context(|| format!("Failed to add column {} to {}", col_name, slug))?;
+                }
+            }
+        } else if !existing_columns.contains(&field.name) {
+            let mut col_def = field.field_type.sqlite_type().to_string();
+            append_default_value(&mut col_def, &field.default_value, &field.field_type);
             let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", slug, field.name, col_def);
             tracing::info!("Adding column to {}: {}", slug, field.name);
             conn.execute(&sql, [])
@@ -271,15 +310,27 @@ fn alter_collection_table(
     }
 
     // Warn about removed columns (SQLite can't DROP COLUMN easily)
-    let mut field_names: HashSet<String> = def.fields.iter()
-        .filter(|f| f.has_parent_column())
-        .map(|f| f.name.clone())
-        .collect();
-    // Include group prefixed columns
+    let mut field_names: HashSet<String> = HashSet::new();
     for f in &def.fields {
         if f.field_type == FieldType::Group {
             for sub in &f.fields {
-                field_names.insert(format!("{}__{}", f.name, sub.name));
+                let base = format!("{}__{}", f.name, sub.name);
+                let is_localized = (f.localized || sub.localized) && locale_config.is_enabled();
+                if is_localized {
+                    for locale in &locale_config.locales {
+                        field_names.insert(format!("{}__{}", base, locale));
+                    }
+                } else {
+                    field_names.insert(base);
+                }
+            }
+        } else if f.has_parent_column() {
+            if f.localized && locale_config.is_enabled() {
+                for locale in &locale_config.locales {
+                    field_names.insert(format!("{}__{}", f.name, locale));
+                }
+            } else {
+                field_names.insert(f.name.clone());
             }
         }
     }
@@ -304,28 +355,46 @@ fn sync_join_tables(
     conn: &rusqlite::Connection,
     collection_slug: &str,
     fields: &[crate::core::field::FieldDefinition],
+    locale_config: &LocaleConfig,
 ) -> Result<()> {
     use crate::core::field::FieldType;
 
     for field in fields {
+        let has_locale_col = field.localized && locale_config.is_enabled();
+
         match field.field_type {
             FieldType::Relationship => {
                 if let Some(ref rc) = field.relationship {
                     if rc.has_many {
                         let table_name = format!("{}_{}", collection_slug, field.name);
                         if !table_exists(conn, &table_name)? {
-                            let sql = format!(
-                                "CREATE TABLE {} (\
-                                    parent_id TEXT NOT NULL REFERENCES {}(id) ON DELETE CASCADE, \
-                                    related_id TEXT NOT NULL, \
-                                    _order INTEGER NOT NULL DEFAULT 0, \
-                                    PRIMARY KEY (parent_id, related_id)\
-                                )",
-                                table_name, collection_slug
-                            );
+                            let sql = if has_locale_col {
+                                format!(
+                                    "CREATE TABLE {} (\
+                                        parent_id TEXT NOT NULL REFERENCES {}(id) ON DELETE CASCADE, \
+                                        related_id TEXT NOT NULL, \
+                                        _order INTEGER NOT NULL DEFAULT 0, \
+                                        _locale TEXT NOT NULL DEFAULT '{}', \
+                                        PRIMARY KEY (parent_id, related_id, _locale)\
+                                    )",
+                                    table_name, collection_slug, locale_config.default_locale
+                                )
+                            } else {
+                                format!(
+                                    "CREATE TABLE {} (\
+                                        parent_id TEXT NOT NULL REFERENCES {}(id) ON DELETE CASCADE, \
+                                        related_id TEXT NOT NULL, \
+                                        _order INTEGER NOT NULL DEFAULT 0, \
+                                        PRIMARY KEY (parent_id, related_id)\
+                                    )",
+                                    table_name, collection_slug
+                                )
+                            };
                             tracing::info!("Creating junction table: {}", table_name);
                             conn.execute(&sql, [])
                                 .with_context(|| format!("Failed to create junction table {}", table_name))?;
+                        } else if has_locale_col {
+                            ensure_locale_column(conn, &table_name, &locale_config.default_locale)?;
                         }
                     }
                 }
@@ -338,6 +407,9 @@ fn sync_join_tables(
                         format!("parent_id TEXT NOT NULL REFERENCES {}(id) ON DELETE CASCADE", collection_slug),
                         "_order INTEGER NOT NULL DEFAULT 0".to_string(),
                     ];
+                    if has_locale_col {
+                        columns.push(format!("_locale TEXT NOT NULL DEFAULT '{}'", locale_config.default_locale));
+                    }
                     for sub_field in &field.fields {
                         columns.push(format!("{} {}", sub_field.name, sub_field.field_type.sqlite_type()));
                     }
@@ -350,6 +422,9 @@ fn sync_join_tables(
                     conn.execute(&sql, [])
                         .with_context(|| format!("Failed to create array table {}", table_name))?;
                 } else {
+                    if has_locale_col {
+                        ensure_locale_column(conn, &table_name, &locale_config.default_locale)?;
+                    }
                     // Alter: add missing sub-field columns
                     let existing = get_table_columns(conn, &table_name)?;
                     for sub_field in &field.fields {
@@ -368,6 +443,11 @@ fn sync_join_tables(
             FieldType::Blocks => {
                 let table_name = format!("{}_{}", collection_slug, field.name);
                 if !table_exists(conn, &table_name)? {
+                    let locale_col = if has_locale_col {
+                        format!(", _locale TEXT NOT NULL DEFAULT '{}'", locale_config.default_locale)
+                    } else {
+                        String::new()
+                    };
                     let sql = format!(
                         "CREATE TABLE {} (\
                             id TEXT PRIMARY KEY, \
@@ -375,18 +455,50 @@ fn sync_join_tables(
                             _order INTEGER NOT NULL DEFAULT 0, \
                             _block_type TEXT NOT NULL, \
                             data TEXT NOT NULL DEFAULT '{{}}'\
+                            {}\
                         )",
-                        table_name, collection_slug
+                        table_name, collection_slug, locale_col
                     );
                     tracing::info!("Creating blocks table: {}", table_name);
                     conn.execute(&sql, [])
                         .with_context(|| format!("Failed to create blocks table {}", table_name))?;
+                } else if has_locale_col {
+                    ensure_locale_column(conn, &table_name, &locale_config.default_locale)?;
                 }
             }
             _ => {}
         }
     }
 
+    Ok(())
+}
+
+/// Append a DEFAULT value clause to a column definition string.
+fn append_default_value(col: &mut String, default_value: &Option<serde_json::Value>, field_type: &FieldType) {
+    if let Some(ref default) = default_value {
+        match default {
+            serde_json::Value::String(s) => col.push_str(&format!(" DEFAULT '{}'", s)),
+            serde_json::Value::Number(n) => col.push_str(&format!(" DEFAULT {}", n)),
+            serde_json::Value::Bool(b) => col.push_str(&format!(" DEFAULT {}", if *b { 1 } else { 0 })),
+            _ => {}
+        }
+    } else if *field_type == FieldType::Checkbox {
+        col.push_str(" DEFAULT 0");
+    }
+}
+
+/// Ensure a `_locale` column exists on a junction table (for ALTER TABLE on existing tables).
+fn ensure_locale_column(conn: &rusqlite::Connection, table_name: &str, default_locale: &str) -> Result<()> {
+    let existing = get_table_columns(conn, table_name)?;
+    if !existing.contains("_locale") {
+        let sql = format!(
+            "ALTER TABLE {} ADD COLUMN _locale TEXT NOT NULL DEFAULT '{}'",
+            table_name, default_locale
+        );
+        tracing::info!("Adding _locale column to {}", table_name);
+        conn.execute(&sql, [])
+            .with_context(|| format!("Failed to add _locale to {}", table_name))?;
+    }
     Ok(())
 }
 

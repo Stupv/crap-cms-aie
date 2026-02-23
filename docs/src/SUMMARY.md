@@ -12,6 +12,10 @@
 
 - [crap.toml](configuration/crap-toml.md)
 
+# Localization
+
+- [Overview](locale/overview.md)
+
 # CLI
 
 - [Command-Line Flags](cli/flags.md)
@@ -91,6 +95,7 @@
 - [crap.http](lua-api/http.md)
 - [crap.config](lua-api/config.md)
 - [crap.email](lua-api/email.md)
+- [crap.locale](lua-api/locale.md)
 - [Filter Operators](lua-api/filter-operators.md)
 
 # gRPC API

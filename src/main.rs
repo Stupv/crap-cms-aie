@@ -110,7 +110,7 @@ async fn main() -> Result<()> {
         .context("Failed to create database pool")?;
 
     // Sync database schema from Lua definitions
-    db::migrate::sync_all(&pool, &registry)
+    db::migrate::sync_all(&pool, &registry, &config.locale)
         .context("Failed to sync database schema")?;
 
     // Handle --create-user
@@ -324,7 +324,7 @@ fn create_user_command(
     let mut conn = pool.get().context("Failed to get database connection")?;
     let tx = conn.transaction().context("Failed to begin transaction")?;
 
-    let doc = db::query::create(&tx, &cli.collection, &def, &data)
+    let doc = db::query::create(&tx, &cli.collection, &def, &data, None)
         .context("Failed to create user")?;
 
     db::query::update_password(&tx, &cli.collection, &doc.id, &password)

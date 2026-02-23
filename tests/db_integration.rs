@@ -4,7 +4,7 @@ use crap_cms::config::CrapConfig;
 use crap_cms::core::collection::{
     CollectionAccess, CollectionAdmin, CollectionDefinition, CollectionHooks, CollectionLabels,
 };
-use crap_cms::core::field::{FieldAccess, FieldAdmin, FieldDefinition, FieldHooks, FieldType};
+use crap_cms::core::field::{FieldAccess, FieldAdmin, FieldDefinition, FieldHooks, FieldType, LocalizedString};
 use crap_cms::core::Registry;
 use crap_cms::db::{migrate, ops, pool, query};
 
@@ -12,8 +12,8 @@ fn make_posts_def() -> CollectionDefinition {
     CollectionDefinition {
         slug: "posts".to_string(),
         labels: CollectionLabels {
-            singular: Some("Post".to_string()),
-            plural: Some("Posts".to_string()),
+            singular: Some(LocalizedString::Plain("Post".to_string())),
+            plural: Some(LocalizedString::Plain("Posts".to_string())),
         },
         timestamps: true,
         fields: vec![
@@ -31,6 +31,7 @@ fn make_posts_def() -> CollectionDefinition {
                 relationship: None,
                 fields: Vec::new(),
                 blocks: Vec::new(),
+                localized: false,
             },
             FieldDefinition {
                 name: "status".to_string(),
@@ -46,6 +47,7 @@ fn make_posts_def() -> CollectionDefinition {
                 relationship: None,
                 fields: Vec::new(),
                 blocks: Vec::new(),
+                localized: false,
             },
         ],
         admin: CollectionAdmin::default(),
@@ -78,7 +80,7 @@ fn full_crud_cycle() {
     }
 
     // Sync schema
-    migrate::sync_all(&pool, &registry).expect("Failed to sync schema");
+    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Failed to sync schema");
 
     // Create
     let mut data = HashMap::new();
@@ -87,7 +89,7 @@ fn full_crud_cycle() {
 
     let mut conn = pool.get().expect("DB connection");
     let tx = conn.transaction().expect("Start transaction");
-    let doc = query::create(&tx, "posts", &def, &data).expect("Failed to create document");
+    let doc = query::create(&tx, "posts", &def, &data, None).expect("Failed to create document");
     tx.commit().expect("Commit");
 
     assert_eq!(doc.get_str("title"), Some("Hello World"));
@@ -96,14 +98,14 @@ fn full_crud_cycle() {
     let doc_id = doc.id.clone();
 
     // Read
-    let found = ops::find_document_by_id(&pool, "posts", &def, &doc_id)
+    let found = ops::find_document_by_id(&pool, "posts", &def, &doc_id, None)
         .expect("Failed to find document")
         .expect("Document not found");
     assert_eq!(found.id, doc_id);
     assert_eq!(found.get_str("title"), Some("Hello World"));
 
     // List
-    let all = ops::find_documents(&pool, "posts", &def, &query::FindQuery::default())
+    let all = ops::find_documents(&pool, "posts", &def, &query::FindQuery::default(), None)
         .expect("Failed to list documents");
     assert_eq!(all.len(), 1);
 
@@ -114,7 +116,7 @@ fn full_crud_cycle() {
 
     let mut conn = pool.get().expect("DB connection");
     let tx = conn.transaction().expect("Start transaction");
-    let updated = query::update(&tx, "posts", &def, &doc_id, &update_data)
+    let updated = query::update(&tx, "posts", &def, &doc_id, &update_data, None)
         .expect("Failed to update document");
     tx.commit().expect("Commit");
     assert_eq!(updated.get_str("title"), Some("Updated Title"));
@@ -125,7 +127,7 @@ fn full_crud_cycle() {
     query::delete(&tx, "posts", &doc_id).expect("Failed to delete document");
     tx.commit().expect("Commit");
 
-    let deleted = ops::find_document_by_id(&pool, "posts", &def, &doc_id)
+    let deleted = ops::find_document_by_id(&pool, "posts", &def, &doc_id, None)
         .expect("Query failed");
     assert!(deleted.is_none());
 }
@@ -142,7 +144,7 @@ fn sync_schema_adds_columns() {
         let mut reg = registry.write().unwrap();
         reg.register_collection(def.clone());
     }
-    migrate::sync_all(&pool, &registry).expect("First sync failed");
+    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("First sync failed");
 
     // Add a field
     def.fields.push(FieldDefinition {
@@ -159,12 +161,13 @@ fn sync_schema_adds_columns() {
         relationship: None,
         fields: Vec::new(),
         blocks: Vec::new(),
+        localized: false,
     });
     {
         let mut reg = registry.write().unwrap();
         reg.register_collection(def.clone());
     }
-    migrate::sync_all(&pool, &registry).expect("Second sync failed");
+    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Second sync failed");
 
     // Verify we can use the new column
     let mut data = HashMap::new();
@@ -173,7 +176,7 @@ fn sync_schema_adds_columns() {
 
     let mut conn = pool.get().expect("DB connection");
     let tx = conn.transaction().expect("Start transaction");
-    let doc = query::create(&tx, "posts", &def, &data).expect("Failed to create");
+    let doc = query::create(&tx, "posts", &def, &data, None).expect("Failed to create");
     tx.commit().expect("Commit");
     assert_eq!(doc.get_str("body"), Some("Some body text"));
 }
@@ -187,7 +190,7 @@ fn count_documents() {
         let mut reg = registry.write().unwrap();
         reg.register_collection(def.clone());
     }
-    migrate::sync_all(&pool, &registry).expect("Sync failed");
+    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Sync failed");
 
     // Insert 3 documents
     for i in 0..3 {
@@ -195,11 +198,11 @@ fn count_documents() {
         data.insert("title".to_string(), format!("Post {}", i));
         let mut conn = pool.get().expect("DB connection");
         let tx = conn.transaction().expect("Start transaction");
-        query::create(&tx, "posts", &def, &data).expect("Create failed");
+        query::create(&tx, "posts", &def, &data, None).expect("Create failed");
         tx.commit().expect("Commit");
     }
 
-    let total = ops::count_documents(&pool, "posts", &def, &[]).expect("Count failed");
+    let total = ops::count_documents(&pool, "posts", &def, &[], None).expect("Count failed");
     assert_eq!(total, 3);
 }
 
@@ -212,7 +215,7 @@ fn filter_rejects_invalid_field_name() {
         let mut reg = registry.write().unwrap();
         reg.register_collection(def.clone());
     }
-    migrate::sync_all(&pool, &registry).expect("Sync failed");
+    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Sync failed");
 
     let find_query = query::FindQuery {
         filters: vec![query::FilterClause::Single(query::Filter {
@@ -222,7 +225,7 @@ fn filter_rejects_invalid_field_name() {
         ..Default::default()
     };
 
-    let result = ops::find_documents(&pool, "posts", &def, &find_query);
+    let result = ops::find_documents(&pool, "posts", &def, &find_query, None);
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("Invalid field 'nonexistent'"));
 }
@@ -236,14 +239,14 @@ fn order_by_rejects_invalid_field_name() {
         let mut reg = registry.write().unwrap();
         reg.register_collection(def.clone());
     }
-    migrate::sync_all(&pool, &registry).expect("Sync failed");
+    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Sync failed");
 
     let find_query = query::FindQuery {
         order_by: Some("nonexistent".to_string()),
         ..Default::default()
     };
 
-    let result = ops::find_documents(&pool, "posts", &def, &find_query);
+    let result = ops::find_documents(&pool, "posts", &def, &find_query, None);
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("Invalid field 'nonexistent'"));
 }
@@ -257,7 +260,7 @@ fn sql_injection_in_filter_field_blocked() {
         let mut reg = registry.write().unwrap();
         reg.register_collection(def.clone());
     }
-    migrate::sync_all(&pool, &registry).expect("Sync failed");
+    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Sync failed");
 
     let find_query = query::FindQuery {
         filters: vec![query::FilterClause::Single(query::Filter {
@@ -267,7 +270,7 @@ fn sql_injection_in_filter_field_blocked() {
         ..Default::default()
     };
 
-    let result = ops::find_documents(&pool, "posts", &def, &find_query);
+    let result = ops::find_documents(&pool, "posts", &def, &find_query, None);
     assert!(result.is_err());
     let err_msg = result.unwrap_err().to_string();
     assert!(err_msg.contains("Invalid field"), "Expected invalid field error, got: {}", err_msg);
@@ -285,7 +288,7 @@ fn seed_posts() -> (tempfile::TempDir, crap_cms::db::DbPool, CollectionDefinitio
         let mut reg = registry.write().unwrap();
         reg.register_collection(def.clone());
     }
-    migrate::sync_all(&pool, &registry).expect("Sync failed");
+    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Sync failed");
 
     // Status values: "" means pass empty string → coerce_value converts to NULL.
     // Omitting the field entirely would use the column DEFAULT ('draft'), not NULL.
@@ -303,7 +306,7 @@ fn seed_posts() -> (tempfile::TempDir, crap_cms::db::DbPool, CollectionDefinitio
         data.insert("status".to_string(), status.to_string());
         let mut conn = pool.get().expect("DB connection");
         let tx = conn.transaction().expect("Start transaction");
-        query::create(&tx, "posts", &def, &data).expect("Create failed");
+        query::create(&tx, "posts", &def, &data, None).expect("Create failed");
         tx.commit().expect("Commit");
     }
 
@@ -320,7 +323,7 @@ fn filter_equals() {
         })],
         ..Default::default()
     };
-    let docs = ops::find_documents(&pool, "posts", &def, &q).expect("Find failed");
+    let docs = ops::find_documents(&pool, "posts", &def, &q, None).expect("Find failed");
     assert_eq!(docs.len(), 2);
     for doc in &docs {
         assert_eq!(doc.get_str("status"), Some("published"));
@@ -337,7 +340,7 @@ fn filter_not_equals() {
         })],
         ..Default::default()
     };
-    let docs = ops::find_documents(&pool, "posts", &def, &q).expect("Find failed");
+    let docs = ops::find_documents(&pool, "posts", &def, &q, None).expect("Find failed");
     // != excludes "published" (2 rows), but NULL != 'published' is NULL (falsy in SQL)
     // so only "draft" and "archived" match
     assert_eq!(docs.len(), 2);
@@ -356,7 +359,7 @@ fn filter_contains() {
         })],
         ..Default::default()
     };
-    let docs = ops::find_documents(&pool, "posts", &def, &q).expect("Find failed");
+    let docs = ops::find_documents(&pool, "posts", &def, &q, None).expect("Find failed");
     assert_eq!(docs.len(), 1);
     assert_eq!(docs[0].get_str("title"), Some("Beta Post"));
 }
@@ -371,7 +374,7 @@ fn filter_like() {
         })],
         ..Default::default()
     };
-    let docs = ops::find_documents(&pool, "posts", &def, &q).expect("Find failed");
+    let docs = ops::find_documents(&pool, "posts", &def, &q, None).expect("Find failed");
     assert_eq!(docs.len(), 1);
     assert_eq!(docs[0].get_str("title"), Some("Alpha Post"));
 }
@@ -387,7 +390,7 @@ fn filter_greater_than() {
         })],
         ..Default::default()
     };
-    let docs = ops::find_documents(&pool, "posts", &def, &q).expect("Find failed");
+    let docs = ops::find_documents(&pool, "posts", &def, &q, None).expect("Find failed");
     let titles: Vec<_> = docs.iter().filter_map(|d| d.get_str("title")).collect();
     // "Delta Post", "Epsilon Post", "Gamma Post" are all > "D"
     assert_eq!(titles.len(), 3);
@@ -406,7 +409,7 @@ fn filter_less_than() {
         })],
         ..Default::default()
     };
-    let docs = ops::find_documents(&pool, "posts", &def, &q).expect("Find failed");
+    let docs = ops::find_documents(&pool, "posts", &def, &q, None).expect("Find failed");
     let titles: Vec<_> = docs.iter().filter_map(|d| d.get_str("title")).collect();
     // "Alpha Post" and "Beta Post" are < "C"
     assert_eq!(titles.len(), 2);
@@ -424,7 +427,7 @@ fn filter_greater_than_or_equal() {
         })],
         ..Default::default()
     };
-    let docs = ops::find_documents(&pool, "posts", &def, &q).expect("Find failed");
+    let docs = ops::find_documents(&pool, "posts", &def, &q, None).expect("Find failed");
     let titles: Vec<_> = docs.iter().filter_map(|d| d.get_str("title")).collect();
     // "Gamma Post" (=) is included
     assert!(titles.contains(&"Gamma Post"));
@@ -443,7 +446,7 @@ fn filter_less_than_or_equal() {
         })],
         ..Default::default()
     };
-    let docs = ops::find_documents(&pool, "posts", &def, &q).expect("Find failed");
+    let docs = ops::find_documents(&pool, "posts", &def, &q, None).expect("Find failed");
     let titles: Vec<_> = docs.iter().filter_map(|d| d.get_str("title")).collect();
     // "Alpha Post" (<) and "Beta Post" (=)
     assert_eq!(titles.len(), 2);
@@ -461,7 +464,7 @@ fn filter_in() {
         })],
         ..Default::default()
     };
-    let docs = ops::find_documents(&pool, "posts", &def, &q).expect("Find failed");
+    let docs = ops::find_documents(&pool, "posts", &def, &q, None).expect("Find failed");
     assert_eq!(docs.len(), 2);
     let statuses: Vec<_> = docs.iter().filter_map(|d| d.get_str("status")).collect();
     assert!(statuses.contains(&"draft"));
@@ -478,7 +481,7 @@ fn filter_not_in() {
         })],
         ..Default::default()
     };
-    let docs = ops::find_documents(&pool, "posts", &def, &q).expect("Find failed");
+    let docs = ops::find_documents(&pool, "posts", &def, &q, None).expect("Find failed");
     // NOT IN excludes draft + archived, but NULL NOT IN (...) is NULL (falsy)
     // so only the 2 published rows match
     assert_eq!(docs.len(), 2);
@@ -497,7 +500,7 @@ fn filter_exists() {
         })],
         ..Default::default()
     };
-    let docs = ops::find_documents(&pool, "posts", &def, &q).expect("Find failed");
+    let docs = ops::find_documents(&pool, "posts", &def, &q, None).expect("Find failed");
     // 4 rows have status set, 1 is NULL
     assert_eq!(docs.len(), 4);
 }
@@ -512,7 +515,7 @@ fn filter_not_exists() {
         })],
         ..Default::default()
     };
-    let docs = ops::find_documents(&pool, "posts", &def, &q).expect("Find failed");
+    let docs = ops::find_documents(&pool, "posts", &def, &q, None).expect("Find failed");
     // Only "Epsilon Post" has NULL status
     assert_eq!(docs.len(), 1);
     assert_eq!(docs[0].get_str("title"), Some("Epsilon Post"));
@@ -534,7 +537,7 @@ fn filter_or_clause() {
         ])],
         ..Default::default()
     };
-    let docs = ops::find_documents(&pool, "posts", &def, &q).expect("Find failed");
+    let docs = ops::find_documents(&pool, "posts", &def, &q, None).expect("Find failed");
     assert_eq!(docs.len(), 2);
     let titles: Vec<_> = docs.iter().filter_map(|d| d.get_str("title")).collect();
     assert!(titles.contains(&"Alpha Post"));
@@ -558,7 +561,7 @@ fn filter_combined_and() {
         ],
         ..Default::default()
     };
-    let docs = ops::find_documents(&pool, "posts", &def, &q).expect("Find failed");
+    let docs = ops::find_documents(&pool, "posts", &def, &q, None).expect("Find failed");
     assert_eq!(docs.len(), 1);
     assert_eq!(docs[0].get_str("title"), Some("Alpha Post"));
     assert_eq!(docs[0].get_str("status"), Some("published"));
@@ -571,6 +574,6 @@ fn count_with_filters() {
         field: "status".to_string(),
         op: query::FilterOp::Equals("published".to_string()),
     })];
-    let count = ops::count_documents(&pool, "posts", &def, &filters).expect("Count failed");
+    let count = ops::count_documents(&pool, "posts", &def, &filters, None).expect("Count failed");
     assert_eq!(count, 2);
 }

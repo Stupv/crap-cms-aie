@@ -13,7 +13,8 @@ use crate::core::Document;
 use crate::core::SharedRegistry;
 use crate::core::field::{FieldDefinition, FieldHooks, FieldType};
 use crate::core::validate::{FieldError, ValidationError};
-use crate::db::query::{self, AccessResult, FindQuery, Filter, FilterOp, FilterClause};
+use crate::config::LocaleConfig;
+use crate::db::query::{self, AccessResult, FindQuery, Filter, FilterOp, FilterClause, LocaleContext};
 
 /// Events that trigger hooks.
 #[derive(Debug, Clone)]
@@ -60,6 +61,7 @@ pub struct HookContext {
     pub collection: String,
     pub operation: String,
     pub data: HashMap<String, serde_json::Value>,
+    pub locale: Option<String>,
 }
 
 /// Raw pointer wrapper for injecting a transaction/connection into Lua CRUD
@@ -100,7 +102,7 @@ impl HookRunner {
 
         // Register CRUD functions on crap.collections (find, find_by_id, create, update, delete).
         // These read the active transaction from Lua app_data when called inside hooks.
-        register_crud_functions(&lua, registry)?;
+        register_crud_functions(&lua, registry, &config.locale)?;
 
         // Auto-load collections/*.lua and globals/*.lua
         let collections_dir = config_dir.join("collections");
@@ -214,6 +216,7 @@ impl HookRunner {
                     collection: String::new(),
                     operation: "init".to_string(),
                     data: HashMap::new(),
+                    locale: None,
                 };
                 call_hook_ref(&lua, hook_ref, ctx)?;
             }
@@ -282,6 +285,7 @@ impl HookRunner {
             collection: collection.to_string(),
             operation: operation.to_string(),
             data,
+            locale: None,
         };
         self.run_hooks(hooks, HookEvent::BeforeRead, ctx)?;
         Ok(())
@@ -325,6 +329,7 @@ impl HookRunner {
             collection: collection.to_string(),
             operation: operation.to_string(),
             data,
+            locale: None,
         };
 
         // run_hooks handles both collection-level hook refs and global registered hooks
@@ -443,6 +448,7 @@ impl HookRunner {
                 collection,
                 operation,
                 data,
+                locale: None,
             };
             let _ = runner.run_hooks(&hooks, event, ctx);
         });
@@ -475,6 +481,7 @@ impl HookRunner {
             collection: collection.to_string(),
             operation: operation.to_string(),
             data,
+            locale: None,
         };
 
         // run_hooks handles both collection-level hook refs and global registered hooks.
@@ -991,6 +998,22 @@ impl HookRunner {
     }
 }
 
+/// Build a Lua table from a HookContext (shared by all context table builders).
+fn context_to_lua_table(lua: &Lua, context: &HookContext) -> mlua::Result<mlua::Table> {
+    let ctx_table = lua.create_table()?;
+    ctx_table.set("collection", context.collection.as_str())?;
+    ctx_table.set("operation", context.operation.as_str())?;
+    if let Some(ref locale) = context.locale {
+        ctx_table.set("locale", locale.as_str())?;
+    }
+    let data_table = lua.create_table()?;
+    for (k, v) in &context.data {
+        data_table.set(k.as_str(), super::api::json_to_lua(lua, v)?)?;
+    }
+    ctx_table.set("data", data_table)?;
+    Ok(ctx_table)
+}
+
 /// Convert hook context data (JSON values) back to string map for query functions.
 /// Only includes fields that have parent table columns (skips array/has-many).
 pub fn hook_ctx_to_string_map(ctx: &HookContext) -> HashMap<String, String> {
@@ -1052,15 +1075,7 @@ fn call_before_broadcast_hook(
     let func: mlua::Function = module.get(func_name)
         .with_context(|| format!("Function '{}' not found in module '{}'", func_name, module_path))?;
 
-    let ctx_table = lua.create_table()?;
-    ctx_table.set("collection", context.collection.as_str())?;
-    ctx_table.set("operation", context.operation.as_str())?;
-    let data_table = lua.create_table()?;
-    for (k, v) in &context.data {
-        data_table.set(k.as_str(), super::api::json_to_lua(lua, v)?)?;
-    }
-    ctx_table.set("data", data_table)?;
-
+    let ctx_table = context_to_lua_table(lua, &context)?;
     let result: Value = func.call(ctx_table)?;
 
     match result {
@@ -1108,14 +1123,7 @@ fn call_registered_before_broadcast(
         let func: mlua::Function = list.raw_get(i)
             .with_context(|| format!("registered before_broadcast hook at index {} is not a function", i))?;
 
-        let ctx_table = lua.create_table()?;
-        ctx_table.set("collection", context.collection.as_str())?;
-        ctx_table.set("operation", context.operation.as_str())?;
-        let data_table = lua.create_table()?;
-        for (k, v) in &context.data {
-            data_table.set(k.as_str(), super::api::json_to_lua(lua, v)?)?;
-        }
-        ctx_table.set("data", data_table)?;
+        let ctx_table = context_to_lua_table(lua, &context)?;
 
         let result: Value = func.call(ctx_table)?;
 
@@ -1172,19 +1180,9 @@ fn call_registered_hooks(
             event.as_str(), i, context.collection
         );
 
-        // Build context table (same format as call_hook_ref)
-        let ctx_table = lua.create_table()?;
-        ctx_table.set("collection", context.collection.as_str())?;
-        ctx_table.set("operation", context.operation.as_str())?;
-        let data_table = lua.create_table()?;
-        for (k, v) in &context.data {
-            data_table.set(k.as_str(), super::api::json_to_lua(lua, v)?)?;
-        }
-        ctx_table.set("data", data_table)?;
+        let ctx_table = context_to_lua_table(lua, &context)?;
 
         let result: Value = func.call(ctx_table)?;
-
-        // Parse result back (same as call_hook_ref)
         match result {
             Value::Table(tbl) => {
                 let data_result: mlua::Result<mlua::Table> = tbl.get("data");
@@ -1331,15 +1329,7 @@ fn call_hook_ref(lua: &Lua, hook_ref: &str, context: HookContext) -> Result<Hook
         .with_context(|| format!("Function '{}' not found in module '{}'", func_name, module_path))?;
 
     // Convert context to Lua table
-    let ctx_table = lua.create_table()?;
-    ctx_table.set("collection", context.collection.as_str())?;
-    ctx_table.set("operation", context.operation.as_str())?;
-
-    let data_table = lua.create_table()?;
-    for (k, v) in &context.data {
-        data_table.set(k.as_str(), super::api::json_to_lua(lua, v)?)?;
-    }
-    ctx_table.set("data", data_table)?;
+    let ctx_table = context_to_lua_table(lua, &context)?;
 
     // Call the hook
     let result: Value = func.call(ctx_table)?;
@@ -1382,14 +1372,16 @@ fn get_tx_conn(lua: &Lua) -> mlua::Result<*const rusqlite::Connection> {
 
 /// Register the CRUD functions on `crap.collections` and `crap.globals`.
 /// They read the active connection from Lua app_data (set by `run_hooks_with_conn`).
-fn register_crud_functions(lua: &Lua, registry: SharedRegistry) -> Result<()> {
+fn register_crud_functions(lua: &Lua, registry: SharedRegistry, locale_config: &LocaleConfig) -> Result<()> {
     let crap: mlua::Table = lua.globals().get("crap")?;
     let collections: mlua::Table = crap.get("collections")?;
 
     // crap.collections.find(collection, query?)
     // query.depth (optional, default 0): populate relationship fields to this depth
+    // query.locale (optional): locale code or "all"
     {
         let reg = registry.clone();
+        let lc = locale_config.clone();
         let find_fn = lua.create_function(move |lua, (collection, query_table): (String, Option<mlua::Table>)| {
             let conn_ptr = get_tx_conn(lua)?;
             // Safety: pointer is valid while TxContext is in app_data
@@ -1399,6 +1391,10 @@ fn register_crud_functions(lua: &Lua, registry: SharedRegistry) -> Result<()> {
                 .and_then(|qt| qt.get::<i32>("depth").ok())
                 .unwrap_or(0)
                 .min(10).max(0);
+
+            let locale_str: Option<String> = query_table.as_ref()
+                .and_then(|qt| qt.get::<Option<String>>("locale").ok().flatten());
+            let locale_ctx = LocaleContext::from_locale_string(locale_str.as_deref(), &lc);
 
             let def = {
                 let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
@@ -1416,12 +1412,12 @@ fn register_crud_functions(lua: &Lua, registry: SharedRegistry) -> Result<()> {
                 None => FindQuery::default(),
             };
 
-            query::validate_query_fields(&def, &find_query)
+            query::validate_query_fields(&def, &find_query, locale_ctx.as_ref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("find error: {}", e)))?;
 
-            let mut docs = query::find(conn, &collection, &def, &find_query)
+            let mut docs = query::find(conn, &collection, &def, &find_query, locale_ctx.as_ref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("find error: {}", e)))?;
-            let total = query::count(conn, &collection, &def, &find_query.filters)
+            let total = query::count(conn, &collection, &def, &find_query.filters, locale_ctx.as_ref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("count error: {}", e)))?;
 
             // Hydrate join table data + populate relationships
@@ -1448,8 +1444,10 @@ fn register_crud_functions(lua: &Lua, registry: SharedRegistry) -> Result<()> {
 
     // crap.collections.find_by_id(collection, id, opts?)
     // opts.depth (optional, default 0): populate relationship fields to this depth
+    // opts.locale (optional): locale code or "all"
     {
         let reg = registry.clone();
+        let lc = locale_config.clone();
         let find_by_id_fn = lua.create_function(move |lua, (collection, id, opts): (String, String, Option<mlua::Table>)| {
             let conn_ptr = get_tx_conn(lua)?;
             let conn = unsafe { &*conn_ptr };
@@ -1458,6 +1456,10 @@ fn register_crud_functions(lua: &Lua, registry: SharedRegistry) -> Result<()> {
                 .and_then(|o| o.get::<i32>("depth").ok())
                 .unwrap_or(0)
                 .min(10).max(0);
+
+            let locale_str: Option<String> = opts.as_ref()
+                .and_then(|o| o.get::<Option<String>>("locale").ok().flatten());
+            let locale_ctx = LocaleContext::from_locale_string(locale_str.as_deref(), &lc);
 
             let def = {
                 let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
@@ -1470,7 +1472,7 @@ fn register_crud_functions(lua: &Lua, registry: SharedRegistry) -> Result<()> {
                     ))?
             };
 
-            let mut doc = query::find_by_id(conn, &collection, &def, &id)
+            let mut doc = query::find_by_id(conn, &collection, &def, &id, locale_ctx.as_ref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("find_by_id error: {}", e)))?;
 
             if let Some(ref mut d) = doc {
@@ -1495,12 +1497,18 @@ fn register_crud_functions(lua: &Lua, registry: SharedRegistry) -> Result<()> {
         collections.set("find_by_id", find_by_id_fn)?;
     }
 
-    // crap.collections.create(collection, data)
+    // crap.collections.create(collection, data, opts?)
+    // opts.locale (optional): locale code to write to
     {
         let reg = registry.clone();
-        let create_fn = lua.create_function(move |lua, (collection, data_table): (String, mlua::Table)| {
+        let lc = locale_config.clone();
+        let create_fn = lua.create_function(move |lua, (collection, data_table, opts): (String, mlua::Table, Option<mlua::Table>)| {
             let conn_ptr = get_tx_conn(lua)?;
             let conn = unsafe { &*conn_ptr };
+
+            let locale_str: Option<String> = opts.as_ref()
+                .and_then(|o| o.get::<Option<String>>("locale").ok().flatten());
+            let locale_ctx = LocaleContext::from_locale_string(locale_str.as_deref(), &lc);
 
             let def = {
                 let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
@@ -1514,7 +1522,7 @@ fn register_crud_functions(lua: &Lua, registry: SharedRegistry) -> Result<()> {
             };
 
             let data = lua_table_to_hashmap(&data_table)?;
-            let doc = query::create(conn, &collection, &def, &data)
+            let doc = query::create(conn, &collection, &def, &data, locale_ctx.as_ref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("create error: {}", e)))?;
 
             document_to_lua_table(lua, &doc)
@@ -1522,12 +1530,18 @@ fn register_crud_functions(lua: &Lua, registry: SharedRegistry) -> Result<()> {
         collections.set("create", create_fn)?;
     }
 
-    // crap.collections.update(collection, id, data)
+    // crap.collections.update(collection, id, data, opts?)
+    // opts.locale (optional): locale code to write to
     {
         let reg = registry.clone();
-        let update_fn = lua.create_function(move |lua, (collection, id, data_table): (String, String, mlua::Table)| {
+        let lc = locale_config.clone();
+        let update_fn = lua.create_function(move |lua, (collection, id, data_table, opts): (String, String, mlua::Table, Option<mlua::Table>)| {
             let conn_ptr = get_tx_conn(lua)?;
             let conn = unsafe { &*conn_ptr };
+
+            let locale_str: Option<String> = opts.as_ref()
+                .and_then(|o| o.get::<Option<String>>("locale").ok().flatten());
+            let locale_ctx = LocaleContext::from_locale_string(locale_str.as_deref(), &lc);
 
             let def = {
                 let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
@@ -1541,7 +1555,7 @@ fn register_crud_functions(lua: &Lua, registry: SharedRegistry) -> Result<()> {
             };
 
             let data = lua_table_to_hashmap(&data_table)?;
-            let doc = query::update(conn, &collection, &def, &id, &data)
+            let doc = query::update(conn, &collection, &def, &id, &data, locale_ctx.as_ref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("update error: {}", e)))?;
 
             document_to_lua_table(lua, &doc)
@@ -1567,12 +1581,18 @@ fn register_crud_functions(lua: &Lua, registry: SharedRegistry) -> Result<()> {
 
     let globals: mlua::Table = crap.get("globals")?;
 
-    // crap.globals.get(slug)
+    // crap.globals.get(slug, opts?)
+    // opts.locale (optional): locale code or "all"
     {
         let reg = registry.clone();
-        let get_fn = lua.create_function(move |lua, slug: String| {
+        let lc = locale_config.clone();
+        let get_fn = lua.create_function(move |lua, (slug, opts): (String, Option<mlua::Table>)| {
             let conn_ptr = get_tx_conn(lua)?;
             let conn = unsafe { &*conn_ptr };
+
+            let locale_str: Option<String> = opts.as_ref()
+                .and_then(|o| o.get::<Option<String>>("locale").ok().flatten());
+            let locale_ctx = LocaleContext::from_locale_string(locale_str.as_deref(), &lc);
 
             let def = {
                 let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
@@ -1585,7 +1605,7 @@ fn register_crud_functions(lua: &Lua, registry: SharedRegistry) -> Result<()> {
                     ))?
             };
 
-            let doc = query::get_global(conn, &slug, &def)
+            let doc = query::get_global(conn, &slug, &def, locale_ctx.as_ref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("get_global error: {}", e)))?;
 
             document_to_lua_table(lua, &doc)
@@ -1593,12 +1613,18 @@ fn register_crud_functions(lua: &Lua, registry: SharedRegistry) -> Result<()> {
         globals.set("get", get_fn)?;
     }
 
-    // crap.globals.update(slug, data)
+    // crap.globals.update(slug, data, opts?)
+    // opts.locale (optional): locale code to write to
     {
         let reg = registry.clone();
-        let update_fn = lua.create_function(move |lua, (slug, data_table): (String, mlua::Table)| {
+        let lc = locale_config.clone();
+        let update_fn = lua.create_function(move |lua, (slug, data_table, opts): (String, mlua::Table, Option<mlua::Table>)| {
             let conn_ptr = get_tx_conn(lua)?;
             let conn = unsafe { &*conn_ptr };
+
+            let locale_str: Option<String> = opts.as_ref()
+                .and_then(|o| o.get::<Option<String>>("locale").ok().flatten());
+            let locale_ctx = LocaleContext::from_locale_string(locale_str.as_deref(), &lc);
 
             let def = {
                 let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
@@ -1612,7 +1638,7 @@ fn register_crud_functions(lua: &Lua, registry: SharedRegistry) -> Result<()> {
             };
 
             let data = lua_table_to_hashmap(&data_table)?;
-            let doc = query::update_global(conn, &slug, &def, &data)
+            let doc = query::update_global(conn, &slug, &def, &data, locale_ctx.as_ref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("update_global error: {}", e)))?;
 
             document_to_lua_table(lua, &doc)

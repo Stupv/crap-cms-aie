@@ -1,10 +1,10 @@
 {{#> layout/base title="Forbidden"}}
 <div class="error-page">
   <h1>403</h1>
-  <p>You don't have permission to access this resource.</p>
+  <p>{{t "error_forbidden"}}</p>
   <a class="button button--primary" href="/admin"
     hx-get="/admin" hx-target="body" hx-push-url="true">
-    Go to Dashboard
+    {{t "go_to_dashboard"}}
   </a>
 </div>
 {{/layout/base}}
