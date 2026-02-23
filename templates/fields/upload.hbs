@@ -2,17 +2,45 @@
   {{label}}
   {{#if required}}<span class="required">*</span>{{/if}}
 </label>
-<select
-  id="field-{{name}}"
-  name="{{name}}"
-  data-field-type="upload"
-  {{#if required}}required{{/if}}
-  {{#if error}}class="form__input--error"{{/if}}
->
-  <option value="">-- Select --</option>
-  {{#each relationship_options}}
-  <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-  {{/each}}
-</select>
+<div class="upload-field" data-upload-field>
+  <div class="upload-field__preview" {{#unless selected_preview_url}}style="display: none;"{{/unless}}>
+    {{#if selected_preview_url}}
+    <img src="{{selected_preview_url}}" alt="Preview" />
+    {{/if}}
+  </div>
+  <div class="upload-field__info" {{#unless selected_filename}}style="display: none;"{{/unless}}>
+    {{#if selected_filename}}
+    <span class="material-symbols-outlined" style="font-size: 16px;">description</span>
+    <span class="upload-field__filename">{{selected_filename}}</span>
+    {{/if}}
+  </div>
+  <select
+    id="field-{{name}}"
+    name="{{name}}"
+    data-field-type="upload"
+    data-upload-select
+    {{#if required}}required{{/if}}
+    {{#if error}}class="form__input--error"{{/if}}
+  >
+    <option value="">-- Select --</option>
+    {{#each relationship_options}}
+    <option value="{{this.value}}"
+      {{#if this.selected}}selected{{/if}}
+      {{#if this.thumbnail_url}}data-thumbnail="{{this.thumbnail_url}}"{{/if}}
+      {{#if this.is_image}}data-is-image="true"{{/if}}
+      data-filename="{{this.filename}}"
+    >{{this.label}}</option>
+    {{/each}}
+  </select>
+  {{#if relationship_collection}}
+  <div class="upload-field__actions">
+    <a class="relationship-field__action" href="/admin/collections/{{relationship_collection}}/create"
+      hx-get="/admin/collections/{{relationship_collection}}/create" hx-target="body" hx-push-url="true">
+      <span class="material-symbols-outlined" style="font-size: 16px;">upload</span>
+      Upload new
+    </a>
+  </div>
+  {{/if}}
+</div>
 {{#if error}}<p class="form__error">{{error}}</p>{{/if}}
 {{#if description}}<p class="form__help">{{description}}</p>{{/if}}

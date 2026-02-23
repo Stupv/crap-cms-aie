@@ -12,3 +12,7 @@ dev_mode = true
 [auth]
 # secret = "your-secret-here"   # omit to auto-generate (tokens won't survive restarts)
 # token_expiry = 7200           # seconds, default 2 hours
+
+[live]
+# enabled = true                # enable SSE + gRPC Subscribe for live mutation events
+# channel_capacity = 1024       # broadcast channel buffer size

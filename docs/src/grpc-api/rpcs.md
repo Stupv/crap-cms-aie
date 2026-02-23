@@ -1,6 +1,6 @@
 # RPCs
 
-All 14 RPCs with request/response shapes and grpcurl examples.
+All 15 RPCs with request/response shapes and grpcurl examples.
 
 ## Find
 
@@ -337,4 +337,40 @@ grpcurl -plaintext -d '{"slug": "posts"}' \
 # Describe a global
 grpcurl -plaintext -d '{"slug": "site_settings", "is_global": true}' \
     localhost:50051 crap.ContentAPI/DescribeCollection
+```
+
+## Subscribe
+
+Subscribe to real-time mutation events (server streaming). See [Live Updates](../live-updates/grpc-streaming.md) for full documentation.
+
+```protobuf
+message SubscribeRequest {
+  repeated string collections = 1;  // empty = all accessible
+  repeated string globals = 2;      // empty = all accessible
+  repeated string operations = 3;   // "create","update","delete" — empty = all
+  string token = 4;                 // auth token
+}
+
+message MutationEvent {
+  uint64 sequence = 1;
+  string timestamp = 2;
+  string target = 3;
+  string operation = 4;
+  string collection = 5;
+  string document_id = 6;
+  google.protobuf.Struct data = 7;
+}
+```
+
+```bash
+# Subscribe to all events
+grpcurl -plaintext -d '{}' \
+    localhost:50051 crap.ContentAPI/Subscribe
+
+# Subscribe to specific collections with auth
+grpcurl -plaintext -d '{
+    "collections": ["posts"],
+    "operations": ["create", "update"],
+    "token": "your-jwt-token"
+}' localhost:50051 crap.ContentAPI/Subscribe
 ```

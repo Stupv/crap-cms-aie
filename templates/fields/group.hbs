@@ -1,13 +1,18 @@
-<fieldset class="form__group">
+<fieldset class="form__group {{#if collapsed}}form__group--collapsed{{/if}}" data-collapsible data-group-name="{{name}}">
   <legend>
-    {{label}}
-    {{#if required}}<span class="required">*</span>{{/if}}
+    <button type="button" class="form__group-toggle" onclick="toggleGroup(this)">
+      <span class="form__group-chevron material-symbols-outlined">expand_more</span>
+      {{label}}
+      {{#if required}}<span class="required">*</span>{{/if}}
+    </button>
   </legend>
-  {{#each sub_fields}}
-  <div class="form__field">
-    {{{render_field this}}}
+  <div class="form__group-body">
+    {{#each sub_fields}}
+    <div class="form__field">
+      {{{render_field this}}}
+    </div>
+    {{/each}}
   </div>
-  {{/each}}
   {{#if error}}<p class="form__error">{{error}}</p>{{/if}}
   {{#if description}}<p class="form__help">{{description}}</p>{{/if}}
 </fieldset>

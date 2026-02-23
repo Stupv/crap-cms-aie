@@ -39,6 +39,10 @@ from_name = "Crap CMS"  # Sender display name
 
 [hooks]
 on_init = []             # Lua function refs to run at startup (with CRUD access)
+
+[live]
+enabled = true           # Enable SSE + gRPC Subscribe for live mutation events
+channel_capacity = 1024  # Broadcast channel buffer size
 ```
 
 ## Section Details
@@ -101,6 +105,15 @@ When configured, email enables password reset ("Forgot password?" link on login)
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `on_init` | string[] | `[]` | Lua function refs to execute at startup. These run synchronously with CRUD access — failure aborts startup. |
+
+### `[live]`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | `true` | Enable live event streaming (SSE + gRPC Subscribe). |
+| `channel_capacity` | integer | `1024` | Internal broadcast channel buffer size. Increase if subscribers lag. |
+
+See [Live Updates](../live-updates/overview.md) for full documentation.
 
 ## Example
 

@@ -126,6 +126,9 @@ pub struct FieldAdmin {
     pub readonly: bool,
     #[serde(default)]
     pub width: Option<String>,
+    /// For group fields: start collapsed in the admin UI.
+    #[serde(default)]
+    pub collapsed: bool,
 }
 
 /// Lua function references for field-level access control (read/create/update).

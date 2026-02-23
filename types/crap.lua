@@ -52,6 +52,7 @@ crap = {}
 --- @field hidden?      boolean  Hide from admin UI (default: false).
 --- @field readonly?    boolean  Non-editable in admin (default: false).
 --- @field width?       crap.FieldWidth  Field width: "full", "half", or "third".
+--- @field collapsed?   boolean  For group fields: start collapsed in admin UI (default: false).
 --- @field position?    string   "main" or "sidebar".
 --- @field condition?   string   Lua function ref for conditional show/hide.
 --- @field components?  table    Override admin UI partials for this field.
@@ -130,6 +131,7 @@ crap = {}
 --- @field after_read?      string[] Hook refs to run after read, before response.
 --- @field before_delete?   string[] Hook refs to run before delete.
 --- @field after_delete?    string[] Hook refs to run after delete.
+--- @field before_broadcast? string[] Hook refs to run before broadcasting live update events. Can suppress or transform event data. No CRUD access.
 
 --- @class crap.CollectionAccess
 --- @field read?   string Hook ref for read access control.
@@ -181,6 +183,7 @@ crap = {}
 --- @field admin?      crap.CollectionAdmin       Admin UI options.
 --- @field hooks?      crap.CollectionHooks       Hook references.
 --- @field access?     crap.CollectionAccess      Access control function refs.
+--- @field live?       boolean|string              Live event broadcasting. `false` to disable, string for Lua function ref that receives `{ collection, operation, data }` and returns boolean. Absent = enabled (broadcast all).
 
 
 -- ── Global Types ─────────────────────────────────────────────
@@ -190,6 +193,7 @@ crap = {}
 --- @field fields?  crap.FieldDefinition[]   Field definitions.
 --- @field hooks?   crap.CollectionHooks     Hook references.
 --- @field access?  crap.CollectionAccess    Access control function refs.
+--- @field live?    boolean|string           Live event broadcasting. Same as collection `live`.
 
 
 -- ── Document Types ───────────────────────────────────────────
@@ -381,6 +385,7 @@ crap.hooks = {}
 --- | "after_read"
 --- | "before_delete"
 --- | "after_delete"
+--- | "before_broadcast"
 --- | "after_login"
 --- | "after_logout"
 --- | "on_init"

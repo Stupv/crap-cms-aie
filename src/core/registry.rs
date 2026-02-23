@@ -66,6 +66,7 @@ mod tests {
             auth: None,
             upload: None,
             access: CollectionAccess::default(),
+            live: None,
         }
     }
 

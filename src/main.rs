@@ -154,6 +154,16 @@ async fn main() -> Result<()> {
         }
     }
 
+    // Create EventBus for live updates (if enabled)
+    let event_bus = if config.live.enabled {
+        let bus = core::event::EventBus::new(config.live.channel_capacity);
+        info!("Live event streaming enabled (capacity: {})", config.live.channel_capacity);
+        Some(bus)
+    } else {
+        info!("Live event streaming disabled");
+        None
+    };
+
     // Start servers
     let admin_addr = format!("{}:{}", config.server.host, config.server.admin_port);
     let grpc_addr = format!("{}:{}", config.server.host, config.server.grpc_port);
@@ -169,6 +179,7 @@ async fn main() -> Result<()> {
         registry.clone(),
         hook_runner.clone(),
         jwt_secret.clone(),
+        event_bus.clone(),
     );
 
     let grpc_handle = api::start_server(
@@ -180,6 +191,7 @@ async fn main() -> Result<()> {
         &config.depth,
         &config,
         &config_dir,
+        event_bus,
     );
 
     tokio::try_join!(admin_handle, grpc_handle)

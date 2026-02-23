@@ -546,3 +546,27 @@ create_with_upload() {
     }
   }" "$ADDR" crap.ContentAPI/Create
 }
+
+# ── Subscribe (Live Updates) ──────────────────────────────────
+
+# Subscribe to all mutation events (streams indefinitely)
+subscribe_all() {
+  grpcurl -plaintext -d '{}' "$ADDR" crap.ContentAPI/Subscribe
+}
+
+# Subscribe to specific collections
+subscribe_posts() {
+  grpcurl -plaintext -d '{
+    "collections": ["posts"]
+  }' "$ADDR" crap.ContentAPI/Subscribe
+}
+
+# Subscribe with auth and operation filter
+subscribe_auth() {
+  local token="${1:?Usage: subscribe_auth <token>}"
+  grpcurl -plaintext -d "{
+    \"collections\": [\"posts\"],
+    \"operations\": [\"create\", \"update\"],
+    \"token\": \"$token\"
+  }" "$ADDR" crap.ContentAPI/Subscribe
+}

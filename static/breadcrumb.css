@@ -1,10 +1,38 @@
-.breadcrumb > ul {
-  list-style-type: none;
-  padding: unset;
-  display: flex;
-  gap: 0.5rem;
+.breadcrumb {
+  margin-bottom: var(--space-md);
 }
 
-.breadcrumb > ul > li:after {
+.breadcrumb > ol {
+  list-style-type: none;
+  padding: unset;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--text-sm);
+}
+
+.breadcrumb > ol > li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--text-tertiary);
+}
+
+.breadcrumb > ol > li:not(:last-child)::after {
   content: "/";
+  color: var(--border-color-hover);
+}
+
+.breadcrumb > ol > li > a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.breadcrumb > ol > li > a:hover {
+  color: var(--color-primary);
+}
+
+.breadcrumb > ol > li > span {
+  color: var(--text-primary);
 }

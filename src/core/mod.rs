@@ -2,6 +2,7 @@
 
 pub mod auth;
 pub mod email;
+pub mod event;
 pub mod field;
 pub mod collection;
 pub mod document;

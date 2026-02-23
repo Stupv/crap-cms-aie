@@ -53,6 +53,7 @@ fn make_posts_def() -> CollectionDefinition {
         auth: None,
         upload: None,
         access: CollectionAccess::default(),
+        live: None,
     }
 }
 

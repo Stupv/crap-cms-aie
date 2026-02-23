@@ -19,6 +19,7 @@ service ContentAPI {
   rpc VerifyEmail (VerifyEmailRequest) returns (VerifyEmailResponse);
   rpc ListCollections (ListCollectionsRequest) returns (ListCollectionsResponse);
   rpc DescribeCollection (DescribeCollectionRequest) returns (DescribeCollectionResponse);
+  rpc Subscribe (SubscribeRequest) returns (stream MutationEvent);
 }
 
 message FindRequest {
@@ -205,4 +206,21 @@ message BlockInfo {
 message SelectOptionInfo {
   string label = 1;
   string value = 2;
+}
+
+message SubscribeRequest {
+  repeated string collections = 1;
+  repeated string globals = 2;
+  repeated string operations = 3;
+  string token = 4;
+}
+
+message MutationEvent {
+  uint64 sequence = 1;
+  string timestamp = 2;
+  string target = 3;
+  string operation = 4;
+  string collection = 5;
+  string document_id = 6;
+  google.protobuf.Struct data = 7;
 }

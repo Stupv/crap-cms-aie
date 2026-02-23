@@ -7,6 +7,7 @@
 @import url("/static/lists.css");
 @import url("/static/tables.css");
 @import url("/static/breadcrumb.css");
+@import url("/static/edit-sidebar.css");
 @import url("/static/themes.css");
 
 :root {
@@ -40,6 +41,7 @@
 
   /* Surfaces */
   --bg-body: #f4f7fc;
+  --bg-surface: #f8f9fb;
   --bg-elevated: #fff;
   --bg-hover: rgba(0, 0, 0, 0.04);
 
@@ -91,6 +93,7 @@
   --input-bg: var(--bg-elevated);
   --input-border: var(--border-color-hover);
   --input-height: 36px;
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(0,0,0,0.45)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 
   /* Semantic - Header */
   --header-bg: var(--bg-elevated);

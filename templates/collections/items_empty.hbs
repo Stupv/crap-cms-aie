@@ -1,7 +1,10 @@
 <div class="empty-state">
-  <p>No items yet.</p>
+  <span class="material-symbols-outlined" style="font-size: 48px; color: var(--text-tertiary);">folder_open</span>
+  <p>No {{collection.display_name}} yet</p>
+  <p style="font-size: var(--text-sm); color: var(--text-tertiary);">Create your first item to get started.</p>
   <a class="button button--primary" href="/admin/collections/{{collection.slug}}/create"
     hx-get="/admin/collections/{{collection.slug}}/create" hx-target="body" hx-push-url="true">
-    Create your first {{collection.singular_name}}
+    <span class="material-symbols-outlined" style="font-size: 18px;">add</span>
+    Create {{collection.singular_name}}
   </a>
 </div>

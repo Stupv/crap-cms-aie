@@ -11,6 +11,7 @@ use anyhow::Context as _;
 use crate::admin::AdminState;
 use crate::core::auth::{AuthUser, Claims};
 use crate::core::field::FieldType;
+use crate::core::upload;
 use crate::core::validate::ValidationError;
 use crate::db::{ops, query};
 use crate::db::query::AccessResult;
@@ -137,6 +138,10 @@ pub async fn edit_form(
             "id": c.sub,
             "collection": c.collection,
         })),
+        "breadcrumbs": [
+            { "label": "Dashboard", "url": "/admin" },
+            { "label": def.display_name() },
+        ],
     });
 
     render_or_error(&state, "globals/edit", &data).into_response()
@@ -211,6 +216,12 @@ pub async fn update_action(
             state.hook_runner.fire_after_event(
                 &def.hooks, &def.fields, HookEvent::AfterChange,
                 slug.clone(), "update".to_string(), doc.fields.clone(),
+            );
+            state.hook_runner.publish_event(
+                &state.event_bus, &def.hooks, def.live.as_ref(),
+                crate::core::event::EventTarget::Global,
+                crate::core::event::EventOperation::Update,
+                slug.clone(), doc.id.clone(), doc.fields.clone(),
             );
             redirect_response(&format!("/admin/globals/{}", slug))
         }
@@ -318,6 +329,16 @@ fn build_field_contexts(
                 }).collect();
                 ctx["sub_fields"] = serde_json::json!(sub_fields);
             }
+            FieldType::Group => {
+                if field.admin.collapsed {
+                    ctx["collapsed"] = serde_json::json!(true);
+                }
+            }
+            FieldType::Upload => {
+                if let Some(ref rc) = field.relationship {
+                    ctx["relationship_collection"] = serde_json::json!(rc.collection);
+                }
+            }
             _ => {}
         }
 
@@ -397,6 +418,76 @@ fn enrich_field_contexts(
                     _ => Vec::new(),
                 };
                 ctx["rows"] = serde_json::json!(rows);
+            }
+            FieldType::Upload => {
+                if let Some(ref rc) = field_def.relationship {
+                    if let Some(related_def) = reg.get_collection(&rc.collection) {
+                        let title_field = related_def.title_field().map(|s| s.to_string());
+                        let admin_thumbnail = related_def.upload.as_ref()
+                            .and_then(|u| u.admin_thumbnail.as_ref().cloned());
+                        let find_query = query::FindQuery::default();
+                        if let Ok(mut docs) = query::find(&conn, &rc.collection, related_def, &find_query) {
+                            if let Some(ref upload_config) = related_def.upload {
+                                if upload_config.enabled {
+                                    for doc in &mut docs {
+                                        upload::assemble_sizes_object(doc, upload_config);
+                                    }
+                                }
+                            }
+                            let current_value = ctx.get("value")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let mut selected_preview_url = None;
+                            let mut selected_filename = None;
+                            let options: Vec<_> = docs.iter().map(|doc| {
+                                let label = doc.get_str("filename")
+                                    .or_else(|| title_field.as_ref().and_then(|f| doc.get_str(f)))
+                                    .unwrap_or(&doc.id);
+                                let mime = doc.get_str("mime_type").unwrap_or("");
+                                let is_image = mime.starts_with("image/");
+                                let thumb_url = if is_image {
+                                    admin_thumbnail.as_ref()
+                                        .and_then(|thumb_name| {
+                                            doc.fields.get("sizes")
+                                                .and_then(|v| v.get(thumb_name))
+                                                .and_then(|v| v.get("url"))
+                                                .and_then(|v| v.as_str())
+                                                .map(|s| s.to_string())
+                                        })
+                                        .or_else(|| doc.get_str("url").map(|s| s.to_string()))
+                                } else {
+                                    None
+                                };
+                                let is_selected = doc.id == current_value;
+                                if is_selected {
+                                    selected_preview_url = thumb_url.clone();
+                                    selected_filename = Some(label.to_string());
+                                }
+                                let mut opt = serde_json::json!({
+                                    "value": doc.id,
+                                    "label": label,
+                                    "selected": is_selected,
+                                });
+                                if let Some(ref url) = thumb_url {
+                                    opt["thumbnail_url"] = serde_json::json!(url);
+                                }
+                                if is_image {
+                                    opt["is_image"] = serde_json::json!(true);
+                                }
+                                opt["filename"] = serde_json::json!(label);
+                                opt
+                            }).collect();
+                            ctx["relationship_options"] = serde_json::json!(options);
+                            if let Some(url) = selected_preview_url {
+                                ctx["selected_preview_url"] = serde_json::json!(url);
+                            }
+                            if let Some(fname) = selected_filename {
+                                ctx["selected_filename"] = serde_json::json!(fname);
+                            }
+                        }
+                    }
+                }
             }
             _ => {}
         }

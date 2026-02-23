@@ -755,9 +755,10 @@ class CrapRichtext extends HTMLElement {
       }
 
       .richtext {
-        border: 1px solid var(--border-color, #e0e0e0);
+        border: 1px solid var(--input-border, #e0e0e0);
         border-radius: var(--radius-md, 6px);
-        background: var(--bg-elevated, #fff);
+        background: var(--input-bg, #fff);
+        box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,0.04));
         overflow: hidden;
       }
 
@@ -774,7 +775,6 @@ class CrapRichtext extends HTMLElement {
         gap: 2px;
         padding: 6px 8px;
         border-bottom: 1px solid var(--border-color, #e0e0e0);
-        background: var(--bg-body, #f5f5f5);
       }
 
       .richtext__toolbar-group {
@@ -870,7 +870,7 @@ class CrapRichtext extends HTMLElement {
       .richtext__editor .ProseMirror strong { font-weight: 600; }
 
       .richtext__editor .ProseMirror code {
-        background: rgba(0, 0, 0, 0.06);
+        background: var(--bg-hover, rgba(0, 0, 0, 0.06));
         padding: 0.15em 0.35em;
         border-radius: 3px;
         font-family: monospace;
@@ -878,7 +878,7 @@ class CrapRichtext extends HTMLElement {
       }
 
       .richtext__editor .ProseMirror pre {
-        background: rgba(0, 0, 0, 0.04);
+        background: var(--bg-hover, rgba(0, 0, 0, 0.04));
         border-radius: var(--radius-sm, 4px);
         padding: 12px 16px;
         margin: 0.75em 0;
@@ -961,6 +961,156 @@ class CrapRichtext extends HTMLElement {
 }
 
 customElements.define('crap-richtext', CrapRichtext);
+
+
+/* ── Upload field previews ─────────────────────────────────────── */
+
+/**
+ * Initialize upload field preview behavior.
+ * Updates the preview image and file info when the user selects
+ * a different upload from the dropdown.
+ */
+function initUploadPreviews() {
+  document.querySelectorAll('[data-upload-field]').forEach(
+    /** @param {HTMLElement} wrapper */ (wrapper) => {
+      const select = /** @type {HTMLSelectElement | null} */ (wrapper.querySelector('[data-upload-select]'));
+      if (!select) return;
+      // Skip if already initialized
+      if (select.dataset.previewInit) return;
+      select.dataset.previewInit = '1';
+
+      const preview = wrapper.querySelector('.upload-field__preview');
+      const info = wrapper.querySelector('.upload-field__info');
+
+      select.addEventListener('change', () => {
+        const option = select.options[select.selectedIndex];
+        if (!option || !option.value) {
+          if (preview) preview.style.display = 'none';
+          if (info) info.style.display = 'none';
+          return;
+        }
+
+        const thumbnail = option.getAttribute('data-thumbnail');
+        const filename = option.getAttribute('data-filename');
+        const isImage = option.getAttribute('data-is-image') === 'true';
+
+        // Update preview
+        if (preview) {
+          if (thumbnail && isImage) {
+            preview.innerHTML = '<img src="' + thumbnail + '" alt="Preview" />';
+            preview.style.display = '';
+          } else {
+            preview.style.display = 'none';
+          }
+        }
+
+        // Update info
+        if (info) {
+          if (filename) {
+            info.innerHTML =
+              '<span class="material-symbols-outlined" style="font-size: 16px;">description</span>' +
+              '<span class="upload-field__filename">' + filename + '</span>';
+            info.style.display = '';
+          } else {
+            info.style.display = 'none';
+          }
+        }
+      });
+    }
+  );
+}
+
+document.addEventListener('DOMContentLoaded', initUploadPreviews);
+document.addEventListener('htmx:afterSettle', initUploadPreviews);
+
+
+/* ── Relationship field view links ─────────────────────────────── */
+
+/**
+ * Initialize "View" links on relationship fields.
+ * Shows/hides the link based on the select's current value and updates
+ * the href to point to the selected item's edit page.
+ */
+function initRelationshipViews() {
+  document.querySelectorAll('.relationship-field__view-link').forEach(
+    /** @param {HTMLAnchorElement} link */ (link) => {
+      const selectId = link.getAttribute('data-view-for');
+      const collection = link.getAttribute('data-collection');
+      if (!selectId || !collection) return;
+
+      const select = /** @type {HTMLSelectElement | null} */ (document.getElementById(selectId));
+      if (!select) return;
+
+      /** Update the view link visibility and href */
+      const update = () => {
+        const val = select.value;
+        if (val) {
+          const href = '/admin/collections/' + collection + '/' + val;
+          link.setAttribute('href', href);
+          link.setAttribute('hx-get', href);
+          link.style.display = '';
+        } else {
+          link.style.display = 'none';
+        }
+      };
+
+      update();
+      select.addEventListener('change', update);
+    }
+  );
+}
+
+document.addEventListener('DOMContentLoaded', initRelationshipViews);
+document.addEventListener('htmx:afterSettle', initRelationshipViews);
+
+
+/* ── Collapsible group fields ──────────────────────────────────── */
+
+/**
+ * Toggle a group fieldset's collapsed state.
+ * Persists the state to localStorage keyed by group name.
+ *
+ * @param {HTMLButtonElement} btn - The toggle button inside the legend.
+ */
+function toggleGroup(btn) {
+  const fieldset = btn.closest('[data-collapsible]');
+  if (!fieldset) return;
+  fieldset.classList.toggle('form__group--collapsed');
+  const name = fieldset.getAttribute('data-group-name');
+  if (name) {
+    const key = 'crap-group-' + name;
+    if (fieldset.classList.contains('form__group--collapsed')) {
+      localStorage.setItem(key, '1');
+    } else {
+      localStorage.removeItem(key);
+    }
+  }
+}
+
+/**
+ * Restore group collapsed states from localStorage.
+ * Runs on DOMContentLoaded and htmx:afterSettle.
+ */
+function restoreGroupStates() {
+  document.querySelectorAll('[data-collapsible][data-group-name]').forEach(
+    /** @param {HTMLElement} fieldset */ (fieldset) => {
+      const name = fieldset.getAttribute('data-group-name');
+      if (!name) return;
+      const key = 'crap-group-' + name;
+      const stored = localStorage.getItem(key);
+      if (stored === '1') {
+        fieldset.classList.add('form__group--collapsed');
+      } else if (stored === null) {
+        // No override stored — keep the server-rendered default
+      } else {
+        fieldset.classList.remove('form__group--collapsed');
+      }
+    }
+  );
+}
+
+document.addEventListener('DOMContentLoaded', restoreGroupStates);
+document.addEventListener('htmx:afterSettle', restoreGroupStates);
 
 
 /* ── Array field repeater ──────────────────────────────────────── */
@@ -1078,3 +1228,62 @@ function removeArrayRow(btn) {
     );
   }
 }
+
+/* ── Live event stream (SSE) ─────────────────────────────────── */
+
+/**
+ * Connect to the admin SSE endpoint for real-time mutation notifications.
+ * Shows a toast when documents in the current collection are mutated.
+ * Auto-reconnects on connection loss (EventSource default behavior).
+ */
+(function initLiveEvents() {
+  if (typeof EventSource === 'undefined') return;
+
+  /** @type {EventSource | null} */
+  let source = null;
+
+  function connect() {
+    source = new EventSource('/admin/events');
+
+    source.addEventListener('mutation', /** @param {MessageEvent} e */ (e) => {
+      try {
+        const event = JSON.parse(e.data);
+        const op = event.operation;
+        const collection = event.collection;
+        const target = event.target;
+
+        // Build a descriptive message
+        const label = target === 'global' ? collection : collection;
+        /** @type {Record<string, string>} */
+        const opLabels = {
+          create: 'created',
+          update: 'updated',
+          delete: 'deleted',
+        };
+        const action = opLabels[op] || op;
+        const msg = `${label} ${action}`;
+
+        // Show toast if CrapToast is available
+        if (window.CrapToast) {
+          window.CrapToast.show(msg, 'info');
+        }
+      } catch (err) {
+        // Ignore parse errors
+      }
+    });
+
+    source.onerror = () => {
+      // EventSource will auto-reconnect; close only if CLOSED
+      if (source && source.readyState === EventSource.CLOSED) {
+        source = null;
+        // Retry after 5s
+        setTimeout(connect, 5000);
+      }
+    };
+  }
+
+  // Only connect on admin pages (not login/logout)
+  if (document.querySelector('[data-admin-layout]')) {
+    connect();
+  }
+})();

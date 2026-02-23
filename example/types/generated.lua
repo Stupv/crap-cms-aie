@@ -79,15 +79,19 @@
 ---@class crap.data.Pages
 ---@field title string
 ---@field slug string
----@field body? string
 ---@field published? boolean
+---@field seo? table
+---@field hero_image? string
+---@field content? table[]
 
 ---@class crap.doc.Pages
 ---@field id string
 ---@field title string
 ---@field slug string
----@field body? string
 ---@field published? boolean
+---@field seo? table
+---@field hero_image? string
+---@field content? table[]
 ---@field created_at? string
 ---@field updated_at? string
 
@@ -106,14 +110,17 @@
 ---@field id? crap.FilterValue
 ---@field title? crap.FilterValue
 ---@field slug? crap.FilterValue
----@field body? crap.FilterValue
 ---@field published? crap.FilterValue
+---@field seo__title? crap.FilterValue
+---@field seo__description? crap.FilterValue
+---@field seo__no_index? crap.FilterValue
+---@field hero_image? crap.FilterValue
 ---@field created_at? crap.FilterValue
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Pages
 ---@field filters? crap.filters.Pages
----@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"body"|"-body"|"published"|"-published"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"published"|"-published"|"seo__title"|"-seo__title"|"seo__description"|"-seo__description"|"seo__no_index"|"-seo__no_index"|"hero_image"|"-hero_image"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
 
@@ -129,7 +136,7 @@
 ---@field content? string
 ---@field tags? string[]
 ---@field slides? crap.array_row.Slides[]
----@field image? string
+---@field featured_image? string
 ---@field author? string
 
 ---@class crap.doc.Posts
@@ -140,7 +147,7 @@
 ---@field content? string
 ---@field tags? string[]
 ---@field slides? crap.array_row.Slides[]
----@field image? string
+---@field featured_image? string
 ---@field author? string
 ---@field created_at? string
 ---@field updated_at? string
@@ -162,14 +169,14 @@
 ---@field slug? crap.FilterValue
 ---@field status? crap.FilterValue
 ---@field content? crap.FilterValue
----@field image? crap.FilterValue
+---@field featured_image? crap.FilterValue
 ---@field author? crap.FilterValue
 ---@field created_at? crap.FilterValue
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Posts
 ---@field filters? crap.filters.Posts
----@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"status"|"-status"|"content"|"-content"|"image"|"-image"|"author"|"-author"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"status"|"-status"|"content"|"-content"|"featured_image"|"-featured_image"|"author"|"-author"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
 

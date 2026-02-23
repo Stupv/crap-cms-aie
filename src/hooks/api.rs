@@ -8,7 +8,7 @@ use crate::config::CrapConfig;
 use crate::core::{
     SharedRegistry,
     field::{FieldType, FieldDefinition, FieldAccess, FieldAdmin, FieldHooks, SelectOption},
-    collection::{AuthStrategy, CollectionAccess, CollectionAuth, CollectionDefinition, GlobalDefinition, CollectionLabels, CollectionAdmin, CollectionHooks},
+    collection::{AuthStrategy, CollectionAccess, CollectionAuth, CollectionDefinition, GlobalDefinition, CollectionLabels, CollectionAdmin, CollectionHooks, LiveSetting},
     upload::{CollectionUpload, ImageSize, ImageFit, FormatOptions, FormatQuality},
 };
 
@@ -399,6 +399,9 @@ fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Result
     // Parse access control
     let access = parse_access_config(config);
 
+    // Parse live setting: absent=None (enabled), false=Disabled, string=Function
+    let live = parse_live_setting(config);
+
     // If auth enabled and no email field defined, inject one at index 0
     if let Some(ref a) = auth {
         if a.enabled && !fields.iter().any(|f| f.name == "email") {
@@ -433,6 +436,7 @@ fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Result
         auth,
         upload,
         access,
+        live,
     })
 }
 
@@ -459,6 +463,7 @@ fn parse_global_definition(_lua: &Lua, slug: &str, config: &Table) -> Result<Glo
     };
 
     let access = parse_access_config(config);
+    let live = parse_live_setting(config);
 
     Ok(GlobalDefinition {
         slug: slug.to_string(),
@@ -466,7 +471,29 @@ fn parse_global_definition(_lua: &Lua, slug: &str, config: &Table) -> Result<Glo
         fields,
         hooks,
         access,
+        live,
     })
+}
+
+/// Parse the `live` setting from a collection/global Lua config table.
+/// - Absent / `true` → `None` (broadcast all events)
+/// - `false` → `Some(LiveSetting::Disabled)`
+/// - String → `Some(LiveSetting::Function(ref))`
+fn parse_live_setting(config: &Table) -> Option<LiveSetting> {
+    let val: Value = config.get("live").ok()?;
+    match val {
+        Value::Boolean(false) => Some(LiveSetting::Disabled),
+        Value::Boolean(true) | Value::Nil => None,
+        Value::String(s) => {
+            let func_ref = s.to_str().ok()?.to_string();
+            if func_ref.is_empty() {
+                None
+            } else {
+                Some(LiveSetting::Function(func_ref))
+            }
+        }
+        _ => None,
+    }
 }
 
 fn parse_access_config(config: &Table) -> CollectionAccess {
@@ -745,6 +772,7 @@ fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
                 hidden: get_bool(&admin_tbl, "hidden", false),
                 readonly: get_bool(&admin_tbl, "readonly", false),
                 width: get_string(&admin_tbl, "width"),
+                collapsed: get_bool(&admin_tbl, "collapsed", false),
             }
         } else {
             FieldAdmin::default()
@@ -862,6 +890,7 @@ fn parse_hooks(hooks_tbl: &Table) -> Result<CollectionHooks> {
         after_read: parse_string_list(hooks_tbl, "after_read")?,
         before_delete: parse_string_list(hooks_tbl, "before_delete")?,
         after_delete: parse_string_list(hooks_tbl, "after_delete")?,
+        before_broadcast: parse_string_list(hooks_tbl, "before_broadcast")?,
     })
 }
 

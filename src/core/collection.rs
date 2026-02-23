@@ -4,6 +4,16 @@ use serde::{Deserialize, Serialize};
 use super::field::FieldDefinition;
 use super::upload::CollectionUpload;
 
+/// Controls live event broadcasting for a collection or global.
+/// `None` = enabled (broadcast all events).
+/// `Some(LiveSetting::Disabled)` = never broadcast.
+/// `Some(LiveSetting::Function(ref))` = Lua function decides per-event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum LiveSetting {
+    Disabled,
+    Function(String),
+}
+
 /// Lua function references for collection-level access control (read/create/update/delete).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CollectionAccess {
@@ -103,6 +113,8 @@ pub struct CollectionHooks {
     pub before_delete: Vec<String>,
     #[serde(default)]
     pub after_delete: Vec<String>,
+    #[serde(default)]
+    pub before_broadcast: Vec<String>,
 }
 
 /// Full definition of a collection, parsed from a Lua file. Maps to one SQLite table.
@@ -125,6 +137,8 @@ pub struct CollectionDefinition {
     pub upload: Option<CollectionUpload>,
     #[serde(default)]
     pub access: CollectionAccess,
+    #[serde(default)]
+    pub live: Option<LiveSetting>,
 }
 
 fn default_true() -> bool {
@@ -172,6 +186,8 @@ pub struct GlobalDefinition {
     pub hooks: CollectionHooks,
     #[serde(default)]
     pub access: CollectionAccess,
+    #[serde(default)]
+    pub live: Option<LiveSetting>,
 }
 
 impl GlobalDefinition {
@@ -203,6 +219,7 @@ mod tests {
             auth: None,
             upload: None,
             access: CollectionAccess::default(),
+            live: None,
         }
     }
 

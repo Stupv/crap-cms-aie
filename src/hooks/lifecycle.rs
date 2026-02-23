@@ -7,7 +7,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use crate::config::CrapConfig;
-use crate::core::collection::CollectionHooks;
+use crate::core::collection::{CollectionHooks, LiveSetting};
+use crate::core::event::{EventBus, EventTarget, EventOperation};
 use crate::core::Document;
 use crate::core::SharedRegistry;
 use crate::core::field::{FieldDefinition, FieldHooks, FieldType};
@@ -25,6 +26,7 @@ pub enum HookEvent {
     AfterRead,
     BeforeDelete,
     AfterDelete,
+    BeforeBroadcast,
 }
 
 impl HookEvent {
@@ -38,6 +40,7 @@ impl HookEvent {
             HookEvent::AfterRead => "after_read",
             HookEvent::BeforeDelete => "before_delete",
             HookEvent::AfterDelete => "after_delete",
+            HookEvent::BeforeBroadcast => "before_broadcast",
         }
     }
 }
@@ -442,6 +445,162 @@ impl HookRunner {
                 data,
             };
             let _ = runner.run_hooks(&hooks, event, ctx);
+        });
+    }
+
+    /// Run before_broadcast hooks. Returns Ok(Some(data)) to broadcast (possibly
+    /// with transformed data), or Ok(None) to suppress the event.
+    /// No CRUD access (fires after commit, same as after_change).
+    pub fn run_before_broadcast(
+        &self,
+        hooks: &CollectionHooks,
+        collection: &str,
+        operation: &str,
+        data: HashMap<String, serde_json::Value>,
+    ) -> Result<Option<HashMap<String, serde_json::Value>>> {
+        let hook_refs = get_hook_refs(hooks, &HookEvent::BeforeBroadcast);
+
+        // If no collection-level or registered hooks, pass through
+        let has_registered = {
+            let lua = self.lua.lock()
+                .map_err(|e| anyhow::anyhow!("Lua VM lock poisoned: {}", e))?;
+            has_registered_hooks(&lua, "before_broadcast")
+        };
+
+        if hook_refs.is_empty() && !has_registered {
+            return Ok(Some(data));
+        }
+
+        let ctx = HookContext {
+            collection: collection.to_string(),
+            operation: operation.to_string(),
+            data,
+        };
+
+        // run_hooks handles both collection-level hook refs and global registered hooks.
+        // We need to check if any hook returns false/nil to suppress.
+        let lua = self.lua.lock()
+            .map_err(|e| anyhow::anyhow!("Lua VM lock poisoned: {}", e))?;
+
+        let mut context = ctx;
+
+        // Run collection-level hook refs first
+        for hook_ref in hook_refs {
+            tracing::debug!("Running before_broadcast hook: {} for {}", hook_ref, context.collection);
+            match call_before_broadcast_hook(&lua, hook_ref, context.clone())? {
+                Some(new_ctx) => context = new_ctx,
+                None => return Ok(None), // suppressed
+            }
+        }
+
+        // Run global registered hooks
+        match call_registered_before_broadcast(&lua, context)? {
+            Some(ctx) => Ok(Some(ctx.data)),
+            None => Ok(None),
+        }
+    }
+
+    /// Check if a live event should be broadcast for this mutation.
+    /// Returns Ok(true) to broadcast, Ok(false) to suppress.
+    /// Runs WITHOUT transaction access (after write committed).
+    pub fn check_live_setting(
+        &self,
+        live: Option<&LiveSetting>,
+        collection: &str,
+        operation: &str,
+        data: &HashMap<String, serde_json::Value>,
+    ) -> Result<bool> {
+        match live {
+            None => Ok(true), // absent = broadcast all
+            Some(LiveSetting::Disabled) => Ok(false),
+            Some(LiveSetting::Function(func_ref)) => {
+                let lua = self.lua.lock()
+                    .map_err(|e| anyhow::anyhow!("Lua VM lock poisoned: {}", e))?;
+
+                let parts: Vec<&str> = func_ref.split('.').collect();
+                if parts.len() < 2 {
+                    return Err(anyhow::anyhow!(
+                        "Live setting ref '{}' must be module.function format", func_ref
+                    ));
+                }
+                let module_path = parts[..parts.len() - 1].join(".");
+                let func_name = parts[parts.len() - 1];
+
+                let require: mlua::Function = lua.globals().get("require")?;
+                let module: mlua::Table = require.call(module_path.clone())
+                    .with_context(|| format!("Failed to require module '{}'", module_path))?;
+                let func: mlua::Function = module.get(func_name)
+                    .with_context(|| format!("Function '{}' not found in module '{}'", func_name, module_path))?;
+
+                let ctx_table = lua.create_table()?;
+                ctx_table.set("collection", collection)?;
+                ctx_table.set("operation", operation)?;
+                let data_table = lua.create_table()?;
+                for (k, v) in data {
+                    data_table.set(k.as_str(), super::api::json_to_lua(&lua, v)?)?;
+                }
+                ctx_table.set("data", data_table)?;
+
+                let result: Value = func.call(ctx_table)?;
+                match result {
+                    Value::Boolean(b) => Ok(b),
+                    Value::Nil => Ok(false),
+                    _ => Ok(true),
+                }
+            }
+        }
+    }
+
+    /// Publish a mutation event: check live setting → run before_broadcast hooks → EventBus.publish().
+    /// Spawns into a background task (non-blocking, like fire_after_event).
+    pub fn publish_event(
+        &self,
+        event_bus: &Option<EventBus>,
+        hooks: &CollectionHooks,
+        live_setting: Option<&LiveSetting>,
+        target: EventTarget,
+        operation: EventOperation,
+        collection: String,
+        document_id: String,
+        data: HashMap<String, serde_json::Value>,
+    ) {
+        let bus = match event_bus {
+            Some(b) => b.clone(),
+            None => return,
+        };
+
+        let runner = self.clone();
+        let hooks = hooks.clone();
+        let live = live_setting.cloned();
+        let op_str = match &operation {
+            EventOperation::Create => "create",
+            EventOperation::Update => "update",
+            EventOperation::Delete => "delete",
+        }.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            // 1. Check live setting
+            match runner.check_live_setting(live.as_ref(), &collection, &op_str, &data) {
+                Ok(false) => return,
+                Err(e) => {
+                    tracing::warn!("live setting check error for {}: {}", collection, e);
+                    return;
+                }
+                Ok(true) => {}
+            }
+
+            // 2. Run before_broadcast hooks
+            let broadcast_data = match runner.run_before_broadcast(&hooks, &collection, &op_str, data) {
+                Ok(Some(d)) => d,
+                Ok(None) => return, // suppressed
+                Err(e) => {
+                    tracing::warn!("before_broadcast hook error for {}: {}", collection, e);
+                    return;
+                }
+            };
+
+            // 3. Publish to EventBus
+            bus.publish(target, operation, collection, document_id, broadcast_data);
         });
     }
 
@@ -854,7 +1013,130 @@ fn get_hook_refs<'a>(hooks: &'a CollectionHooks, event: &HookEvent) -> &'a Vec<S
         HookEvent::AfterRead => &hooks.after_read,
         HookEvent::BeforeDelete => &hooks.before_delete,
         HookEvent::AfterDelete => &hooks.after_delete,
+        HookEvent::BeforeBroadcast => &hooks.before_broadcast,
     }
+}
+
+/// Check if any globally registered hooks exist for the given event.
+fn has_registered_hooks(lua: &Lua, event: &str) -> bool {
+    let globals = lua.globals();
+    let event_hooks: mlua::Table = match globals.get("_crap_event_hooks") {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
+    match event_hooks.get::<Value>(event) {
+        Ok(Value::Table(t)) => t.raw_len() > 0,
+        _ => false,
+    }
+}
+
+/// Call a before_broadcast hook ref. Returns Some(context) to continue, None to suppress.
+fn call_before_broadcast_hook(
+    lua: &Lua,
+    hook_ref: &str,
+    context: HookContext,
+) -> Result<Option<HookContext>> {
+    let parts: Vec<&str> = hook_ref.split('.').collect();
+    if parts.len() < 2 {
+        return Err(anyhow::anyhow!(
+            "Hook reference '{}' must be module.function format", hook_ref
+        ));
+    }
+
+    let module_path = parts[..parts.len() - 1].join(".");
+    let func_name = parts[parts.len() - 1];
+
+    let require: mlua::Function = lua.globals().get("require")?;
+    let module: mlua::Table = require.call(module_path.clone())
+        .with_context(|| format!("Failed to require module '{}'", module_path))?;
+    let func: mlua::Function = module.get(func_name)
+        .with_context(|| format!("Function '{}' not found in module '{}'", func_name, module_path))?;
+
+    let ctx_table = lua.create_table()?;
+    ctx_table.set("collection", context.collection.as_str())?;
+    ctx_table.set("operation", context.operation.as_str())?;
+    let data_table = lua.create_table()?;
+    for (k, v) in &context.data {
+        data_table.set(k.as_str(), super::api::json_to_lua(lua, v)?)?;
+    }
+    ctx_table.set("data", data_table)?;
+
+    let result: Value = func.call(ctx_table)?;
+
+    match result {
+        Value::Boolean(false) | Value::Nil => Ok(None),
+        Value::Table(tbl) => {
+            let data_result: mlua::Result<mlua::Table> = tbl.get("data");
+            if let Ok(data_tbl) = data_result {
+                let mut new_data = HashMap::new();
+                for pair in data_tbl.pairs::<String, Value>() {
+                    let (k, v) = pair?;
+                    new_data.insert(k, super::api::lua_to_json(lua, &v)?);
+                }
+                Ok(Some(HookContext { data: new_data, ..context }))
+            } else {
+                Ok(Some(context))
+            }
+        }
+        _ => Ok(Some(context)),
+    }
+}
+
+/// Call all globally registered before_broadcast hooks.
+/// Returns Some(context) to continue, None if any hook suppresses.
+fn call_registered_before_broadcast(
+    lua: &Lua,
+    mut context: HookContext,
+) -> Result<Option<HookContext>> {
+    let globals = lua.globals();
+    let event_hooks: mlua::Table = match globals.get("_crap_event_hooks") {
+        Ok(t) => t,
+        Err(_) => return Ok(Some(context)),
+    };
+
+    let list: mlua::Table = match event_hooks.get::<Value>("before_broadcast") {
+        Ok(Value::Table(t)) => t,
+        _ => return Ok(Some(context)),
+    };
+
+    let len = list.raw_len();
+    if len == 0 {
+        return Ok(Some(context));
+    }
+
+    for i in 1..=len {
+        let func: mlua::Function = list.raw_get(i)
+            .with_context(|| format!("registered before_broadcast hook at index {} is not a function", i))?;
+
+        let ctx_table = lua.create_table()?;
+        ctx_table.set("collection", context.collection.as_str())?;
+        ctx_table.set("operation", context.operation.as_str())?;
+        let data_table = lua.create_table()?;
+        for (k, v) in &context.data {
+            data_table.set(k.as_str(), super::api::json_to_lua(lua, v)?)?;
+        }
+        ctx_table.set("data", data_table)?;
+
+        let result: Value = func.call(ctx_table)?;
+
+        match result {
+            Value::Boolean(false) | Value::Nil => return Ok(None),
+            Value::Table(tbl) => {
+                let data_result: mlua::Result<mlua::Table> = tbl.get("data");
+                if let Ok(data_tbl) = data_result {
+                    let mut new_data = HashMap::new();
+                    for pair in data_tbl.pairs::<String, Value>() {
+                        let (k, v) = pair?;
+                        new_data.insert(k, super::api::lua_to_json(lua, &v)?);
+                    }
+                    context = HookContext { data: new_data, ..context };
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Some(context))
 }
 
 /// Call all globally registered hooks for a given event.

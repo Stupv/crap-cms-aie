@@ -1,6 +1,6 @@
 # Lifecycle Events
 
-Seven lifecycle events fire during CRUD operations.
+Eight lifecycle events fire during CRUD operations.
 
 ## Event Reference
 
@@ -13,6 +13,7 @@ Seven lifecycle events fire during CRUD operations.
 | `after_read` | find, find_by_id | Yes | No | Transform data before it reaches the client |
 | `before_delete` | delete | No | Yes | Can abort the delete. CRUD access for cascading deletes. |
 | `after_delete` | delete | No | No | Fire-and-forget. Cleanup tasks. |
+| `before_broadcast` | create, update, delete | Yes (data) | No | Can suppress or transform live update events. See [Live Updates](../live-updates/hooks.md). |
 
 ## Write Lifecycle (create/update)
 
@@ -30,6 +31,9 @@ Seven lifecycle events fire during CRUD operations.
 11. field after_change hooks (background, no CRUD)
 12. collection after_change hooks (background, no CRUD)
 13. global registered after_change hooks (background, no CRUD)
+14. live setting check (background)
+15. before_broadcast hooks (background, no CRUD)
+16. EventBus publish (if not suppressed)
 ```
 
 ## Read Lifecycle (find/find_by_id)
@@ -51,4 +55,7 @@ Seven lifecycle events fire during CRUD operations.
 3. database delete
 4. collection after_delete hooks (background, no CRUD)
 5. global registered after_delete hooks (background, no CRUD)
+6. live setting check (background)
+7. before_broadcast hooks (background, no CRUD)
+8. EventBus publish (if not suppressed)
 ```

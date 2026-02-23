@@ -2,33 +2,52 @@
   {{label}}
   {{#if required}}<span class="required">*</span>{{/if}}
 </label>
-{{#if has_many}}
-<select
-  id="field-{{name}}"
-  name="{{name}}"
-  multiple
-  data-field-type="relationship"
-  data-has-many="true"
-  {{#if required}}required{{/if}}
-  {{#if error}}class="form__input--error"{{/if}}
->
-  {{#each relationship_options}}
-  <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-  {{/each}}
-</select>
-{{else}}
-<select
-  id="field-{{name}}"
-  name="{{name}}"
-  data-field-type="relationship"
-  {{#if required}}required{{/if}}
-  {{#if error}}class="form__input--error"{{/if}}
->
-  <option value="">-- Select --</option>
-  {{#each relationship_options}}
-  <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-  {{/each}}
-</select>
-{{/if}}
+<div class="relationship-field">
+  {{#if has_many}}
+  <select
+    id="field-{{name}}"
+    name="{{name}}"
+    multiple
+    data-field-type="relationship"
+    data-has-many="true"
+    {{#if required}}required{{/if}}
+    {{#if error}}class="form__input--error"{{/if}}
+  >
+    {{#each relationship_options}}
+    <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+    {{/each}}
+  </select>
+  {{else}}
+  <select
+    id="field-{{name}}"
+    name="{{name}}"
+    data-field-type="relationship"
+    data-relationship-collection="{{relationship_collection}}"
+    {{#if required}}required{{/if}}
+    {{#if error}}class="form__input--error"{{/if}}
+  >
+    <option value="">-- Select --</option>
+    {{#each relationship_options}}
+    <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+    {{/each}}
+  </select>
+  {{/if}}
+  <div class="relationship-field__actions">
+    <a class="relationship-field__action" href="/admin/collections/{{relationship_collection}}/create"
+      hx-get="/admin/collections/{{relationship_collection}}/create" hx-target="body" hx-push-url="true">
+      <span class="material-symbols-outlined" style="font-size: 16px;">add</span>
+      Create new
+    </a>
+    {{#unless has_many}}
+    <a class="relationship-field__action relationship-field__view-link" href="#"
+      data-view-for="field-{{name}}"
+      data-collection="{{relationship_collection}}"
+      style="display: none;">
+      <span class="material-symbols-outlined" style="font-size: 16px;">open_in_new</span>
+      View
+    </a>
+    {{/unless}}
+  </div>
+</div>
 {{#if error}}<p class="form__error">{{error}}</p>{{/if}}
 {{#if description}}<p class="form__help">{{description}}</p>{{/if}}

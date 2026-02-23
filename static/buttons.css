@@ -73,7 +73,7 @@
   background-color: transparent;
   color: var(--text-secondary);
   box-shadow: none;
-  border-color: var(--border-color);
+  border-color: var(--border-color-hover);
 }
 
 .button--ghost:hover {

@@ -29,6 +29,7 @@ tonic-prost = "0.14"
 prost = "0.14"
 prost-types = "0.14"
 tonic-reflection = "0.14"
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 # Lua
 mlua = { version = "0.11", features = ["lua54", "vendored", "serialize", "send"] }

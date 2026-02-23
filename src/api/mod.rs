@@ -6,6 +6,7 @@ use anyhow::Result;
 use tonic::transport::Server;
 
 use crate::core::SharedRegistry;
+use crate::core::event::EventBus;
 use crate::db::DbPool;
 use crate::hooks::lifecycle::HookRunner;
 
@@ -26,6 +27,7 @@ pub async fn start_server(
     depth_config: &crate::config::DepthConfig,
     config: &crate::config::CrapConfig,
     config_dir: &std::path::Path,
+    event_bus: Option<EventBus>,
 ) -> Result<()> {
     let addr = addr.parse()?;
 
@@ -35,6 +37,7 @@ pub async fn start_server(
     let content_service = service::ContentService::new(
         pool, registry, hook_runner, jwt_secret, depth_config,
         config.email.clone(), email_renderer, config.server.clone(),
+        event_bus,
     );
 
     let reflection_service = tonic_reflection::server::Builder::configure()

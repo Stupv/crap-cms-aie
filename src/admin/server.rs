@@ -14,11 +14,12 @@ use std::path::PathBuf;
 use crate::config::CrapConfig;
 use crate::core::SharedRegistry;
 use crate::core::auth::{self, AuthUser};
+use crate::core::event::EventBus;
 use crate::db::DbPool;
 use crate::db::query;
 use crate::hooks::lifecycle::HookRunner;
 use super::AdminState;
-use super::handlers::{auth as auth_handlers, dashboard, collections, globals, static_assets, uploads};
+use super::handlers::{auth as auth_handlers, dashboard, collections, globals, static_assets, uploads, events};
 
 pub async fn start(
     addr: &str,
@@ -28,6 +29,7 @@ pub async fn start(
     registry: SharedRegistry,
     hook_runner: HookRunner,
     jwt_secret: String,
+    event_bus: Option<EventBus>,
 ) -> Result<()> {
     let handlebars = super::templates::create_handlebars(&config_dir, config.admin.dev_mode)?;
     let email_renderer = std::sync::Arc::new(
@@ -50,6 +52,7 @@ pub async fn start(
         hook_runner,
         jwt_secret,
         email_renderer,
+        event_bus,
     };
 
     // Build method routers explicitly to handle multiple methods on same path
@@ -76,7 +79,8 @@ pub async fn start(
         .route("/admin/collections/{slug}/create", get(collections::create_form))
         .route("/admin/collections/{slug}/{id}", item_methods)
         .route("/admin/collections/{slug}/{id}/delete", get(collections::delete_confirm))
-        .route("/admin/globals/{slug}", globals_methods);
+        .route("/admin/globals/{slug}", globals_methods)
+        .route("/admin/events", get(events::sse_handler));
 
     // Only apply auth middleware if auth collections exist
     let protected = if has_auth {

@@ -26,6 +26,15 @@ select {
   height: var(--input-height);
 }
 
+select {
+  appearance: none;
+  padding-right: 2rem;
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 16px;
+}
+
 textarea {
   min-height: 120px;
   resize: vertical;
@@ -44,6 +53,15 @@ textarea::placeholder {
   color: var(--text-tertiary);
 }
 
+/* Override browser autofill styling */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--input-bg) inset;
+  -webkit-text-fill-color: var(--text-primary);
+  transition: background-color 5000s ease-in-out 0s;
+}
+
 /* Checkbox reset */
 input[type="checkbox"] {
   width: auto;
@@ -54,7 +72,6 @@ input[type="checkbox"] {
   display: grid;
   gap: var(--space-md);
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  max-width: 720px;
 }
 
 .form__field {
@@ -118,9 +135,63 @@ input[type="checkbox"] {
   margin-left: 2px;
 }
 
+/* Group fields (collapsible) */
+.form__group {
+  border: 1px solid var(--border-color-hover);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  margin: 0;
+}
+
+.form__group legend {
+  padding: 0;
+}
+
+.form__group-toggle {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  padding: 0 var(--space-xs);
+}
+
+.form__group-toggle:hover {
+  color: var(--color-primary);
+}
+
+.form__group-toggle:hover .form__group-chevron {
+  color: var(--color-primary);
+}
+
+.form__group-chevron {
+  font-size: 18px;
+  color: var(--text-tertiary);
+  transition: transform var(--transition-fast), color var(--transition-fast);
+}
+
+.form__group--collapsed .form__group-chevron {
+  transform: rotate(-90deg);
+}
+
+.form__group-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+  margin-bottom: var(--space-xs);
+}
+
+.form__group--collapsed .form__group-body {
+  display: none;
+}
+
 /* Array (repeater) fields */
 .form__array {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-color-hover);
   border-radius: var(--radius-md);
   padding: var(--space-md);
   margin: 0;
@@ -141,8 +212,8 @@ input[type="checkbox"] {
 }
 
 .form__array-row {
-  background: var(--bg-body);
-  border: 1px solid var(--border-color);
+  background: var(--input-bg);
+  border: 1px solid var(--border-color-hover);
   border-radius: var(--radius-md);
   overflow: hidden;
 }
@@ -150,8 +221,8 @@ input[type="checkbox"] {
 .form__array-row-header {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px var(--space-sm);
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
   cursor: pointer;
   user-select: none;
 }
@@ -185,7 +256,7 @@ input[type="checkbox"] {
   display: flex;
   gap: var(--space-sm);
   flex-wrap: wrap;
-  padding: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
   padding-top: 0;
 }
 
@@ -200,6 +271,82 @@ input[type="checkbox"] {
 .form__array-sub-field label {
   font-size: var(--text-xs);
   color: var(--text-secondary);
+}
+
+/* Block type selector + add button */
+.form__blocks-add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.form__blocks-add select {
+  width: auto;
+  min-width: 140px;
+}
+
+/* Relationship fields */
+.relationship-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.relationship-field__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.relationship-field__action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--text-xs);
+  color: var(--color-primary);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.relationship-field__action:hover {
+  color: var(--color-primary-hover);
+}
+
+/* Upload reference fields */
+.upload-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.upload-field__preview {
+  max-width: 200px;
+  max-height: 120px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.upload-field__preview img {
+  display: block;
+  max-width: 200px;
+  max-height: 120px;
+  object-fit: contain;
+}
+
+.upload-field__info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.upload-field__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
 }
 
 /* Relationship multi-select */

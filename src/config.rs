@@ -16,6 +16,7 @@ pub struct CrapConfig {
     pub depth: DepthConfig,
     pub upload: UploadConfig,
     pub email: EmailConfig,
+    pub live: LiveConfig,
 }
 
 /// Controls relationship population depth defaults and limits.
@@ -81,6 +82,25 @@ impl Default for EmailConfig {
             smtp_pass: String::new(),
             from_address: "noreply@example.com".to_string(),
             from_name: "Crap CMS".to_string(),
+        }
+    }
+}
+
+/// Live event streaming configuration.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct LiveConfig {
+    /// Enable live event streaming (SSE + gRPC Subscribe). Default: true.
+    pub enabled: bool,
+    /// Broadcast channel capacity. Default: 1024.
+    pub channel_capacity: usize,
+}
+
+impl Default for LiveConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            channel_capacity: 1024,
         }
     }
 }

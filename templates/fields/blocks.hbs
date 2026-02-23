@@ -44,14 +44,14 @@
         </button>
       </div>
       <div class="form__array-row-body">
-        <input type="hidden" name="{{../../name}}[__INDEX__][_block_type]" value="{{this.block_type}}" />
+        <input type="hidden" name="{{../name}}[__INDEX__][_block_type]" value="{{this.block_type}}" />
         <div class="form__array-row-fields">
           {{#each this.fields}}
           <div class="form__array-sub-field">
             <label>{{this.name}}</label>
             <input
               type="text"
-              name="{{../../../name}}[__INDEX__][{{this.name}}]"
+              name="{{../../name}}[__INDEX__][{{this.name}}]"
               value=""
             />
           </div>

@@ -1,4 +1,5 @@
 <form
+  id="edit-form"
   {{#if editing}}
     hx-put="/admin/collections/{{collection.slug}}/{{document.id}}"
     action="/admin/collections/{{collection.slug}}/{{document.id}}"
@@ -47,6 +48,4 @@
     {{{render_field this}}}
   </div>
   {{/each}}
-
-  {{> collections/edit_actions}}
 </form>

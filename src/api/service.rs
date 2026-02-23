@@ -1,14 +1,17 @@
 //! Tonic gRPC service implementing all ContentAPI RPCs.
 
 use anyhow::Context as _;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::pin::Pin;
 use tonic::{Request, Response, Status};
 use tonic::metadata::MetadataMap;
+use tokio_stream::{Stream, StreamExt, wrappers::BroadcastStream};
 
 use crate::config::{EmailConfig, ServerConfig};
 use crate::core::SharedRegistry;
 use crate::core::auth::{self, AuthUser};
 use crate::core::email::{self, EmailRenderer};
+use crate::core::event::EventBus;
 use crate::core::upload;
 use crate::db::DbPool;
 use crate::db::{ops, query};
@@ -28,6 +31,7 @@ pub struct ContentService {
     email_config: EmailConfig,
     email_renderer: std::sync::Arc<EmailRenderer>,
     server_config: ServerConfig,
+    event_bus: Option<EventBus>,
 }
 
 impl ContentService {
@@ -40,6 +44,7 @@ impl ContentService {
         email_config: EmailConfig,
         email_renderer: std::sync::Arc<EmailRenderer>,
         server_config: ServerConfig,
+        event_bus: Option<EventBus>,
     ) -> Self {
         Self {
             pool,
@@ -51,6 +56,7 @@ impl ContentService {
             email_config,
             email_renderer,
             server_config,
+            event_bus,
         }
     }
 
@@ -587,18 +593,25 @@ impl ContentApi for ContentService {
 
         {
             let def = self.get_collection_def(&req.collection);
-            let (hooks, fields, should_verify) = match &def {
+            let (hooks, fields, should_verify, live) = match &def {
                 Ok(d) => (
                     d.hooks.clone(),
                     d.fields.clone(),
                     d.is_auth_collection() && d.auth.as_ref().is_some_and(|a| a.verify_email),
+                    d.live.clone(),
                 ),
-                Err(_) => (Default::default(), Vec::new(), false),
+                Err(_) => (Default::default(), Vec::new(), false, None),
             };
             self.hook_runner.fire_after_event(
                 &hooks, &fields,
                 HookEvent::AfterChange,
                 req.collection.clone(), "create".to_string(), doc.fields.clone(),
+            );
+            self.hook_runner.publish_event(
+                &self.event_bus, &hooks, live.as_ref(),
+                crate::core::event::EventTarget::Collection,
+                crate::core::event::EventOperation::Create,
+                req.collection.clone(), doc.id.clone(), doc.fields.clone(),
             );
 
             // Auto-send verification email for auth collections with verify_email
@@ -707,14 +720,20 @@ impl ContentApi for ContentService {
 
         {
             let def = self.get_collection_def(&req.collection);
-            let (hooks, fields) = match &def {
-                Ok(d) => (d.hooks.clone(), d.fields.clone()),
-                Err(_) => (Default::default(), Vec::new()),
+            let (hooks, fields, live) = match &def {
+                Ok(d) => (d.hooks.clone(), d.fields.clone(), d.live.clone()),
+                Err(_) => (Default::default(), Vec::new(), None),
             };
             self.hook_runner.fire_after_event(
                 &hooks, &fields,
                 HookEvent::AfterChange,
                 req.collection.clone(), "update".to_string(), doc.fields.clone(),
+            );
+            self.hook_runner.publish_event(
+                &self.event_bus, &hooks, live.as_ref(),
+                crate::core::event::EventTarget::Collection,
+                crate::core::event::EventOperation::Update,
+                req.collection.clone(), req.id.clone(), doc.fields.clone(),
             );
         }
 
@@ -772,6 +791,12 @@ impl ContentApi for ContentService {
             &def.hooks, &def.fields, HookEvent::AfterDelete,
             req.collection.clone(), "delete".to_string(),
             [("id".to_string(), serde_json::Value::String(req.id.clone()))].into(),
+        );
+        self.hook_runner.publish_event(
+            &self.event_bus, &def.hooks, def.live.as_ref(),
+            crate::core::event::EventTarget::Collection,
+            crate::core::event::EventOperation::Delete,
+            req.collection.clone(), req.id.clone(), HashMap::new(),
         );
 
         Ok(Response::new(content::DeleteResponse {
@@ -883,14 +908,20 @@ impl ContentApi for ContentService {
 
         {
             let def = self.get_global_def(&req.slug);
-            let (hooks, fields) = match &def {
-                Ok(d) => (d.hooks.clone(), d.fields.clone()),
-                Err(_) => (Default::default(), Vec::new()),
+            let (hooks, fields, live) = match &def {
+                Ok(d) => (d.hooks.clone(), d.fields.clone(), d.live.clone()),
+                Err(_) => (Default::default(), Vec::new(), None),
             };
             self.hook_runner.fire_after_event(
                 &hooks, &fields,
                 HookEvent::AfterChange,
                 req.slug.clone(), "update".to_string(), doc.fields.clone(),
+            );
+            self.hook_runner.publish_event(
+                &self.event_bus, &hooks, live.as_ref(),
+                crate::core::event::EventTarget::Global,
+                crate::core::event::EventOperation::Update,
+                req.slug.clone(), doc.id.clone(), doc.fields.clone(),
             );
         }
 
@@ -1213,6 +1244,152 @@ impl ContentApi for ContentService {
                 upload: def.is_upload_collection(),
             }))
         }
+    }
+
+    type SubscribeStream = Pin<Box<dyn Stream<Item = Result<content::MutationEvent, Status>> + Send>>;
+
+    /// Subscribe to real-time mutation events (server streaming).
+    async fn subscribe(
+        &self,
+        request: Request<content::SubscribeRequest>,
+    ) -> Result<Response<Self::SubscribeStream>, Status> {
+        let req = request.into_inner();
+
+        let event_bus = self.event_bus.as_ref()
+            .ok_or_else(|| Status::unavailable("Live updates disabled"))?;
+
+        // Authenticate subscriber
+        let auth_user = if !req.token.is_empty() {
+            let claims = auth::validate_token(&req.token, &self.jwt_secret)
+                .map_err(|_| Status::unauthenticated("Invalid or expired token"))?;
+            let pool = self.pool.clone();
+            let registry = self.registry.clone();
+            tokio::task::spawn_blocking(move || {
+                crate::admin::server::load_auth_user(&pool, &registry, &claims)
+            }).await
+                .map_err(|e| Status::internal(format!("Task error: {}", e)))?
+        } else {
+            None
+        };
+
+        // Build allowed set: snapshot access at subscribe time
+        let mut allowed_collections: HashSet<String> = HashSet::new();
+        let mut allowed_globals: HashSet<String> = HashSet::new();
+        let requested_ops: HashSet<String> = if req.operations.is_empty() {
+            ["create", "update", "delete"].iter().map(|s| s.to_string()).collect()
+        } else {
+            req.operations.into_iter().collect()
+        };
+
+        {
+            let reg = self.registry.read()
+                .map_err(|e| Status::internal(format!("Registry lock poisoned: {}", e)))?;
+
+            let user_doc = auth_user.as_ref().map(|u| &u.user_doc);
+
+            // Check collection read access
+            let target_collections: Vec<String> = if req.collections.is_empty() {
+                reg.collections.keys().cloned().collect()
+            } else {
+                req.collections
+            };
+
+            let conn = self.pool.get()
+                .map_err(|e| Status::internal(format!("DB connection: {}", e)))?;
+
+            for slug in &target_collections {
+                if let Some(def) = reg.get_collection(slug) {
+                    match self.hook_runner.check_access(
+                        def.access.read.as_deref(), user_doc, None, None, &conn,
+                    ) {
+                        Ok(AccessResult::Allowed) | Ok(AccessResult::Constrained(_)) => {
+                            allowed_collections.insert(slug.clone());
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            let target_globals: Vec<String> = if req.globals.is_empty() {
+                reg.globals.keys().cloned().collect()
+            } else {
+                req.globals
+            };
+
+            for slug in &target_globals {
+                if let Some(def) = reg.get_global(slug) {
+                    match self.hook_runner.check_access(
+                        def.access.read.as_deref(), user_doc, None, None, &conn,
+                    ) {
+                        Ok(AccessResult::Allowed) | Ok(AccessResult::Constrained(_)) => {
+                            allowed_globals.insert(slug.clone());
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        if allowed_collections.is_empty() && allowed_globals.is_empty() {
+            return Err(Status::permission_denied("No accessible collections or globals"));
+        }
+
+        let rx = event_bus.subscribe();
+        let stream = BroadcastStream::new(rx)
+            .filter_map(move |result| {
+                match result {
+                    Ok(event) => {
+                        // Filter by target type + collection access
+                        let allowed = match event.target {
+                            crate::core::event::EventTarget::Collection => {
+                                allowed_collections.contains(&event.collection)
+                            }
+                            crate::core::event::EventTarget::Global => {
+                                allowed_globals.contains(&event.collection)
+                            }
+                        };
+                        if !allowed {
+                            return None;
+                        }
+
+                        // Filter by operation
+                        let op_str = match event.operation {
+                            crate::core::event::EventOperation::Create => "create",
+                            crate::core::event::EventOperation::Update => "update",
+                            crate::core::event::EventOperation::Delete => "delete",
+                        };
+                        if !requested_ops.contains(op_str) {
+                            return None;
+                        }
+
+                        // Convert data to prost Struct
+                        let fields: BTreeMap<String, prost_types::Value> = event.data.iter()
+                            .map(|(k, v)| (k.clone(), json_to_prost_value(v)))
+                            .collect();
+
+                        let target_str = match event.target {
+                            crate::core::event::EventTarget::Collection => "collection",
+                            crate::core::event::EventTarget::Global => "global",
+                        };
+
+                        Some(Ok(content::MutationEvent {
+                            sequence: event.sequence,
+                            timestamp: event.timestamp,
+                            target: target_str.to_string(),
+                            operation: op_str.to_string(),
+                            collection: event.collection,
+                            document_id: event.document_id,
+                            data: Some(prost_types::Struct { fields }),
+                        }))
+                    }
+                    Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
+                        tracing::warn!("Subscribe stream lagged by {} events", n);
+                        None
+                    }
+                }
+            });
+
+        Ok(Response::new(Box::pin(stream)))
     }
 
     /// Return the currently authenticated user from a JWT token.

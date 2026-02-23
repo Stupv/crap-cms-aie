@@ -1,7 +1,14 @@
 {{#> layout/base title=page_title}}
+{{> components/breadcrumb}}
 <div class="page-header">
   <h1>{{global.display_name}}</h1>
 </div>
-
-{{> globals/edit_form}}
+<div class="edit-layout">
+  <div class="edit-layout__content">
+    {{> globals/edit_form}}
+  </div>
+  <div class="edit-layout__sidebar">
+    {{> globals/edit_sidebar}}
+  </div>
+</div>
 {{/layout/base}}

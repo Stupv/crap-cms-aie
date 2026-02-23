@@ -1,0 +1,88 @@
+/* Edit page right sidebar panels */
+
+.edit-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.edit-sidebar__panel {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background-color: var(--bg-elevated);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.edit-sidebar__panel-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 10px var(--space-md);
+  border-bottom: 1px solid var(--border-color);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.edit-sidebar__panel-body {
+  padding: var(--space-md);
+}
+
+.edit-sidebar__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.edit-sidebar__actions .button {
+  width: 100%;
+  justify-content: center;
+}
+
+.edit-sidebar__meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.edit-sidebar__meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.edit-sidebar__meta-label {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.edit-sidebar__meta-value {
+  font-size: var(--text-xs);
+  font-family: monospace;
+  color: var(--text-secondary);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edit-sidebar__save-indicator {
+  display: none;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  justify-content: center;
+}
+
+.edit-sidebar__save-indicator.htmx-request {
+  display: inline-flex;
+}
+
+.edit-sidebar__save-indicator .loading-indicator__spinner {
+  width: 14px;
+  height: 14px;
+}

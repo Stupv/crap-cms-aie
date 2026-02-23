@@ -101,6 +101,13 @@
 - [Authentication](grpc-api/authentication.md)
 - [Type Safety](grpc-api/type-safety.md)
 
+# Live Updates
+
+- [Overview](live-updates/overview.md)
+- [gRPC Streaming](live-updates/grpc-streaming.md)
+- [Admin SSE](live-updates/admin-sse.md)
+- [Hooks](live-updates/hooks.md)
+
 # Database
 
 - [Overview](database/overview.md)

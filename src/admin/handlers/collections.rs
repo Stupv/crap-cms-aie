@@ -364,6 +364,11 @@ pub async fn create_form(
         "fields": fields,
         "editing": false,
         "user": user_json(&claims),
+        "breadcrumbs": [
+            { "label": "Collections", "url": "/admin/collections" },
+            { "label": def.display_name(), "url": format!("/admin/collections/{}", slug) },
+            { "label": format!("Create {}", def.singular_name()) },
+        ],
     });
 
     // Add upload context for upload collections
@@ -525,6 +530,12 @@ pub async fn create_action(
             state.hook_runner.fire_after_event(
                 &def.hooks, &def.fields, HookEvent::AfterChange,
                 slug.clone(), "create".to_string(), doc.fields.clone(),
+            );
+            state.hook_runner.publish_event(
+                &state.event_bus, &def.hooks, def.live.as_ref(),
+                crate::core::event::EventTarget::Collection,
+                crate::core::event::EventOperation::Create,
+                slug.clone(), doc.id.clone(), doc.fields.clone(),
             );
 
             // Auto-send verification email for auth collections with verify_email enabled
@@ -689,6 +700,12 @@ pub async fn edit_form(
         }));
     }
 
+    // Determine document title for breadcrumb
+    let doc_title = def.title_field()
+        .and_then(|f| document.get_str(f))
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| document.id.clone());
+
     let mut data = serde_json::json!({
         "page_title": format!("Edit {}", def.singular_name()),
         "collections": state.sidebar_collections(),
@@ -700,10 +717,17 @@ pub async fn edit_form(
         },
         "document": {
             "id": document.id,
+            "created_at": document.created_at,
+            "updated_at": document.updated_at,
         },
         "fields": fields,
         "editing": true,
         "user": user_json(&claims),
+        "breadcrumbs": [
+            { "label": "Collections", "url": "/admin/collections" },
+            { "label": def.display_name(), "url": format!("/admin/collections/{}", slug) },
+            { "label": doc_title },
+        ],
     });
 
     // Add upload context for upload collections
@@ -940,6 +964,12 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
                 &def.hooks, &def.fields, HookEvent::AfterChange,
                 slug.to_string(), "update".to_string(), doc.fields.clone(),
             );
+            state.hook_runner.publish_event(
+                &state.event_bus, &def.hooks, def.live.as_ref(),
+                crate::core::event::EventTarget::Collection,
+                crate::core::event::EventOperation::Update,
+                slug.to_string(), id.to_string(), doc.fields.clone(),
+            );
             redirect_response(&format!("/admin/collections/{}/{}", slug, id))
         }
         Ok(Err(e)) => {
@@ -1104,6 +1134,12 @@ async fn delete_action_impl(state: &AdminState, slug: &str, id: &str, auth_user:
                 slug.to_string(), "delete".to_string(),
                 [("id".to_string(), serde_json::Value::String(id.to_string()))].into(),
             );
+            state.hook_runner.publish_event(
+                &state.event_bus, &def.hooks, def.live.as_ref(),
+                crate::core::event::EventTarget::Collection,
+                crate::core::event::EventOperation::Delete,
+                slug.to_string(), id.to_string(), std::collections::HashMap::new(),
+            );
         }
         Ok(Err(e)) => {
             tracing::error!("Delete error: {}", e);
@@ -1236,6 +1272,9 @@ fn build_field_contexts(
                     sub_ctx
                 }).collect();
                 ctx["sub_fields"] = serde_json::json!(sub_fields);
+                if field.admin.collapsed {
+                    ctx["collapsed"] = serde_json::json!(true);
+                }
             }
             FieldType::Upload => {
                 if let Some(ref rc) = field.relationship {
@@ -1382,23 +1421,78 @@ fn enrich_field_contexts(
                 if let Some(ref rc) = field_def.relationship {
                     if let Some(related_def) = reg.get_collection(&rc.collection) {
                         let title_field = related_def.title_field().map(|s| s.to_string());
+                        let admin_thumbnail = related_def.upload.as_ref()
+                            .and_then(|u| u.admin_thumbnail.as_ref().cloned());
                         let find_query = query::FindQuery::default();
-                        if let Ok(docs) = query::find(&conn, &rc.collection, related_def, &find_query) {
+                        if let Ok(mut docs) = query::find(&conn, &rc.collection, related_def, &find_query) {
+                            // Assemble sizes for thumbnail lookup
+                            if let Some(ref upload_config) = related_def.upload {
+                                if upload_config.enabled {
+                                    for doc in &mut docs {
+                                        upload::assemble_sizes_object(doc, upload_config);
+                                    }
+                                }
+                            }
+
                             let current_value = ctx.get("value")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string();
+
+                            let mut selected_preview_url = None;
+                            let mut selected_filename = None;
+
                             let options: Vec<_> = docs.iter().map(|doc| {
                                 let label = doc.get_str("filename")
                                     .or_else(|| title_field.as_ref().and_then(|f| doc.get_str(f)))
                                     .unwrap_or(&doc.id);
-                                serde_json::json!({
+                                let mime = doc.get_str("mime_type").unwrap_or("");
+                                let is_image = mime.starts_with("image/");
+
+                                // Get thumbnail URL
+                                let thumb_url = if is_image {
+                                    admin_thumbnail.as_ref()
+                                        .and_then(|thumb_name| {
+                                            doc.fields.get("sizes")
+                                                .and_then(|v| v.get(thumb_name))
+                                                .and_then(|v| v.get("url"))
+                                                .and_then(|v| v.as_str())
+                                                .map(|s| s.to_string())
+                                        })
+                                        .or_else(|| doc.get_str("url").map(|s| s.to_string()))
+                                } else {
+                                    None
+                                };
+
+                                let is_selected = doc.id == current_value;
+                                if is_selected {
+                                    selected_preview_url = thumb_url.clone();
+                                    selected_filename = Some(label.to_string());
+                                }
+
+                                let mut opt = serde_json::json!({
                                     "value": doc.id,
                                     "label": label,
-                                    "selected": doc.id == current_value,
-                                })
+                                    "selected": is_selected,
+                                });
+                                if let Some(ref url) = thumb_url {
+                                    opt["thumbnail_url"] = serde_json::json!(url);
+                                }
+                                if is_image {
+                                    opt["is_image"] = serde_json::json!(true);
+                                }
+                                opt["filename"] = serde_json::json!(label);
+                                opt
                             }).collect();
                             ctx["relationship_options"] = serde_json::json!(options);
+                            ctx["relationship_collection"] = serde_json::json!(rc.collection);
+
+                            if let Some(url) = selected_preview_url {
+                                ctx["selected_preview_url"] = serde_json::json!(url);
+                            }
+                            if let Some(fname) = selected_filename {
+                                ctx["selected_filename"] = serde_json::json!(fname);
+                            }
                         }
                     }
                 }

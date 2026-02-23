@@ -36,6 +36,7 @@ crap.collections.define("pages", {
 			},
 			admin = {
 				description = "Search engine optimization settings",
+				collapsed = true,
 			},
 		},
 		-- Upload field: references the media collection

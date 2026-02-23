@@ -1,4 +1,5 @@
-<form hx-post="/admin/globals/{{global.slug}}"
+<form id="edit-form"
+      hx-post="/admin/globals/{{global.slug}}"
       action="/admin/globals/{{global.slug}}"
       method="post"
       hx-target="body"
@@ -9,6 +10,4 @@
     {{{render_field this}}}
   </div>
   {{/each}}
-
-  {{> globals/edit_actions}}
 </form>
