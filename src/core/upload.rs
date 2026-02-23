@@ -252,6 +252,7 @@ pub fn process_upload(
 
 /// Resize an image according to the given size definition and fit mode.
 fn resize_image(img: &image::DynamicImage, size: &ImageSize) -> image::DynamicImage {
+    let filter = image::imageops::FilterType::CatmullRom;
     match size.fit {
         ImageFit::Cover => {
             // Resize to fill, then center crop
@@ -270,35 +271,28 @@ fn resize_image(img: &image::DynamicImage, size: &ImageSize) -> image::DynamicIm
                 (w, h.max(1))
             };
 
-            let resized = img.resize_exact(resize_w, resize_h, image::imageops::FilterType::Lanczos3);
+            let resized = img.resize_exact(resize_w, resize_h, filter);
             let x = (resized.width().saturating_sub(size.width)) / 2;
             let y = (resized.height().saturating_sub(size.height)) / 2;
             resized.crop_imm(x, y, size.width.min(resized.width()), size.height.min(resized.height()))
         }
         ImageFit::Contain | ImageFit::Inside => {
             // Resize to fit within bounds, preserving aspect ratio
-            img.resize(size.width, size.height, image::imageops::FilterType::Lanczos3)
+            img.resize(size.width, size.height, filter)
         }
         ImageFit::Fill => {
             // Stretch to exact dimensions
-            img.resize_exact(size.width, size.height, image::imageops::FilterType::Lanczos3)
+            img.resize_exact(size.width, size.height, filter)
         }
     }
 }
 
-/// Save image as WebP with given quality.
-fn save_webp(img: &image::DynamicImage, path: &Path, _quality: u8) -> Result<()> {
-    use image::ImageEncoder;
+/// Save image as lossy WebP with given quality (via libwebp).
+fn save_webp(img: &image::DynamicImage, path: &Path, quality: u8) -> Result<()> {
     let rgba = img.to_rgba8();
-    let mut buf = Cursor::new(Vec::new());
-    let encoder = image::codecs::webp::WebPEncoder::new_lossless(&mut buf);
-    encoder.write_image(
-        rgba.as_raw(),
-        img.width(),
-        img.height(),
-        image::ExtendedColorType::Rgba8,
-    ).with_context(|| "Failed to encode WebP")?;
-    std::fs::write(path, buf.into_inner())
+    let encoder = webp::Encoder::from_rgba(&rgba, img.width(), img.height());
+    let mem = encoder.encode(quality as f32);
+    std::fs::write(path, &*mem)
         .with_context(|| format!("Failed to write WebP: {}", path.display()))?;
     Ok(())
 }
@@ -308,7 +302,7 @@ fn save_avif(img: &image::DynamicImage, path: &Path, quality: u8) -> Result<()> 
     use image::ImageEncoder;
     let rgba = img.to_rgba8();
     let mut buf = Cursor::new(Vec::new());
-    let encoder = image::codecs::avif::AvifEncoder::new_with_speed_quality(&mut buf, 6, quality);
+    let encoder = image::codecs::avif::AvifEncoder::new_with_speed_quality(&mut buf, 8, quality);
     encoder.write_image(
         rgba.as_raw(),
         img.width(),

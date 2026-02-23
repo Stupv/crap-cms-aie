@@ -47,6 +47,7 @@ jsonwebtoken = "9"
 
 # Image processing
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "avif"] }
+webp = "0.3"
 
 # Utilities
 rpassword = "5"
@@ -61,6 +62,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 tempfile = "3"
+
+[profile.dev.package."*"]
+opt-level = 2
 
 [build-dependencies]
 tonic-prost-build = "0.14"

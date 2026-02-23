@@ -1,3 +1,4 @@
 /example/data/*
+/example/uploads/*
 /target
 *.grpc
