@@ -36,6 +36,7 @@ mlua = { version = "0.11", features = ["lua54", "vendored", "serialize", "send"]
 
 # Config & CLI
 clap = { version = "4", features = ["derive"] }
+dialoguer = "0.11"
 toml = "1.0"
 
 # Serialization

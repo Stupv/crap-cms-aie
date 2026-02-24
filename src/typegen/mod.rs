@@ -18,6 +18,9 @@ use std::path::{Path, PathBuf};
 use crate::core::field::{FieldDefinition, FieldType};
 use crate::core::Registry;
 
+/// Embedded Lua API type definitions — kept in sync with the CMS binary version.
+const LUA_API_TYPES: &str = include_str!("../../types/crap.lua");
+
 /// Supported output languages for type generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Language {
@@ -73,10 +76,15 @@ pub fn generate(config_dir: &Path, registry: &Registry) -> Result<PathBuf> {
 
 /// Generate type definitions for a specific language.
 /// Writes to `<config_dir>/types/generated.<ext>`.
+/// Also writes `crap.lua` API surface types (keeps them in sync with CMS binary version).
 pub fn generate_lang(config_dir: &Path, registry: &Registry, lang: Language) -> Result<PathBuf> {
-    let output = render(registry, lang);
     let types_dir = config_dir.join("types");
     std::fs::create_dir_all(&types_dir)?;
+
+    // Always write the API surface types (keeps them in sync with CMS version)
+    std::fs::write(types_dir.join("crap.lua"), LUA_API_TYPES)?;
+
+    let output = render(registry, lang);
     let filename = format!("generated.{}", lang.file_extension());
     let path = types_dir.join(filename);
     std::fs::write(&path, output)?;

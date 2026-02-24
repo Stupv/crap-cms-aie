@@ -557,20 +557,7 @@ impl HookRunner {
                 let lua = self.lua.lock()
                     .map_err(|e| anyhow::anyhow!("Lua VM lock poisoned: {}", e))?;
 
-                let parts: Vec<&str> = func_ref.split('.').collect();
-                if parts.len() < 2 {
-                    return Err(anyhow::anyhow!(
-                        "Live setting ref '{}' must be module.function format", func_ref
-                    ));
-                }
-                let module_path = parts[..parts.len() - 1].join(".");
-                let func_name = parts[parts.len() - 1];
-
-                let require: mlua::Function = lua.globals().get("require")?;
-                let module: mlua::Table = require.call(module_path.clone())
-                    .with_context(|| format!("Failed to require module '{}'", module_path))?;
-                let func: mlua::Function = module.get(func_name)
-                    .with_context(|| format!("Function '{}' not found in module '{}'", func_name, module_path))?;
+                let func = resolve_hook_function(&lua, func_ref)?;
 
                 let ctx_table = lua.create_table()?;
                 ctx_table.set("collection", collection)?;
@@ -663,21 +650,7 @@ impl HookRunner {
         lua.set_app_data(UserContext(None));
 
         let result = (|| -> Result<Option<Document>> {
-            // Resolve the function ref
-            let parts: Vec<&str> = authenticate_ref.split('.').collect();
-            if parts.len() < 2 {
-                return Err(anyhow::anyhow!(
-                    "Auth strategy ref '{}' must be module.function format", authenticate_ref
-                ));
-            }
-            let module_path = parts[..parts.len() - 1].join(".");
-            let func_name = parts[parts.len() - 1];
-
-            let require: mlua::Function = lua.globals().get("require")?;
-            let module: mlua::Table = require.call(module_path.clone())
-                .with_context(|| format!("Failed to require module '{}'", module_path))?;
-            let func: mlua::Function = module.get(func_name)
-                .with_context(|| format!("Function '{}' not found in module '{}'", func_name, module_path))?;
+            let func = resolve_hook_function(&lua, authenticate_ref)?;
 
             // Build context table: { headers = {...}, collection = "..." }
             let ctx_table = lua.create_table()?;
@@ -977,21 +950,7 @@ impl HookRunner {
         let lua = self.lua.lock()
             .map_err(|e| anyhow::anyhow!("Lua VM lock poisoned: {}", e))?;
 
-        let parts: Vec<&str> = func_ref.split('.').collect();
-        if parts.len() < 2 {
-            return Err(anyhow::anyhow!(
-                "Validate reference '{}' must be module.function format", func_ref
-            ));
-        }
-
-        let module_path = parts[..parts.len() - 1].join(".");
-        let func_name = parts[parts.len() - 1];
-
-        let require: mlua::Function = lua.globals().get("require")?;
-        let module: mlua::Table = require.call(module_path.clone())
-            .with_context(|| format!("Failed to require module '{}'", module_path))?;
-        let func: mlua::Function = module.get(func_name)
-            .with_context(|| format!("Function '{}' not found in module '{}'", func_name, module_path))?;
+        let func = resolve_hook_function(&lua, func_ref)?;
 
         // Build the Lua value
         let lua_value = crate::hooks::api::json_to_lua(&lua, value)?;
@@ -1082,21 +1041,7 @@ fn call_before_broadcast_hook(
     hook_ref: &str,
     context: HookContext,
 ) -> Result<Option<HookContext>> {
-    let parts: Vec<&str> = hook_ref.split('.').collect();
-    if parts.len() < 2 {
-        return Err(anyhow::anyhow!(
-            "Hook reference '{}' must be module.function format", hook_ref
-        ));
-    }
-
-    let module_path = parts[..parts.len() - 1].join(".");
-    let func_name = parts[parts.len() - 1];
-
-    let require: mlua::Function = lua.globals().get("require")?;
-    let module: mlua::Table = require.call(module_path.clone())
-        .with_context(|| format!("Failed to require module '{}'", module_path))?;
-    let func: mlua::Function = module.get(func_name)
-        .with_context(|| format!("Function '{}' not found in module '{}'", func_name, module_path))?;
+    let func = resolve_hook_function(lua, hook_ref)?;
 
     let ctx_table = context_to_lua_table(lua, &context)?;
     let result: Value = func.call(ctx_table)?;
@@ -1273,7 +1218,7 @@ fn get_field_hook_refs<'a>(hooks: &'a FieldHooks, event: &FieldHookEvent) -> &'a
     }
 }
 
-/// Resolve a dotted function reference and call it as a field hook.
+/// Resolve a hook reference and call it as a field hook.
 /// Field hooks receive `(value, context)` and return the new value.
 fn call_field_hook_ref(
     lua: &Lua,
@@ -1284,21 +1229,7 @@ fn call_field_hook_ref(
     operation: &str,
     data: &HashMap<String, serde_json::Value>,
 ) -> Result<serde_json::Value> {
-    let parts: Vec<&str> = hook_ref.split('.').collect();
-    if parts.len() < 2 {
-        return Err(anyhow::anyhow!(
-            "Field hook reference '{}' must be module.function format", hook_ref
-        ));
-    }
-
-    let module_path = parts[..parts.len() - 1].join(".");
-    let func_name = parts[parts.len() - 1];
-
-    let require: mlua::Function = lua.globals().get("require")?;
-    let module: mlua::Table = require.call(module_path.clone())
-        .with_context(|| format!("Failed to require module '{}'", module_path))?;
-    let func: mlua::Function = module.get(func_name)
-        .with_context(|| format!("Function '{}' not found in module '{}'", func_name, module_path))?;
+    let func = resolve_hook_function(lua, hook_ref)?;
 
     // Convert the field value to Lua
     let lua_value = crate::hooks::api::json_to_lua(lua, &value)?;
@@ -1322,31 +1253,39 @@ fn call_field_hook_ref(
         .map_err(|e| anyhow::anyhow!("Field hook '{}' returned invalid value: {}", hook_ref, e))
 }
 
+/// Resolve a hook reference to a Lua function.
+///
+/// Tries file-per-hook first: `require("hooks.posts.auto_slug")` → function.
+/// Falls back to module pattern: `require("hooks.posts")["auto_slug"]`.
+pub(super) fn resolve_hook_function(lua: &Lua, hook_ref: &str) -> Result<mlua::Function> {
+    let require: mlua::Function = lua.globals().get("require")?;
+
+    // Try file-per-hook: require("hooks.posts.auto_slug") → function
+    if let Ok(value) = require.call::<Value>(hook_ref) {
+        if let Value::Function(f) = value {
+            return Ok(f);
+        }
+    }
+
+    // Fallback: module.function pattern
+    let parts: Vec<&str> = hook_ref.split('.').collect();
+    if parts.len() < 2 {
+        anyhow::bail!("Hook ref '{}' must be module.function format", hook_ref);
+    }
+    let module_path = parts[..parts.len() - 1].join(".");
+    let func_name = parts[parts.len() - 1];
+
+    let module: mlua::Table = require.call(module_path.clone())
+        .with_context(|| format!("Failed to require module '{}'", module_path))?;
+    let func: mlua::Function = module.get(func_name)
+        .with_context(|| format!("Function '{}' not found in module '{}'", func_name, module_path))?;
+    Ok(func)
+}
+
 /// Resolve a dotted function reference (e.g., "hooks.posts.auto_slug")
 /// and call it with the context.
 fn call_hook_ref(lua: &Lua, hook_ref: &str, context: HookContext) -> Result<HookContext> {
-    let parts: Vec<&str> = hook_ref.split('.').collect();
-    if parts.is_empty() {
-        return Ok(context);
-    }
-
-    // "hooks.posts.auto_slug" -> require("hooks.posts").auto_slug
-    let (module_path, func_name) = if parts.len() >= 2 {
-        let module = parts[..parts.len() - 1].join(".");
-        let func = parts[parts.len() - 1];
-        (module, func)
-    } else {
-        return Err(anyhow::anyhow!(
-            "Hook reference '{}' must be module.function format", hook_ref
-        ));
-    };
-
-    let require: mlua::Function = lua.globals().get("require")?;
-    let module: mlua::Table = require.call(module_path.clone())
-        .with_context(|| format!("Failed to require module '{}'", module_path))?;
-
-    let func: mlua::Function = module.get(func_name)
-        .with_context(|| format!("Function '{}' not found in module '{}'", func_name, module_path))?;
+    let func = resolve_hook_function(lua, hook_ref)?;
 
     // Convert context to Lua table
     let ctx_table = context_to_lua_table(lua, &context)?;

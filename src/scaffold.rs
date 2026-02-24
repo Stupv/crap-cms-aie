@@ -7,6 +7,64 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+/// Embedded Lua API type definitions — compiled into the binary.
+const LUA_API_TYPES: &str = include_str!("../types/crap.lua");
+
+/// Hook type for the `make hook` command.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum HookType {
+    Collection,
+    Field,
+    Access,
+}
+
+impl HookType {
+    /// Parse from string (CLI input).
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "collection" => Some(Self::Collection),
+            "field" => Some(Self::Field),
+            "access" => Some(Self::Access),
+            _ => None,
+        }
+    }
+
+    /// Valid lifecycle positions for this hook type.
+    pub fn valid_positions(&self) -> &'static [&'static str] {
+        match self {
+            Self::Collection => &[
+                "before_validate", "before_change", "after_change",
+                "before_read", "after_read",
+                "before_delete", "after_delete", "before_broadcast",
+            ],
+            Self::Field => &[
+                "before_validate", "before_change", "after_change", "after_read",
+            ],
+            Self::Access => &["read", "create", "update", "delete"],
+        }
+    }
+
+    /// Human-readable label.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Collection => "collection",
+            Self::Field => "field",
+            Self::Access => "access",
+        }
+    }
+}
+
+/// Options for `make_hook()`. Fully resolved — no prompts.
+pub struct MakeHookOptions<'a> {
+    pub config_dir: &'a Path,
+    pub name: &'a str,
+    pub hook_type: HookType,
+    pub collection: &'a str,
+    pub position: &'a str,
+    pub field: Option<&'a str>,
+    pub force: bool,
+}
+
 /// Scaffold a new config directory with minimum viable structure.
 ///
 /// Creates: crap.toml, init.lua, .luarc.json, .gitignore, and empty directories
@@ -29,10 +87,14 @@ pub fn init(dir: Option<PathBuf>) -> Result<()> {
     fs::create_dir_all(&target)
         .with_context(|| format!("Failed to create directory '{}'", target.display()))?;
 
-    for subdir in &["collections", "globals", "hooks", "templates", "static", "migrations"] {
+    for subdir in &["collections", "globals", "hooks", "templates", "static", "migrations", "types"] {
         fs::create_dir_all(target.join(subdir))
             .with_context(|| format!("Failed to create {}/", subdir))?;
     }
+
+    // Write embedded Lua API type definitions
+    fs::write(target.join("types/crap.lua"), LUA_API_TYPES)
+        .context("Failed to write types/crap.lua")?;
 
     // crap.toml — sensible defaults with commented-out options
     fs::write(
@@ -114,6 +176,9 @@ pub fn make_collection(
     slug: &str,
     fields_shorthand: Option<&str>,
     no_timestamps: bool,
+    auth: bool,
+    upload: bool,
+    versions: bool,
     force: bool,
 ) -> Result<()> {
     validate_slug(slug)?;
@@ -137,6 +202,11 @@ pub fn make_collection(
 
     let fields = match fields_shorthand {
         Some(s) => parse_fields_shorthand(s)?,
+        None if upload => vec![FieldStub {
+            name: "alt".to_string(),
+            field_type: "text".to_string(),
+            required: false,
+        }],
         None => vec![FieldStub {
             name: "title".to_string(),
             field_type: "text".to_string(),
@@ -153,8 +223,18 @@ pub fn make_collection(
     lua.push_str(&format!("        plural = \"{}\",\n", label_plural));
     lua.push_str("    },\n");
     lua.push_str(&format!("    timestamps = {},\n", timestamps));
+    if auth {
+        lua.push_str("    auth = true,\n");
+    }
+    if upload {
+        lua.push_str("    upload = true,\n");
+    }
+    if versions {
+        lua.push_str("    versions = true,\n");
+    }
     lua.push_str("    admin = {\n");
-    lua.push_str(&format!("        use_as_title = \"{}\",\n", title_field));
+    lua.push_str(&format!("        use_as_title = \"{}\",\n",
+        if auth { "email" } else { title_field }));
     lua.push_str("    },\n");
     lua.push_str("    fields = {\n");
 
@@ -223,87 +303,113 @@ pub fn make_global(config_dir: &Path, slug: &str, force: bool) -> Result<()> {
     Ok(())
 }
 
-/// Generate a hook stub at `<config_dir>/hooks/<module>.lua`.
+/// Generate a hook file at `<config_dir>/hooks/<collection>/<name>.lua`.
 ///
-/// If the file already exists, appends the function stub.
-/// The `name` argument is `module.function` (e.g., "posts.auto_slug").
-pub fn make_hook(config_dir: &Path, name: &str) -> Result<()> {
-    let (module, function) = name.split_once('.')
-        .ok_or_else(|| anyhow::anyhow!(
-            "Hook name must be 'module.function' (e.g., 'posts.auto_slug'), got '{}'",
-            name
-        ))?;
-
-    validate_slug(module)?;
-    if function.is_empty() || !function.chars().all(|c| c.is_alphanumeric() || c == '_') {
-        anyhow::bail!("Invalid function name '{}' — use alphanumeric characters and underscores", function);
+/// Creates a single-function file that returns the function directly (no module table).
+/// The template varies by hook type (collection, field, or access).
+pub fn make_hook(opts: &MakeHookOptions) -> Result<()> {
+    // Validate inputs
+    validate_slug(opts.collection)?;
+    if opts.name.is_empty() || !opts.name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        anyhow::bail!(
+            "Invalid hook name '{}' — use alphanumeric characters and underscores only",
+            opts.name
+        );
+    }
+    if !opts.hook_type.valid_positions().contains(&opts.position) {
+        anyhow::bail!(
+            "Invalid position '{}' for {} hook — valid: {}",
+            opts.position,
+            opts.hook_type.label(),
+            opts.hook_type.valid_positions().join(", ")
+        );
+    }
+    if opts.hook_type == HookType::Field && opts.field.is_none() {
+        anyhow::bail!("Field hooks require --field to be specified");
     }
 
-    let hooks_dir = config_dir.join("hooks");
+    let hooks_dir = opts.config_dir.join("hooks").join(opts.collection);
     fs::create_dir_all(&hooks_dir)
-        .context("Failed to create hooks/ directory")?;
+        .context("Failed to create hooks/ subdirectory")?;
 
-    let file_path = hooks_dir.join(format!("{}.lua", module));
+    let file_path = hooks_dir.join(format!("{}.lua", opts.name));
+    if file_path.exists() && !opts.force {
+        anyhow::bail!(
+            "File '{}' already exists — use --force to overwrite",
+            file_path.display()
+        );
+    }
 
-    if file_path.exists() {
-        // Append to existing file
-        let existing = fs::read_to_string(&file_path)
-            .with_context(|| format!("Failed to read {}", file_path.display()))?;
+    let lua = match opts.hook_type {
+        HookType::Collection => format!(
+            r#"--- {position} hook for {collection}.
+---@param context crap.HookContext
+---@return crap.HookContext
+return function(context)
+    -- TODO: implement
+    return context
+end
+"#,
+            position = opts.position,
+            collection = opts.collection,
+        ),
+        HookType::Field => format!(
+            r#"--- {position} field hook for {collection}.{field}.
+---@param value any
+---@param context crap.FieldHookContext
+---@return any
+return function(value, context)
+    -- TODO: implement
+    return value
+end
+"#,
+            position = opts.position,
+            collection = opts.collection,
+            field = opts.field.unwrap_or("?"),
+        ),
+        HookType::Access => format!(
+            r#"--- {position} access control for {collection}.
+---@param context crap.AccessContext
+---@return boolean | table
+return function(context)
+    -- TODO: implement
+    return true
+end
+"#,
+            position = opts.position,
+            collection = opts.collection,
+        ),
+    };
 
-        // Check if function already exists
-        let func_pattern = format!("function M.{}(", function);
-        if existing.contains(&func_pattern) {
-            anyhow::bail!(
-                "Function '{}' already exists in {}",
-                function, file_path.display()
-            );
+    fs::write(&file_path, &lua)
+        .with_context(|| format!("Failed to write {}", file_path.display()))?;
+
+    let hook_ref = format!("hooks.{}.{}", opts.collection, opts.name);
+
+    println!("Created {}", file_path.display());
+    println!();
+    println!("Hook ref: {}", hook_ref);
+    println!();
+
+    match opts.hook_type {
+        HookType::Collection => {
+            println!("Add to your collection definition:");
+            println!("  hooks = {{");
+            println!("      {} = {{ \"{}\" }},", opts.position, hook_ref);
+            println!("  }},");
         }
-
-        // Insert before the final `return M`
-        let stub = format!(
-            r#"
----@param context crap.HookContext
-function M.{func}(context)
-    -- TODO: implement
-    return context
-end
-"#,
-            func = function,
-        );
-
-        let new_content = if let Some(pos) = existing.rfind("return M") {
-            let (before, after) = existing.split_at(pos);
-            format!("{}{}{}", before, stub, after)
-        } else {
-            // No `return M` found — just append
-            format!("{}\n{}\nreturn M\n", existing.trim_end(), stub.trim_end())
-        };
-
-        fs::write(&file_path, new_content)
-            .with_context(|| format!("Failed to write {}", file_path.display()))?;
-
-        println!("Added function '{}' to {}", function, file_path.display());
-        println!("Note: add \"hooks.{}.{}\" to your collection's hooks table", module, function);
-    } else {
-        // Create new file
-        let lua = format!(
-            r#"local M = {{}}
-
----@param context crap.HookContext
-function M.{func}(context)
-    -- TODO: implement
-    return context
-end
-
-return M
-"#,
-            func = function,
-        );
-
-        fs::write(&file_path, &lua)
-            .with_context(|| format!("Failed to write {}", file_path.display()))?;
-
-        println!("Created {}", file_path.display());
+        HookType::Field => {
+            println!("Add to your field definition:");
+            println!("  hooks = {{");
+            println!("      {} = {{ \"{}\" }},", opts.position, hook_ref);
+            println!("  }},");
+        }
+        HookType::Access => {
+            println!("Add to your collection definition:");
+            println!("  access = {{");
+            println!("      {} = \"{}\",", opts.position, hook_ref);
+            println!("  }},");
+        }
     }
 
     Ok(())
@@ -570,7 +676,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path, skip: &[&str]) -> Result<()> {
 }
 
 /// List blueprint names from the global blueprints directory.
-fn list_blueprint_names() -> Result<Vec<String>> {
+pub fn list_blueprint_names() -> Result<Vec<String>> {
     let bp_dir = blueprints_dir()?;
     if !bp_dir.exists() {
         return Ok(Vec::new());
@@ -615,7 +721,7 @@ fn validate_blueprint_name(name: &str) -> Result<()> {
 }
 
 /// Validate a slug: lowercase alphanumeric + underscores, not empty.
-fn validate_slug(slug: &str) -> Result<()> {
+pub fn validate_slug(slug: &str) -> Result<()> {
     if slug.is_empty() {
         anyhow::bail!("Slug cannot be empty");
     }
@@ -683,6 +789,13 @@ fn pluralize(s: &str) -> String {
     }
 }
 
+/// Valid field types for collection definitions.
+pub const VALID_FIELD_TYPES: &[&str] = &[
+    "text", "number", "textarea", "select", "checkbox", "date",
+    "email", "json", "richtext", "relationship", "array", "group",
+    "upload", "blocks",
+];
+
 struct FieldStub {
     name: String,
     field_type: String,
@@ -691,11 +804,6 @@ struct FieldStub {
 
 /// Parse inline field shorthand: "title:text:required,status:select,body:textarea"
 fn parse_fields_shorthand(s: &str) -> Result<Vec<FieldStub>> {
-    let valid_types = [
-        "text", "number", "textarea", "select", "checkbox", "date",
-        "email", "json", "richtext", "relationship", "array", "group",
-        "upload", "blocks",
-    ];
 
     let mut fields = Vec::new();
     for part in s.split(',') {
@@ -712,11 +820,11 @@ fn parse_fields_shorthand(s: &str) -> Result<Vec<FieldStub>> {
         }
         let name = segments[0].to_string();
         let field_type = segments[1].to_lowercase();
-        if !valid_types.contains(&field_type.as_str()) {
+        if !VALID_FIELD_TYPES.contains(&field_type.as_str()) {
             anyhow::bail!(
                 "Unknown field type '{}' — valid types: {}",
                 field_type,
-                valid_types.join(", ")
+                VALID_FIELD_TYPES.join(", ")
             );
         }
         let required = segments.get(2).map(|s| *s == "required").unwrap_or(false);
@@ -799,6 +907,8 @@ mod tests {
         assert!(target.join("templates").is_dir());
         assert!(target.join("static").is_dir());
         assert!(target.join("migrations").is_dir());
+        assert!(target.join("types").is_dir());
+        assert!(target.join("types/crap.lua").exists());
     }
 
     #[test]
@@ -816,7 +926,7 @@ mod tests {
     #[test]
     fn test_make_collection_default() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        make_collection(tmp.path(), "posts", None, false, false).unwrap();
+        make_collection(tmp.path(), "posts", None, false, false, false, false, false).unwrap();
 
         let content = fs::read_to_string(tmp.path().join("collections/posts.lua")).unwrap();
         assert!(content.contains("crap.collections.define(\"posts\""));
@@ -834,7 +944,7 @@ mod tests {
         make_collection(
             tmp.path(), "articles",
             Some("headline:text:required,body:richtext,draft:checkbox"),
-            true, false,
+            true, false, false, false, false,
         ).unwrap();
 
         let content = fs::read_to_string(tmp.path().join("collections/articles.lua")).unwrap();
@@ -849,8 +959,8 @@ mod tests {
     #[test]
     fn test_make_collection_refuses_overwrite() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        make_collection(tmp.path(), "posts", None, false, false).unwrap();
-        let result = make_collection(tmp.path(), "posts", None, false, false);
+        make_collection(tmp.path(), "posts", None, false, false, false, false, false).unwrap();
+        let result = make_collection(tmp.path(), "posts", None, false, false, false, false, false);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("--force"));
     }
@@ -858,8 +968,8 @@ mod tests {
     #[test]
     fn test_make_collection_force_overwrite() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        make_collection(tmp.path(), "posts", None, false, false).unwrap();
-        assert!(make_collection(tmp.path(), "posts", None, false, true).is_ok());
+        make_collection(tmp.path(), "posts", None, false, false, false, false, false).unwrap();
+        assert!(make_collection(tmp.path(), "posts", None, false, false, false, false, true).is_ok());
     }
 
     #[test]
@@ -872,45 +982,129 @@ mod tests {
         assert!(content.contains("singular = \"Site Settings\""));
     }
 
-    #[test]
-    fn test_make_hook_new_file() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        make_hook(tmp.path(), "posts.auto_slug").unwrap();
-
-        let content = fs::read_to_string(tmp.path().join("hooks/posts.lua")).unwrap();
-        assert!(content.contains("local M = {}"));
-        assert!(content.contains("function M.auto_slug(context)"));
-        assert!(content.contains("return M"));
+    fn make_hook_opts<'a>(
+        config_dir: &'a Path,
+        name: &'a str,
+        hook_type: HookType,
+        collection: &'a str,
+        position: &'a str,
+        field: Option<&'a str>,
+        force: bool,
+    ) -> MakeHookOptions<'a> {
+        MakeHookOptions { config_dir, name, hook_type, collection, position, field, force }
     }
 
     #[test]
-    fn test_make_hook_appends_to_existing() {
+    fn test_make_hook_collection() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        make_hook(tmp.path(), "posts.auto_slug").unwrap();
-        make_hook(tmp.path(), "posts.validate_title").unwrap();
+        let opts = make_hook_opts(
+            tmp.path(), "auto_slug", HookType::Collection,
+            "posts", "before_change", None, false,
+        );
+        make_hook(&opts).unwrap();
 
-        let content = fs::read_to_string(tmp.path().join("hooks/posts.lua")).unwrap();
-        assert!(content.contains("function M.auto_slug(context)"));
-        assert!(content.contains("function M.validate_title(context)"));
-        // Should only have one `return M` at the end
-        assert_eq!(content.matches("return M").count(), 1);
+        let content = fs::read_to_string(tmp.path().join("hooks/posts/auto_slug.lua")).unwrap();
+        assert!(content.contains("before_change hook for posts"));
+        assert!(content.contains("crap.HookContext"));
+        assert!(content.contains("return function(context)"));
     }
 
     #[test]
-    fn test_make_hook_refuses_duplicate() {
+    fn test_make_hook_field() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        make_hook(tmp.path(), "posts.auto_slug").unwrap();
-        let result = make_hook(tmp.path(), "posts.auto_slug");
+        let opts = make_hook_opts(
+            tmp.path(), "normalize", HookType::Field,
+            "posts", "before_validate", Some("title"), false,
+        );
+        make_hook(&opts).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("hooks/posts/normalize.lua")).unwrap();
+        assert!(content.contains("before_validate field hook for posts.title"));
+        assert!(content.contains("crap.FieldHookContext"));
+        assert!(content.contains("return function(value, context)"));
+    }
+
+    #[test]
+    fn test_make_hook_access() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let opts = make_hook_opts(
+            tmp.path(), "admin_only", HookType::Access,
+            "posts", "read", None, false,
+        );
+        make_hook(&opts).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("hooks/posts/admin_only.lua")).unwrap();
+        assert!(content.contains("read access control for posts"));
+        assert!(content.contains("crap.AccessContext"));
+        assert!(content.contains("return true"));
+    }
+
+    #[test]
+    fn test_make_hook_refuses_overwrite() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let opts = make_hook_opts(
+            tmp.path(), "auto_slug", HookType::Collection,
+            "posts", "before_change", None, false,
+        );
+        make_hook(&opts).unwrap();
+        let result = make_hook(&opts);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("already exists"));
+        assert!(result.unwrap_err().to_string().contains("--force"));
+    }
+
+    #[test]
+    fn test_make_hook_force_overwrite() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let opts = make_hook_opts(
+            tmp.path(), "auto_slug", HookType::Collection,
+            "posts", "before_change", None, false,
+        );
+        make_hook(&opts).unwrap();
+        let opts_force = make_hook_opts(
+            tmp.path(), "auto_slug", HookType::Collection,
+            "posts", "before_change", None, true,
+        );
+        assert!(make_hook(&opts_force).is_ok());
+    }
+
+    #[test]
+    fn test_make_hook_invalid_position() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let opts = make_hook_opts(
+            tmp.path(), "bad", HookType::Collection,
+            "posts", "invalid_position", None, false,
+        );
+        let result = make_hook(&opts);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid position"));
     }
 
     #[test]
     fn test_make_hook_invalid_name() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        assert!(make_hook(tmp.path(), "nope").is_err());
-        assert!(make_hook(tmp.path(), ".func").is_err());
-        assert!(make_hook(tmp.path(), "mod.").is_err());
+        let opts = make_hook_opts(
+            tmp.path(), "", HookType::Collection,
+            "posts", "before_change", None, false,
+        );
+        assert!(make_hook(&opts).is_err());
+
+        let opts2 = make_hook_opts(
+            tmp.path(), "bad-name", HookType::Collection,
+            "posts", "before_change", None, false,
+        );
+        assert!(make_hook(&opts2).is_err());
+    }
+
+    #[test]
+    fn test_make_hook_field_requires_field_name() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let opts = make_hook_opts(
+            tmp.path(), "hook", HookType::Field,
+            "posts", "before_validate", None, false,
+        );
+        let result = make_hook(&opts);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("--field"));
     }
 
     #[test]

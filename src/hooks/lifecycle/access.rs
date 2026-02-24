@@ -1,6 +1,6 @@
 //! Access control checks executed within the Lua VM.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use mlua::{Lua, Value};
 use std::collections::HashMap;
 
@@ -9,6 +9,7 @@ use crate::core::field::FieldDefinition;
 use crate::db::query::{AccessResult, Filter, FilterClause, FilterOp};
 
 use super::crud::{document_to_lua_table, lua_parse_filter_op};
+use super::resolve_hook_function;
 
 /// Check collection-level access using an already-held `&Lua` reference.
 /// Does NOT lock the VM or manage TxContext — caller must ensure those are set.
@@ -25,20 +26,7 @@ pub(crate) fn check_access_with_lua(
         None => return Ok(AccessResult::Allowed),
     };
 
-    let parts: Vec<&str> = func_ref.split('.').collect();
-    if parts.len() < 2 {
-        return Err(anyhow::anyhow!(
-            "Access ref '{}' must be module.function format", func_ref
-        ));
-    }
-    let module_path = parts[..parts.len() - 1].join(".");
-    let func_name = parts[parts.len() - 1];
-
-    let require: mlua::Function = lua.globals().get("require")?;
-    let module: mlua::Table = require.call(module_path.clone())
-        .with_context(|| format!("Failed to require module '{}'", module_path))?;
-    let func: mlua::Function = module.get(func_name)
-        .with_context(|| format!("Function '{}' not found in module '{}'", func_name, module_path))?;
+    let func = resolve_hook_function(lua, func_ref)?;
 
     // Build context table: { user = ..., id = ..., data = ... }
     let ctx_table = lua.create_table()?;
