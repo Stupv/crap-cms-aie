@@ -1,6 +1,6 @@
 # Config Directory
 
-All customization lives in a single directory passed via `--config`. This is the only required argument.
+All customization lives in a single config directory, passed as the first positional argument to most commands.
 
 ## Directory Structure
 
@@ -61,7 +61,7 @@ Create a `.luarc.json` in your config directory for IDE autocompletion:
 Generate type definitions with:
 
 ```bash
-cargo run -- --config ./my-project --generate-types
+crap-cms typegen ./my-project
 ```
 
-This writes `types/crap.lua` with LuaLS annotations for the entire `crap.*` API.
+This writes `types/crap.lua` with LuaLS annotations for the entire `crap.*` API. Use `-l all` to generate types for all supported languages.

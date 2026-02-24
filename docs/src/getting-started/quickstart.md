@@ -5,7 +5,7 @@
 The repository includes an `example/` config directory with sample collections:
 
 ```bash
-cargo run -- --config ./example
+crap-cms serve ./example
 ```
 
 This starts:
@@ -19,14 +19,14 @@ The example config includes a `users` auth collection. Create the first user:
 
 ```bash
 # Interactive (prompts for password)
-cargo run -- --config ./example --create-user --email admin@example.com
+crap-cms user create ./example -e admin@example.com
 
 # Non-interactive
-cargo run -- --config ./example --create-user \
-    --email admin@example.com \
-    --password secret123 \
-    --field role=admin \
-    --field name="Admin User"
+crap-cms user create ./example \
+    -e admin@example.com \
+    -p secret123 \
+    -f role=admin \
+    -f name="Admin User"
 ```
 
 ## 3. Log in to the admin UI
@@ -57,7 +57,13 @@ grpcurl -plaintext localhost:50051 crap.ContentAPI/Create \
 
 ## 5. Create your own config
 
-Start a new project by creating a config directory:
+Scaffold a new project:
+
+```bash
+crap-cms init ./my-project
+```
+
+Or create the structure manually:
 
 ```bash
 mkdir my-project
@@ -79,5 +85,5 @@ crap.collections.define("posts", {
 Run:
 
 ```bash
-cargo run -- --config ./my-project
+crap-cms serve ./my-project
 ```

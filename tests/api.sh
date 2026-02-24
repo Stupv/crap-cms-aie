@@ -383,10 +383,10 @@ update_site_settings() {
 
 # ── Auth ─────────────────────────────────────────────────────
 
-# CLI create-user (alternative to gRPC, good for bootstrapping first admin):
-#   cargo run -- --config ./example --create-user --email admin@example.com
-#   cargo run -- --config ./example --create-user --email admin@example.com \
-#       --password secret123 --field role=admin --field name="Admin User"
+# CLI user create (alternative to gRPC, good for bootstrapping first admin):
+#   crap-cms user create ./example -e admin@example.com
+#   crap-cms user create ./example -e admin@example.com \
+#       -p secret123 -f role=admin -f name="Admin User"
 
 # Create a user (via the standard Create RPC — password in data)
 create_user() {

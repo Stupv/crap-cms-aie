@@ -38,7 +38,7 @@ crap.collections.define("users", {
 2. Bootstrap the first user:
 
 ```bash
-cargo run -- --config ./my-project --create-user --email admin@example.com
+crap-cms user create ./my-project -e admin@example.com
 ```
 
 3. Set a JWT secret in production:

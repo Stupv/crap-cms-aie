@@ -18,7 +18,7 @@
 
 # CLI
 
-- [Command-Line Flags](cli/flags.md)
+- [Command-Line Reference](cli/flags.md)
 
 # Collections
 

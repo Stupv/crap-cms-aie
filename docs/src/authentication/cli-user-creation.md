@@ -1,13 +1,13 @@
 # CLI User Creation
 
-The `--create-user` flag bootstraps users without the admin UI or gRPC API. Useful for creating the first admin user.
+The `user create` command bootstraps users without the admin UI or gRPC API. Useful for creating the first admin user.
 
 ## Interactive Mode
 
 Prompts for password with hidden input and confirmation:
 
 ```bash
-cargo run -- --config ./my-project --create-user --email admin@example.com
+crap-cms user create ./my-project -e admin@example.com
 ```
 
 Output:
@@ -22,27 +22,26 @@ If required fields have no default value, you'll be prompted for those too.
 
 ## Non-Interactive Mode
 
-For CI/scripting. The `--password` flag skips the prompt:
+For CI/scripting. The `-p` flag skips the prompt:
 
 ```bash
-cargo run -- --config ./my-project --create-user \
-    --email admin@example.com \
-    --password secret123 \
-    --field role=admin \
-    --field name="Admin User"
+crap-cms user create ./my-project \
+    -e admin@example.com \
+    -p secret123 \
+    -f role=admin \
+    -f name="Admin User"
 ```
 
 > **Warning:** The password may be visible in shell history. Use interactive mode for production bootstrapping.
 
 ## Flags
 
-| Flag | Description |
-|------|-------------|
-| `--create-user` | Enable user creation mode |
-| `--collection <slug>` | Auth collection to create the user in (default: `users`) |
-| `--email <email>` | User email (prompted if omitted) |
-| `--password <password>` | User password (prompted if omitted) |
-| `--field <key=value>` | Extra field values (repeatable) |
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--collection` | `-c` | Auth collection to create the user in (default: `users`) |
+| `--email` | `-e` | User email (prompted if omitted) |
+| `--password` | `-p` | User password (prompted if omitted) |
+| `--field` | `-f` | Extra field values as key=value (repeatable) |
 
 ## Behavior
 
@@ -56,24 +55,41 @@ cargo run -- --config ./my-project --create-user \
 
 - Required fields with `default_value` — uses the default, prompts with `[default]` if interactive
 - Required fields without defaults — prompts for input, fails if empty
-- Optional fields — skipped unless provided via `--field`
+- Optional fields — skipped unless provided via `-f`
 - Checkbox fields — skipped (absent = false)
-- Email field — always required (handled separately from `--field`)
+- Email field — always required (handled separately from `-f`)
 
 ## Examples
 
 ```bash
 # Minimal (will prompt for everything else)
-cargo run -- --config ./example --create-user
+crap-cms user create ./example
 
 # Different collection
-cargo run -- --config ./example --create-user --collection admins \
-    --email boss@example.com
+crap-cms user create ./example -c admins \
+    -e boss@example.com
 
 # Full non-interactive
-cargo run -- --config ./example --create-user \
-    --email editor@example.com \
-    --password pass123 \
-    --field name="Jane Editor" \
-    --field role=editor
+crap-cms user create ./example \
+    -e editor@example.com \
+    -p pass123 \
+    -f name="Jane Editor" \
+    -f role=editor
+```
+
+## Other User Commands
+
+```bash
+# List all users
+crap-cms user list ./example
+
+# Lock/unlock a user
+crap-cms user lock ./example -e user@example.com
+crap-cms user unlock ./example -e user@example.com
+
+# Change password
+crap-cms user change-password ./example -e user@example.com
+
+# Delete a user (with confirmation skip)
+crap-cms user delete ./example -e user@example.com -y
 ```

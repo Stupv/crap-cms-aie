@@ -13,7 +13,7 @@ Everything lives in a single config directory — like `~/.config/nvim/` for you
 cargo build
 
 # Run with the example config
-cargo run -- --config ./example
+crap-cms serve ./example
 ```
 
 Admin UI: http://localhost:3000/admin
@@ -152,7 +152,7 @@ request without restarting.
 
 ```
 src/
-├── main.rs           # binary entry point, --config flag
+├── main.rs           # binary entry point, subcommand dispatch
 ├── lib.rs            # crate exports
 ├── config.rs         # crap.toml loading + defaults
 ├── core/             # collection, field, document types
@@ -166,7 +166,7 @@ src/
 
 ```bash
 cargo build                        # compile
-cargo run -- --config ./example    # run with example site
+crap-cms serve ./example           # run with example site
 cargo test                         # run tests
 ```
 

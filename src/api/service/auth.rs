@@ -54,6 +54,23 @@ impl ContentService {
 
         let user = user.ok_or_else(|| Status::unauthenticated("Invalid email or password"))?;
 
+        // Check if account is locked
+        {
+            let pool = self.pool.clone();
+            let slug = req.collection.clone();
+            let uid = user.id.clone();
+            let locked = tokio::task::spawn_blocking(move || {
+                let conn = pool.get().context("DB connection")?;
+                query::is_locked(&conn, &slug, &uid)
+            }).await
+                .map_err(|e| Status::internal(format!("Task error: {}", e)))?
+                .map_err(|e| Status::internal(format!("Lock check error: {}", e)))?;
+
+            if locked {
+                return Err(Status::permission_denied("This account has been locked"));
+            }
+        }
+
         // Check email verification if enabled
         if def.auth.as_ref().is_some_and(|a| a.verify_email) {
             let pool = self.pool.clone();

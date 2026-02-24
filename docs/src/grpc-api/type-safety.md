@@ -13,7 +13,7 @@ But `Struct` means your gRPC client sees `fields` as an untyped map. This page e
 └────────────┬─────────────────────┬───────────────┘
              │                     │
     ┌────────▼────────┐   ┌───────▼────────────┐
-    │  DescribeCollection │   │  --generate-types    │
+    │  DescribeCollection │   │  crap-cms typegen     │
     │  (runtime, gRPC)    │   │  (build-time, Lua)   │
     └────────┬────────┘   └───────┬────────────┘
              │                     │
@@ -26,7 +26,7 @@ But `Struct` means your gRPC client sees `fields` as an untyped map. This page e
 
 **Layer 1: Runtime schema discovery** — the `DescribeCollection` RPC returns the full field schema. gRPC clients call it at startup or build time to generate typed wrappers.
 
-**Layer 2: Lua typegen** — the `--generate-types` flag writes `types/generated.lua` with LuaLS annotations. This gives you autocompletion and type checking inside hooks and init.lua.
+**Layer 2: Lua typegen** — the `crap-cms typegen` command writes `types/generated.lua` with LuaLS annotations. This gives you autocompletion and type checking inside hooks and init.lua.
 
 ## DescribeCollection
 
@@ -261,10 +261,10 @@ The gRPC type safety story above is for **external clients**. For **Lua hooks an
 Types are auto-generated on every server startup. You can also generate them explicitly:
 
 ```bash
-crap-cms --config ./my-project --generate-types
+crap-cms typegen ./my-project
 ```
 
-This writes `<config_dir>/types/generated.lua` with LuaLS annotations derived from your Lua collection definitions.
+This writes `<config_dir>/types/generated.lua` with LuaLS annotations derived from your Lua collection definitions. Use `-l all` to generate types for all supported languages (Lua, TypeScript, Go, Python, Rust).
 
 ### What Gets Generated
 

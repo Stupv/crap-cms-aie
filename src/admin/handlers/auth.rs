@@ -94,6 +94,11 @@ pub async fn login_action(
             return Ok(None);
         }
 
+        // Check if account is locked
+        if query::is_locked(&conn, &slug, &user.id)? {
+            return Ok(Some(Err("This account has been locked".to_string())));
+        }
+
         // Check email verification if enabled
         if verify_email {
             let verified = query::is_verified(&conn, &slug, &user.id)?;

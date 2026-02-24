@@ -184,6 +184,50 @@ pub fn mark_verified(
     Ok(())
 }
 
+// ── Lock/unlock functions ─────────────────────────────────────────────────
+
+/// Lock a user account (prevent login).
+pub fn lock_user(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    id: &str,
+) -> Result<()> {
+    let sql = format!("UPDATE {} SET _locked = 1 WHERE id = ?1", slug);
+    conn.execute(&sql, [id])
+        .with_context(|| format!("Failed to lock user {} in {}", id, slug))?;
+    Ok(())
+}
+
+/// Unlock a user account (allow login).
+pub fn unlock_user(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    id: &str,
+) -> Result<()> {
+    let sql = format!("UPDATE {} SET _locked = 0 WHERE id = ?1", slug);
+    conn.execute(&sql, [id])
+        .with_context(|| format!("Failed to unlock user {} in {}", id, slug))?;
+    Ok(())
+}
+
+/// Check if a user account is locked.
+pub fn is_locked(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    id: &str,
+) -> Result<bool> {
+    let sql = format!("SELECT _locked FROM {} WHERE id = ?1", slug);
+    let result = conn.query_row(&sql, [id], |row| {
+        row.get::<_, Option<i64>>(0)
+    });
+    match result {
+        Ok(Some(v)) => Ok(v != 0),
+        Ok(None) => Ok(false),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+        Err(e) => Err(e).context(format!("Failed to check lock status for {} in {}", id, slug)),
+    }
+}
+
 /// Check if a user is verified.
 pub fn is_verified(
     conn: &rusqlite::Connection,
@@ -268,6 +312,7 @@ mod tests {
                 _password_hash TEXT,
                 _reset_token TEXT,
                 _reset_token_exp INTEGER,
+                _locked INTEGER DEFAULT 0,
                 _verification_token TEXT,
                 _verified INTEGER DEFAULT 0,
                 created_at TEXT,
@@ -407,5 +452,38 @@ mod tests {
         mark_verified(&conn, "users", "user1").unwrap();
         let result = is_verified(&conn, "users", "user1").unwrap();
         assert!(result, "User should be verified after mark_verified");
+    }
+
+    // ── lock/unlock tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn is_locked_default_false() {
+        let conn = setup_auth_db();
+        let result = is_locked(&conn, "users", "user1").unwrap();
+        assert!(!result, "Newly created user should not be locked");
+    }
+
+    #[test]
+    fn lock_then_check() {
+        let conn = setup_auth_db();
+        lock_user(&conn, "users", "user1").unwrap();
+        let result = is_locked(&conn, "users", "user1").unwrap();
+        assert!(result, "User should be locked after lock_user");
+    }
+
+    #[test]
+    fn lock_then_unlock() {
+        let conn = setup_auth_db();
+        lock_user(&conn, "users", "user1").unwrap();
+        assert!(is_locked(&conn, "users", "user1").unwrap());
+        unlock_user(&conn, "users", "user1").unwrap();
+        assert!(!is_locked(&conn, "users", "user1").unwrap(), "User should be unlocked after unlock_user");
+    }
+
+    #[test]
+    fn is_locked_nonexistent_user() {
+        let conn = setup_auth_db();
+        let result = is_locked(&conn, "users", "nonexistent").unwrap();
+        assert!(!result, "Non-existent user should return false");
     }
 }

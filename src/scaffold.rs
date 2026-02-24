@@ -1,0 +1,1027 @@
+//! CLI scaffolding commands: init, make collection, make global, make hook, blueprints.
+//!
+//! Writes plain files to the config directory. No database, no hidden state.
+
+use anyhow::{Context, Result};
+use std::fs;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
+/// Scaffold a new config directory with minimum viable structure.
+///
+/// Creates: crap.toml, init.lua, .luarc.json, .gitignore, and empty directories
+/// for collections, globals, hooks, templates, and static.
+///
+/// Refuses to overwrite if the directory already contains a crap.toml.
+pub fn init(dir: Option<PathBuf>) -> Result<()> {
+    let target = dir.unwrap_or_else(|| PathBuf::from("./crap-cms"));
+
+    // Refuse to overwrite existing config
+    let toml_path = target.join("crap.toml");
+    if toml_path.exists() {
+        anyhow::bail!(
+            "Directory '{}' already contains a crap.toml — refusing to overwrite",
+            target.display()
+        );
+    }
+
+    // Create the directory structure
+    fs::create_dir_all(&target)
+        .with_context(|| format!("Failed to create directory '{}'", target.display()))?;
+
+    for subdir in &["collections", "globals", "hooks", "templates", "static", "migrations"] {
+        fs::create_dir_all(target.join(subdir))
+            .with_context(|| format!("Failed to create {}/", subdir))?;
+    }
+
+    // crap.toml — sensible defaults with commented-out options
+    fs::write(
+        &toml_path,
+        r#"[server]
+admin_port = 3000
+grpc_port = 50051
+host = "0.0.0.0"
+
+[database]
+path = "data/crap.db"
+
+[admin]
+dev_mode = true
+
+[auth]
+# secret = "your-secret-here"   # omit to auto-generate (tokens won't survive restarts)
+# token_expiry = 7200           # seconds, default 2 hours
+
+[live]
+# enabled = true                # enable SSE + gRPC Subscribe for live mutation events
+# channel_capacity = 1024       # broadcast channel buffer size
+
+# [locale]
+# default_locale = "en"         # default locale for content
+# locales = ["en", "de"]        # supported locales (empty = disabled)
+# fallback = true               # fall back to default locale if field is empty
+"#,
+    )
+    .context("Failed to write crap.toml")?;
+
+    // init.lua — empty entry point with comments
+    fs::write(
+        target.join("init.lua"),
+        r#"-- init.lua — runs once at startup.
+-- Register global hooks, set up shared state, or log startup info.
+
+crap.log.info("Crap CMS initializing...")
+
+crap.log.info("init.lua loaded successfully")
+"#,
+    )
+    .context("Failed to write init.lua")?;
+
+    // .luarc.json — LuaLS config pointing to types/
+    fs::write(
+        target.join(".luarc.json"),
+        r#"{
+  "workspace.library": ["./types"],
+  "runtime.version": "Lua 5.4",
+  "diagnostics.globals": ["crap"]
+}
+"#,
+    )
+    .context("Failed to write .luarc.json")?;
+
+    // .gitignore — data and uploads (runtime artifacts)
+    fs::write(
+        target.join(".gitignore"),
+        "data/\nuploads/\ntypes/\n",
+    )
+    .context("Failed to write .gitignore")?;
+
+    let abs = target.canonicalize().unwrap_or_else(|_| target.clone());
+    println!("Scaffolded config directory: {}", abs.display());
+    println!();
+    println!("Next steps:");
+    println!("  1. Add collections:  crap-cms make collection {} posts", target.display());
+    println!("  2. Start the server: crap-cms serve {}", target.display());
+
+    Ok(())
+}
+
+/// Generate a collection Lua file at `<config_dir>/collections/<slug>.lua`.
+///
+/// Optionally accepts inline field shorthand (e.g., "title:text:required,body:textarea").
+pub fn make_collection(
+    config_dir: &Path,
+    slug: &str,
+    fields_shorthand: Option<&str>,
+    no_timestamps: bool,
+    force: bool,
+) -> Result<()> {
+    validate_slug(slug)?;
+
+    let collections_dir = config_dir.join("collections");
+    fs::create_dir_all(&collections_dir)
+        .context("Failed to create collections/ directory")?;
+
+    let file_path = collections_dir.join(format!("{}.lua", slug));
+    if file_path.exists() && !force {
+        anyhow::bail!(
+            "File '{}' already exists — use --force to overwrite",
+            file_path.display()
+        );
+    }
+
+    let singular_slug = singularize(slug);
+    let label_singular = to_title_case(&singular_slug);
+    let label_plural = pluralize(&label_singular);
+    let timestamps = if no_timestamps { "false" } else { "true" };
+
+    let fields = match fields_shorthand {
+        Some(s) => parse_fields_shorthand(s)?,
+        None => vec![FieldStub {
+            name: "title".to_string(),
+            field_type: "text".to_string(),
+            required: true,
+        }],
+    };
+
+    let title_field = fields.first().map(|f| f.name.as_str()).unwrap_or("title");
+
+    let mut lua = String::new();
+    lua.push_str(&format!("crap.collections.define(\"{}\", {{\n", slug));
+    lua.push_str("    labels = {\n");
+    lua.push_str(&format!("        singular = \"{}\",\n", label_singular));
+    lua.push_str(&format!("        plural = \"{}\",\n", label_plural));
+    lua.push_str("    },\n");
+    lua.push_str(&format!("    timestamps = {},\n", timestamps));
+    lua.push_str("    admin = {\n");
+    lua.push_str(&format!("        use_as_title = \"{}\",\n", title_field));
+    lua.push_str("    },\n");
+    lua.push_str("    fields = {\n");
+
+    for field in &fields {
+        lua.push_str("        {\n");
+        lua.push_str(&format!("            name = \"{}\",\n", field.name));
+        lua.push_str(&format!("            type = \"{}\",\n", field.field_type));
+        if field.required {
+            lua.push_str("            required = true,\n");
+        }
+        lua.push_str("        },\n");
+    }
+
+    lua.push_str("    },\n");
+    lua.push_str("})\n");
+
+    fs::write(&file_path, &lua)
+        .with_context(|| format!("Failed to write {}", file_path.display()))?;
+
+    println!("Created {}", file_path.display());
+
+    Ok(())
+}
+
+/// Generate a global Lua file at `<config_dir>/globals/<slug>.lua`.
+pub fn make_global(config_dir: &Path, slug: &str, force: bool) -> Result<()> {
+    validate_slug(slug)?;
+
+    let globals_dir = config_dir.join("globals");
+    fs::create_dir_all(&globals_dir)
+        .context("Failed to create globals/ directory")?;
+
+    let file_path = globals_dir.join(format!("{}.lua", slug));
+    if file_path.exists() && !force {
+        anyhow::bail!(
+            "File '{}' already exists — use --force to overwrite",
+            file_path.display()
+        );
+    }
+
+    let label = to_title_case(slug);
+
+    let lua = format!(
+        r#"crap.globals.define("{slug}", {{
+    labels = {{
+        singular = "{label}",
+    }},
+    fields = {{
+        {{
+            name = "title",
+            type = "text",
+            required = true,
+        }},
+    }},
+}})
+"#,
+        slug = slug,
+        label = label,
+    );
+
+    fs::write(&file_path, &lua)
+        .with_context(|| format!("Failed to write {}", file_path.display()))?;
+
+    println!("Created {}", file_path.display());
+
+    Ok(())
+}
+
+/// Generate a hook stub at `<config_dir>/hooks/<module>.lua`.
+///
+/// If the file already exists, appends the function stub.
+/// The `name` argument is `module.function` (e.g., "posts.auto_slug").
+pub fn make_hook(config_dir: &Path, name: &str) -> Result<()> {
+    let (module, function) = name.split_once('.')
+        .ok_or_else(|| anyhow::anyhow!(
+            "Hook name must be 'module.function' (e.g., 'posts.auto_slug'), got '{}'",
+            name
+        ))?;
+
+    validate_slug(module)?;
+    if function.is_empty() || !function.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        anyhow::bail!("Invalid function name '{}' — use alphanumeric characters and underscores", function);
+    }
+
+    let hooks_dir = config_dir.join("hooks");
+    fs::create_dir_all(&hooks_dir)
+        .context("Failed to create hooks/ directory")?;
+
+    let file_path = hooks_dir.join(format!("{}.lua", module));
+
+    if file_path.exists() {
+        // Append to existing file
+        let existing = fs::read_to_string(&file_path)
+            .with_context(|| format!("Failed to read {}", file_path.display()))?;
+
+        // Check if function already exists
+        let func_pattern = format!("function M.{}(", function);
+        if existing.contains(&func_pattern) {
+            anyhow::bail!(
+                "Function '{}' already exists in {}",
+                function, file_path.display()
+            );
+        }
+
+        // Insert before the final `return M`
+        let stub = format!(
+            r#"
+---@param context crap.HookContext
+function M.{func}(context)
+    -- TODO: implement
+    return context
+end
+"#,
+            func = function,
+        );
+
+        let new_content = if let Some(pos) = existing.rfind("return M") {
+            let (before, after) = existing.split_at(pos);
+            format!("{}{}{}", before, stub, after)
+        } else {
+            // No `return M` found — just append
+            format!("{}\n{}\nreturn M\n", existing.trim_end(), stub.trim_end())
+        };
+
+        fs::write(&file_path, new_content)
+            .with_context(|| format!("Failed to write {}", file_path.display()))?;
+
+        println!("Added function '{}' to {}", function, file_path.display());
+        println!("Note: add \"hooks.{}.{}\" to your collection's hooks table", module, function);
+    } else {
+        // Create new file
+        let lua = format!(
+            r#"local M = {{}}
+
+---@param context crap.HookContext
+function M.{func}(context)
+    -- TODO: implement
+    return context
+end
+
+return M
+"#,
+            func = function,
+        );
+
+        fs::write(&file_path, &lua)
+            .with_context(|| format!("Failed to write {}", file_path.display()))?;
+
+        println!("Created {}", file_path.display());
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Proto export
+// ---------------------------------------------------------------------------
+
+/// The embedded proto file content — compiled into the binary.
+const PROTO_CONTENT: &str = include_str!("../proto/content.proto");
+
+/// Export the embedded `content.proto` file for gRPC client codegen.
+///
+/// - No `output` → writes to stdout (pipe-friendly).
+/// - `output` is a directory → writes `content.proto` into it.
+/// - `output` is a file path → writes directly to that file.
+pub fn proto_export(output: Option<&Path>) -> Result<()> {
+    match output {
+        None => {
+            // Write to stdout
+            std::io::stdout().write_all(PROTO_CONTENT.as_bytes())
+                .context("Failed to write proto to stdout")?;
+        }
+        Some(path) => {
+            let target = if path.is_dir() || path.to_string_lossy().ends_with('/') {
+                fs::create_dir_all(path)
+                    .with_context(|| format!("Failed to create directory '{}'", path.display()))?;
+                path.join("content.proto")
+            } else {
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent)
+                        .with_context(|| format!("Failed to create directory '{}'", parent.display()))?;
+                }
+                path.to_path_buf()
+            };
+            fs::write(&target, PROTO_CONTENT)
+                .with_context(|| format!("Failed to write {}", target.display()))?;
+            println!("Wrote {}", target.display());
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Migration scaffolding
+// ---------------------------------------------------------------------------
+
+/// Create a new migration file at `<config_dir>/migrations/YYYYMMDDHHMMSS_name.lua`.
+pub fn make_migration(config_dir: &Path, name: &str) -> Result<()> {
+    let migrations_dir = config_dir.join("migrations");
+    fs::create_dir_all(&migrations_dir)
+        .context("Failed to create migrations/ directory")?;
+
+    let timestamp = chrono::Local::now().format("%Y%m%d%H%M%S");
+    let filename = format!("{}_{}.lua", timestamp, name);
+    let file_path = migrations_dir.join(&filename);
+
+    let lua = format!(
+        r#"local M = {{}}
+
+function M.up()
+    -- TODO: implement migration
+    -- crap.* API available (find, create, update, delete)
+end
+
+function M.down()
+    -- TODO: implement rollback (best-effort)
+end
+
+return M
+"#,
+    );
+
+    fs::write(&file_path, &lua)
+        .with_context(|| format!("Failed to write {}", file_path.display()))?;
+
+    println!("Created {}", file_path.display());
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Blueprints
+// ---------------------------------------------------------------------------
+
+/// Resolve the global blueprints directory.
+///
+/// - Linux: `~/.config/crap-cms/blueprints/`
+/// - macOS: `~/Library/Application Support/crap-cms/blueprints/`
+/// - Windows: `C:\Users\<user>\AppData\Roaming\crap-cms\blueprints\`
+fn blueprints_dir() -> Result<PathBuf> {
+    let base = dirs::config_dir()
+        .ok_or_else(|| anyhow::anyhow!("Could not determine config directory for your platform"))?;
+    Ok(base.join("crap-cms").join("blueprints"))
+}
+
+/// Files and directories to skip when saving a blueprint (runtime artifacts).
+const BLUEPRINT_SKIP: &[&str] = &["data", "uploads", "types"];
+
+/// Save a config directory as a named blueprint.
+///
+/// Copies everything except runtime artifacts (`data/`, `uploads/`, `types/`)
+/// to `~/.config/crap-cms/blueprints/<name>/`.
+pub fn blueprint_save(config_dir: &Path, name: &str, force: bool) -> Result<()> {
+    validate_blueprint_name(name)?;
+
+    // Verify it's actually a config directory
+    if !config_dir.join("crap.toml").exists() {
+        anyhow::bail!(
+            "Directory '{}' does not contain a crap.toml — not a valid config directory",
+            config_dir.display()
+        );
+    }
+
+    let bp_dir = blueprints_dir()?;
+    let target = bp_dir.join(name);
+
+    if target.exists() && !force {
+        anyhow::bail!(
+            "Blueprint '{}' already exists — use --force to overwrite",
+            name
+        );
+    }
+
+    // Clean target if overwriting
+    if target.exists() {
+        fs::remove_dir_all(&target)
+            .with_context(|| format!("Failed to remove existing blueprint '{}'", name))?;
+    }
+
+    fs::create_dir_all(&target)
+        .with_context(|| format!("Failed to create blueprint directory '{}'", target.display()))?;
+
+    copy_dir_recursive(config_dir, &target, BLUEPRINT_SKIP)
+        .with_context(|| format!("Failed to copy config to blueprint '{}'", name))?;
+
+    println!("Saved blueprint '{}' from {}", name, config_dir.display());
+    println!("  Location: {}", target.display());
+
+    Ok(())
+}
+
+/// Create a new project from a saved blueprint.
+///
+/// Copies the blueprint to `dir` (or `./crap-cms/` if omitted).
+pub fn blueprint_use(name: &str, dir: Option<PathBuf>) -> Result<()> {
+    validate_blueprint_name(name)?;
+
+    let bp_dir = blueprints_dir()?;
+    let source = bp_dir.join(name);
+
+    if !source.exists() {
+        let available = list_blueprint_names()?;
+        if available.is_empty() {
+            anyhow::bail!("Blueprint '{}' not found. No blueprints saved yet.\nSave one with: crap-cms blueprint save <dir> <name>", name);
+        } else {
+            anyhow::bail!(
+                "Blueprint '{}' not found. Available blueprints: {}",
+                name,
+                available.join(", ")
+            );
+        }
+    }
+
+    let target = dir.unwrap_or_else(|| PathBuf::from("./crap-cms"));
+
+    // Refuse to overwrite existing config
+    if target.join("crap.toml").exists() {
+        anyhow::bail!(
+            "Directory '{}' already contains a crap.toml — refusing to overwrite",
+            target.display()
+        );
+    }
+
+    fs::create_dir_all(&target)
+        .with_context(|| format!("Failed to create directory '{}'", target.display()))?;
+
+    copy_dir_recursive(&source, &target, &[])
+        .with_context(|| format!("Failed to copy blueprint '{}' to '{}'", name, target.display()))?;
+
+    let abs = target.canonicalize().unwrap_or_else(|_| target.clone());
+    println!("Created project from blueprint '{}': {}", name, abs.display());
+    println!();
+    println!("Start the server: crap-cms serve {}", target.display());
+
+    Ok(())
+}
+
+/// List all saved blueprints.
+pub fn blueprint_list() -> Result<()> {
+    let bp_dir = blueprints_dir()?;
+
+    if !bp_dir.exists() {
+        println!("No blueprints saved yet.");
+        println!("Save one with: crap-cms blueprint save <dir> <name>");
+        return Ok(());
+    }
+
+    let names = list_blueprint_names()?;
+    if names.is_empty() {
+        println!("No blueprints saved yet.");
+        println!("Save one with: crap-cms blueprint save <dir> <name>");
+        return Ok(());
+    }
+
+    println!("Saved blueprints:");
+    for name in &names {
+        let bp_path = bp_dir.join(name);
+        // Count collections and globals for a quick summary
+        let collections = count_lua_files(&bp_path.join("collections"));
+        let globals = count_lua_files(&bp_path.join("globals"));
+        println!("  {} ({} collection(s), {} global(s))", name, collections, globals);
+    }
+    println!();
+    println!("Use with: crap-cms blueprint use <name> [dir]");
+
+    Ok(())
+}
+
+/// Remove a saved blueprint.
+pub fn blueprint_remove(name: &str) -> Result<()> {
+    validate_blueprint_name(name)?;
+
+    let bp_dir = blueprints_dir()?;
+    let target = bp_dir.join(name);
+
+    if !target.exists() {
+        anyhow::bail!("Blueprint '{}' not found", name);
+    }
+
+    fs::remove_dir_all(&target)
+        .with_context(|| format!("Failed to remove blueprint '{}'", name))?;
+
+    println!("Removed blueprint '{}'", name);
+
+    Ok(())
+}
+
+/// Recursively copy a directory, skipping entries whose names match `skip`.
+fn copy_dir_recursive(src: &Path, dst: &Path, skip: &[&str]) -> Result<()> {
+    for entry in fs::read_dir(src)
+        .with_context(|| format!("Failed to read directory '{}'", src.display()))?
+    {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+
+        if skip.iter().any(|s| *s == name_str.as_ref()) {
+            continue;
+        }
+
+        let src_path = entry.path();
+        let dst_path = dst.join(&name);
+
+        if src_path.is_dir() {
+            fs::create_dir_all(&dst_path)?;
+            copy_dir_recursive(&src_path, &dst_path, &[])?; // skip only applies at top level
+        } else {
+            fs::copy(&src_path, &dst_path)
+                .with_context(|| format!("Failed to copy '{}'", src_path.display()))?;
+        }
+    }
+    Ok(())
+}
+
+/// List blueprint names from the global blueprints directory.
+fn list_blueprint_names() -> Result<Vec<String>> {
+    let bp_dir = blueprints_dir()?;
+    if !bp_dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut names = Vec::new();
+    for entry in fs::read_dir(&bp_dir)? {
+        let entry = entry?;
+        if entry.path().is_dir() {
+            names.push(entry.file_name().to_string_lossy().to_string());
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+/// Count `.lua` files in a directory (0 if directory doesn't exist).
+fn count_lua_files(dir: &Path) -> usize {
+    fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    e.path().extension().map(|ext| ext == "lua").unwrap_or(false)
+                })
+                .count()
+        })
+        .unwrap_or(0)
+}
+
+/// Validate a blueprint name: alphanumeric, hyphens, underscores.
+fn validate_blueprint_name(name: &str) -> Result<()> {
+    if name.is_empty() {
+        anyhow::bail!("Blueprint name cannot be empty");
+    }
+    if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        anyhow::bail!(
+            "Invalid blueprint name '{}' — use alphanumeric characters, hyphens, and underscores only",
+            name
+        );
+    }
+    Ok(())
+}
+
+/// Validate a slug: lowercase alphanumeric + underscores, not empty.
+fn validate_slug(slug: &str) -> Result<()> {
+    if slug.is_empty() {
+        anyhow::bail!("Slug cannot be empty");
+    }
+    if !slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
+        anyhow::bail!(
+            "Invalid slug '{}' — use lowercase letters, digits, and underscores only",
+            slug
+        );
+    }
+    if slug.starts_with('_') {
+        anyhow::bail!("Slug cannot start with underscore");
+    }
+    Ok(())
+}
+
+/// Convert "snake_case" to "Title Case".
+fn to_title_case(s: &str) -> String {
+    s.split('_')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Naive English singularization: strip trailing "s", "es", or "ies" → "y".
+fn singularize(s: &str) -> String {
+    let lower = s.to_lowercase();
+    if lower.ends_with("ies") && lower.len() > 3 {
+        format!("{}y", &s[..s.len() - 3])
+    } else if lower.ends_with("ses") || lower.ends_with("xes") || lower.ends_with("zes")
+        || lower.ends_with("shes") || lower.ends_with("ches")
+    {
+        s[..s.len() - 2].to_string()
+    } else if lower.ends_with('s') && !lower.ends_with("ss") && lower.len() > 1 {
+        s[..s.len() - 1].to_string()
+    } else {
+        s.to_string()
+    }
+}
+
+/// Naive English pluralization: add "s" (or "es" for sibilants, "ies" for consonant+y).
+fn pluralize(s: &str) -> String {
+    if s.is_empty() {
+        return s.to_string();
+    }
+    let lower = s.to_lowercase();
+    if lower.ends_with("s") || lower.ends_with("x") || lower.ends_with("z")
+        || lower.ends_with("sh") || lower.ends_with("ch")
+    {
+        format!("{}es", s)
+    } else if lower.ends_with("y")
+        && !lower.ends_with("ay")
+        && !lower.ends_with("ey")
+        && !lower.ends_with("oy")
+        && !lower.ends_with("uy")
+    {
+        format!("{}ies", &s[..s.len() - 1])
+    } else {
+        format!("{}s", s)
+    }
+}
+
+struct FieldStub {
+    name: String,
+    field_type: String,
+    required: bool,
+}
+
+/// Parse inline field shorthand: "title:text:required,status:select,body:textarea"
+fn parse_fields_shorthand(s: &str) -> Result<Vec<FieldStub>> {
+    let valid_types = [
+        "text", "number", "textarea", "select", "checkbox", "date",
+        "email", "json", "richtext", "relationship", "array", "group",
+        "upload", "blocks",
+    ];
+
+    let mut fields = Vec::new();
+    for part in s.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let segments: Vec<&str> = part.split(':').collect();
+        if segments.len() < 2 {
+            anyhow::bail!(
+                "Invalid field shorthand '{}' — expected 'name:type[:required]'",
+                part
+            );
+        }
+        let name = segments[0].to_string();
+        let field_type = segments[1].to_lowercase();
+        if !valid_types.contains(&field_type.as_str()) {
+            anyhow::bail!(
+                "Unknown field type '{}' — valid types: {}",
+                field_type,
+                valid_types.join(", ")
+            );
+        }
+        let required = segments.get(2).map(|s| *s == "required").unwrap_or(false);
+        fields.push(FieldStub { name, field_type, required });
+    }
+
+    if fields.is_empty() {
+        anyhow::bail!("No fields parsed from shorthand");
+    }
+
+    Ok(fields)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_to_title_case() {
+        assert_eq!(to_title_case("posts"), "Posts");
+        assert_eq!(to_title_case("site_settings"), "Site Settings");
+        assert_eq!(to_title_case("my_cool_thing"), "My Cool Thing");
+    }
+
+    #[test]
+    fn test_pluralize() {
+        assert_eq!(pluralize("Post"), "Posts");
+        assert_eq!(pluralize("Category"), "Categories");
+        assert_eq!(pluralize("Tag"), "Tags");
+        assert_eq!(pluralize("Address"), "Addresses");
+        assert_eq!(pluralize("Box"), "Boxes");
+        assert_eq!(pluralize("Key"), "Keys");
+    }
+
+    #[test]
+    fn test_validate_slug() {
+        assert!(validate_slug("posts").is_ok());
+        assert!(validate_slug("site_settings").is_ok());
+        assert!(validate_slug("v2_users").is_ok());
+        assert!(validate_slug("").is_err());
+        assert!(validate_slug("Posts").is_err());
+        assert!(validate_slug("my-slug").is_err());
+        assert!(validate_slug("_private").is_err());
+    }
+
+    #[test]
+    fn test_parse_fields_shorthand() {
+        let fields = parse_fields_shorthand("title:text:required,body:textarea,published:checkbox").unwrap();
+        assert_eq!(fields.len(), 3);
+        assert_eq!(fields[0].name, "title");
+        assert_eq!(fields[0].field_type, "text");
+        assert!(fields[0].required);
+        assert_eq!(fields[1].name, "body");
+        assert_eq!(fields[1].field_type, "textarea");
+        assert!(!fields[1].required);
+        assert_eq!(fields[2].name, "published");
+        assert_eq!(fields[2].field_type, "checkbox");
+    }
+
+    #[test]
+    fn test_parse_fields_shorthand_invalid() {
+        assert!(parse_fields_shorthand("title").is_err());
+        assert!(parse_fields_shorthand("title:unknown").is_err());
+        assert!(parse_fields_shorthand("").is_err());
+    }
+
+    #[test]
+    fn test_init_creates_structure() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let target = tmp.path().join("my-project");
+        init(Some(target.clone())).unwrap();
+
+        assert!(target.join("crap.toml").exists());
+        assert!(target.join("init.lua").exists());
+        assert!(target.join(".luarc.json").exists());
+        assert!(target.join(".gitignore").exists());
+        assert!(target.join("collections").is_dir());
+        assert!(target.join("globals").is_dir());
+        assert!(target.join("hooks").is_dir());
+        assert!(target.join("templates").is_dir());
+        assert!(target.join("static").is_dir());
+        assert!(target.join("migrations").is_dir());
+    }
+
+    #[test]
+    fn test_init_refuses_overwrite() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let target = tmp.path().join("existing");
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("crap.toml"), "# existing").unwrap();
+
+        let result = init(Some(target));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("refusing to overwrite"));
+    }
+
+    #[test]
+    fn test_make_collection_default() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_collection(tmp.path(), "posts", None, false, false).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("collections/posts.lua")).unwrap();
+        assert!(content.contains("crap.collections.define(\"posts\""));
+        assert!(content.contains("singular = \"Post\""));
+        assert!(content.contains("plural = \"Posts\""));
+        assert!(content.contains("timestamps = true"));
+        assert!(content.contains("name = \"title\""));
+        assert!(content.contains("type = \"text\""));
+        assert!(content.contains("required = true"));
+    }
+
+    #[test]
+    fn test_make_collection_with_fields() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_collection(
+            tmp.path(), "articles",
+            Some("headline:text:required,body:richtext,draft:checkbox"),
+            true, false,
+        ).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("collections/articles.lua")).unwrap();
+        assert!(content.contains("timestamps = false"));
+        assert!(content.contains("name = \"headline\""));
+        assert!(content.contains("name = \"body\""));
+        assert!(content.contains("type = \"richtext\""));
+        assert!(content.contains("name = \"draft\""));
+        assert!(content.contains("use_as_title = \"headline\""));
+    }
+
+    #[test]
+    fn test_make_collection_refuses_overwrite() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_collection(tmp.path(), "posts", None, false, false).unwrap();
+        let result = make_collection(tmp.path(), "posts", None, false, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("--force"));
+    }
+
+    #[test]
+    fn test_make_collection_force_overwrite() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_collection(tmp.path(), "posts", None, false, false).unwrap();
+        assert!(make_collection(tmp.path(), "posts", None, false, true).is_ok());
+    }
+
+    #[test]
+    fn test_make_global() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_global(tmp.path(), "site_settings", false).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("globals/site_settings.lua")).unwrap();
+        assert!(content.contains("crap.globals.define(\"site_settings\""));
+        assert!(content.contains("singular = \"Site Settings\""));
+    }
+
+    #[test]
+    fn test_make_hook_new_file() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_hook(tmp.path(), "posts.auto_slug").unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("hooks/posts.lua")).unwrap();
+        assert!(content.contains("local M = {}"));
+        assert!(content.contains("function M.auto_slug(context)"));
+        assert!(content.contains("return M"));
+    }
+
+    #[test]
+    fn test_make_hook_appends_to_existing() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_hook(tmp.path(), "posts.auto_slug").unwrap();
+        make_hook(tmp.path(), "posts.validate_title").unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("hooks/posts.lua")).unwrap();
+        assert!(content.contains("function M.auto_slug(context)"));
+        assert!(content.contains("function M.validate_title(context)"));
+        // Should only have one `return M` at the end
+        assert_eq!(content.matches("return M").count(), 1);
+    }
+
+    #[test]
+    fn test_make_hook_refuses_duplicate() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_hook(tmp.path(), "posts.auto_slug").unwrap();
+        let result = make_hook(tmp.path(), "posts.auto_slug");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("already exists"));
+    }
+
+    #[test]
+    fn test_make_hook_invalid_name() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        assert!(make_hook(tmp.path(), "nope").is_err());
+        assert!(make_hook(tmp.path(), ".func").is_err());
+        assert!(make_hook(tmp.path(), "mod.").is_err());
+    }
+
+    #[test]
+    fn test_validate_blueprint_name() {
+        assert!(validate_blueprint_name("blog").is_ok());
+        assert!(validate_blueprint_name("my-blog").is_ok());
+        assert!(validate_blueprint_name("blog_v2").is_ok());
+        assert!(validate_blueprint_name("").is_err());
+        assert!(validate_blueprint_name("bad name").is_err());
+        assert!(validate_blueprint_name("bad/name").is_err());
+    }
+
+    #[test]
+    fn test_copy_dir_recursive() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let src = tmp.path().join("src");
+        let dst = tmp.path().join("dst");
+
+        // Build a small tree
+        fs::create_dir_all(src.join("collections")).unwrap();
+        fs::create_dir_all(src.join("data")).unwrap();
+        fs::write(src.join("crap.toml"), "# config").unwrap();
+        fs::write(src.join("collections/posts.lua"), "-- posts").unwrap();
+        fs::write(src.join("data/crap.db"), "binary").unwrap();
+
+        fs::create_dir_all(&dst).unwrap();
+        copy_dir_recursive(&src, &dst, &["data"]).unwrap();
+
+        assert!(dst.join("crap.toml").exists());
+        assert!(dst.join("collections/posts.lua").exists());
+        assert!(!dst.join("data").exists(), "data/ should be skipped");
+    }
+
+    #[test]
+    fn test_blueprint_save_requires_crap_toml() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // Empty dir — no crap.toml
+        let result = blueprint_save(tmp.path(), "test", false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("crap.toml"));
+    }
+
+    #[test]
+    fn test_blueprint_use_not_found() {
+        let result = blueprint_use("nonexistent_test_bp_12345", None);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_blueprint_remove_not_found() {
+        let result = blueprint_remove("nonexistent_test_bp_12345");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_count_lua_files() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().join("collections");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("posts.lua"), "").unwrap();
+        fs::write(dir.join("tags.lua"), "").unwrap();
+        fs::write(dir.join("readme.md"), "").unwrap();
+        assert_eq!(count_lua_files(&dir), 2);
+        assert_eq!(count_lua_files(&tmp.path().join("nope")), 0);
+    }
+
+    #[test]
+    fn test_blueprint_roundtrip() {
+        // Save a blueprint and use it to create a new project
+        let tmp = tempfile::tempdir().expect("tempdir");
+
+        // Create a fake config dir
+        let config = tmp.path().join("my-config");
+        fs::create_dir_all(config.join("collections")).unwrap();
+        fs::create_dir_all(config.join("data")).unwrap();
+        fs::create_dir_all(config.join("uploads")).unwrap();
+        fs::write(config.join("crap.toml"), "[server]\nadmin_port = 4000\n").unwrap();
+        fs::write(config.join("init.lua"), "-- hello").unwrap();
+        fs::write(config.join("collections/posts.lua"), "-- posts").unwrap();
+        fs::write(config.join("data/crap.db"), "should be skipped").unwrap();
+        fs::write(config.join("uploads/photo.jpg"), "should be skipped").unwrap();
+
+        // Save as blueprint (use a custom dir to avoid polluting real config)
+        // We test the internal helpers instead of the full save/use flow
+        // since those depend on the global config dir
+        let bp_dir = tmp.path().join("blueprints");
+        fs::create_dir_all(&bp_dir).unwrap();
+        let bp_target = bp_dir.join("my-blog");
+        fs::create_dir_all(&bp_target).unwrap();
+
+        copy_dir_recursive(&config, &bp_target, BLUEPRINT_SKIP).unwrap();
+
+        // Verify blueprint contents
+        assert!(bp_target.join("crap.toml").exists());
+        assert!(bp_target.join("init.lua").exists());
+        assert!(bp_target.join("collections/posts.lua").exists());
+        assert!(!bp_target.join("data").exists(), "data/ should be excluded");
+        assert!(!bp_target.join("uploads").exists(), "uploads/ should be excluded");
+
+        // "Use" the blueprint to create a new project
+        let new_project = tmp.path().join("new-project");
+        fs::create_dir_all(&new_project).unwrap();
+        copy_dir_recursive(&bp_target, &new_project, &[]).unwrap();
+
+        assert!(new_project.join("crap.toml").exists());
+        assert!(new_project.join("init.lua").exists());
+        assert!(new_project.join("collections/posts.lua").exists());
+
+        let toml = fs::read_to_string(new_project.join("crap.toml")).unwrap();
+        assert!(toml.contains("admin_port = 4000"));
+    }
+}

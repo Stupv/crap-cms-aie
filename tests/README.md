@@ -9,7 +9,7 @@
 
 ```bash
 cargo build
-cargo run -- --config ./example
+crap-cms serve ./example
 ```
 
 This starts two servers:
