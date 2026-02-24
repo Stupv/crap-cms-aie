@@ -8,7 +8,7 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
 /// Per-collection upload configuration (MIME filtering, image sizes, format options).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CollectionUpload {
     pub enabled: bool,
     #[serde(default)]
@@ -21,19 +21,6 @@ pub struct CollectionUpload {
     pub admin_thumbnail: Option<String>,
     #[serde(default)]
     pub format_options: FormatOptions,
-}
-
-impl Default for CollectionUpload {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            mime_types: Vec::new(),
-            max_file_size: None,
-            image_sizes: Vec::new(),
-            admin_thumbnail: None,
-            format_options: FormatOptions::default(),
-        }
-    }
 }
 
 /// A named image resize target (e.g. "thumbnail" at 200x200).

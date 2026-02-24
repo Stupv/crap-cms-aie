@@ -1,120 +1,33 @@
 //! Collection CRUD handlers: list, create, edit, delete.
 
+mod forms;
+
 use axum::{
-    extract::{Form, FromRequest, Multipart, Path, Query, State},
-    http::StatusCode,
-    response::{Html, IntoResponse, Redirect},
+    extract::{Form, FromRequest, Path, Query, State},
+    response::IntoResponse,
     Extension,
 };
-use serde::Deserialize;
 use std::collections::HashMap;
 
-use anyhow::Context as _;
 use crate::admin::AdminState;
 use crate::core::auth::{AuthUser, Claims};
 use crate::core::field::FieldType;
-use crate::core::upload::{self, UploadedFile, ProcessedUpload};
+use crate::core::upload::{self, UploadedFile};
 use crate::core::validate::ValidationError;
 use crate::db::{ops, query};
 use crate::db::query::{AccessResult, FindQuery, Filter, FilterOp, FilterClause, LocaleContext};
-use crate::hooks::lifecycle::{self, HookContext, HookEvent};
+use crate::hooks::lifecycle::HookEvent;
 
-fn user_json(claims: &Option<Extension<Claims>>) -> Option<serde_json::Value> {
-    claims.as_ref().map(|Extension(c)| serde_json::json!({
-        "email": c.email,
-        "id": c.sub,
-        "collection": c.collection,
-    }))
-}
+use super::shared::{
+    PaginationParams, LocaleParams,
+    user_json, get_user_doc, strip_denied_fields,
+    check_access_or_forbid, build_locale_template_data,
+    build_field_contexts, enrich_field_contexts,
+    forbidden, redirect_response, html_with_toast,
+    render_or_error, not_found, server_error,
+};
 
-/// Extract the user document from AuthUser extension (for access checks).
-fn get_user_doc(auth_user: &Option<Extension<AuthUser>>) -> Option<&crate::core::Document> {
-    auth_user.as_ref().map(|Extension(au)| &au.user_doc)
-}
-
-/// Helper to check collection-level access. Returns AccessResult or renders a 403 page.
-fn check_collection_access_or_forbid(
-    state: &AdminState,
-    access_ref: Option<&str>,
-    auth_user: &Option<Extension<AuthUser>>,
-    id: Option<&str>,
-    data: Option<&HashMap<String, serde_json::Value>>,
-) -> Result<AccessResult, axum::response::Response> {
-    let user_doc = get_user_doc(auth_user);
-    let conn = state.pool.get()
-        .map_err(|_| forbidden(state, "Database error").into_response())?;
-    state.hook_runner.check_access(access_ref, user_doc, id, data, &conn)
-        .map_err(|e| {
-            tracing::error!("Access check error: {}", e);
-            forbidden(state, "Access check failed").into_response()
-        })
-}
-
-/// Strip denied fields from a document's fields map.
-fn strip_denied_fields(
-    fields: &mut HashMap<String, serde_json::Value>,
-    denied: &[String],
-) {
-    for name in denied {
-        fields.remove(name);
-    }
-}
-
-fn forbidden(state: &AdminState, message: &str) -> (StatusCode, Html<String>) {
-    let data = serde_json::json!({
-        "title": "Forbidden",
-        "message": message,
-        "collections": state.sidebar_collections(),
-        "globals": state.sidebar_globals(),
-    });
-    let html = match state.render("errors/403", &data) {
-        Ok(html) => Html(html),
-        Err(_) => Html(format!("<h1>403 Forbidden</h1><p>{}</p>", message)),
-    };
-    (StatusCode::FORBIDDEN, html)
-}
-
-/// Query parameters for paginated collection list views.
-#[derive(Debug, Deserialize)]
-pub struct PaginationParams {
-    pub page: Option<i64>,
-    pub per_page: Option<i64>,
-    pub search: Option<String>,
-}
-
-/// Query parameters for locale selection on edit pages.
-#[derive(Debug, Deserialize)]
-pub struct LocaleParams {
-    pub locale: Option<String>,
-}
-
-/// Build locale template context (selector data) from config + current locale.
-/// Returns `(locale_ctx_for_db, template_json)` where template_json has
-/// `has_locales`, `current_locale`, `locales` (array with value/label/selected).
-fn build_locale_template_data(
-    state: &AdminState,
-    requested_locale: Option<&str>,
-) -> (Option<LocaleContext>, serde_json::Value) {
-    let config = &state.config.locale;
-    if !config.is_enabled() {
-        return (None, serde_json::json!({}));
-    }
-    let current = requested_locale.unwrap_or(&config.default_locale);
-    let locale_ctx = LocaleContext::from_locale_string(Some(current), config);
-    let locales: Vec<serde_json::Value> = config.locales.iter().map(|l| {
-        serde_json::json!({
-            "value": l,
-            "label": l.to_uppercase(),
-            "selected": l == current,
-        })
-    }).collect();
-    let data = serde_json::json!({
-        "has_locales": true,
-        "current_locale": current,
-        "locales": locales,
-    });
-    (locale_ctx, data)
-}
+use forms::{extract_join_data_from_form, parse_multipart_form, inject_upload_metadata};
 
 /// GET /admin/collections — list all registered collections
 pub async fn list_collections(
@@ -167,7 +80,7 @@ pub async fn list_items(
     };
 
     // Check read access
-    let access_result = match check_collection_access_or_forbid(
+    let access_result = match check_access_or_forbid(
         &state, def.access.read.as_deref(), &auth_user, None, None,
     ) {
         Ok(r) => r,
@@ -374,7 +287,7 @@ pub async fn create_form(
     };
 
     // Check create access
-    match check_collection_access_or_forbid(
+    match check_access_or_forbid(
         &state, def.access.create.as_deref(), &auth_user, None, None,
     ) {
         Ok(AccessResult::Denied) => return forbidden(&state, "You don't have permission to create items in this collection").into_response(),
@@ -382,10 +295,10 @@ pub async fn create_form(
         _ => {}
     }
 
-    let mut fields = build_field_contexts(&def.fields, &HashMap::new(), &HashMap::new());
+    let mut fields = build_field_contexts(&def.fields, &HashMap::new(), &HashMap::new(), true);
 
     // Enrich relationship and array fields
-    enrich_field_contexts(&mut fields, &def.fields, &HashMap::new(), &state);
+    enrich_field_contexts(&mut fields, &def.fields, &HashMap::new(), &state, true);
 
     if def.is_auth_collection() {
         fields.push(serde_json::json!({
@@ -459,7 +372,7 @@ pub async fn create_action(
     };
 
     // Check create access
-    match check_collection_access_or_forbid(
+    match check_access_or_forbid(
         &state, def.access.create.as_deref(), &auth_user, None, None,
     ) {
         Ok(AccessResult::Denied) => return forbidden(&state, "You don't have permission to create items in this collection").into_response(),
@@ -497,7 +410,7 @@ pub async fn create_action(
                 Ok(processed) => inject_upload_metadata(&mut form_data, &processed),
                 Err(e) => {
                     tracing::error!("Upload processing error: {}", e);
-                    let fields = build_field_contexts(&def.fields, &form_data, &HashMap::new());
+                    let fields = build_field_contexts(&def.fields, &form_data, &HashMap::new(), true);
                     let data = serde_json::json!({
                         "page_title": format!("Create {}", def.singular_name()),
                         "collections": state.sidebar_collections(),
@@ -546,49 +459,21 @@ pub async fn create_action(
 
     let pool = state.pool.clone();
     let runner = state.hook_runner.clone();
-    let hooks = def.hooks.clone();
     let slug_owned = slug.clone();
     let def_owned = def.clone();
-    let is_auth = def.is_auth_collection();
     let form_data_clone = form_data.clone();
     let user_doc = get_user_doc(&auth_user).cloned();
+    let locale = locale_ctx.as_ref().and_then(|ctx| match &ctx.mode {
+        query::LocaleMode::Single(l) => Some(l.clone()),
+        _ => None,
+    });
     let result = tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().context("DB connection")?;
-        let tx = conn.transaction().context("Start transaction")?;
-
-        let hook_ctx = HookContext {
-            collection: slug_owned.clone(),
-            operation: "create".to_string(),
-            data: form_data.iter()
-                .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
-                .collect(),
-            locale: locale_ctx.as_ref().and_then(|ctx| match &ctx.mode {
-                query::LocaleMode::Single(l) => Some(l.clone()),
-                _ => None,
-            }),
-        };
-        let final_ctx = runner.run_before_write(
-            &hooks, &def_owned.fields, hook_ctx, &tx, &slug_owned, None, user_doc.as_ref(),
-        )?;
-        let final_data = lifecycle::hook_ctx_to_string_map(&final_ctx);
-        let doc = query::create(&tx, &slug_owned, &def_owned, &final_data, locale_ctx.as_ref())?;
-
-        // Save join table data (has-many relationships and arrays)
-        if !join_data.is_empty() {
-            query::save_join_table_data(&tx, &slug_owned, &def_owned, &doc.id, &join_data)?;
-        }
-
-        // Hash and store password for auth collections
-        if is_auth {
-            if let Some(ref pw) = password {
-                if !pw.is_empty() {
-                    query::update_password(&tx, &slug_owned, &doc.id, pw)?;
-                }
-            }
-        }
-
-        tx.commit().context("Commit transaction")?;
-        Ok::<_, anyhow::Error>(doc)
+        crate::service::create_document(
+            &pool, &runner, &slug_owned, &def_owned,
+            form_data, &join_data,
+            password.as_deref(), locale_ctx.as_ref(), locale,
+            user_doc.as_ref(),
+        )
     }).await;
 
     match result {
@@ -607,8 +492,14 @@ pub async fn create_action(
             // Auto-send verification email for auth collections with verify_email enabled
             if def.is_auth_collection() && def.auth.as_ref().is_some_and(|a| a.verify_email) {
                 if let Some(user_email) = doc.fields.get("email").and_then(|v| v.as_str()) {
-                    send_verification_email(
-                        &state, &slug, &doc.id, user_email,
+                    crate::service::send_verification_email(
+                        state.pool.clone(),
+                        state.config.email.clone(),
+                        state.email_renderer.clone(),
+                        state.config.server.clone(),
+                        slug.clone(),
+                        doc.id.clone(),
+                        user_email.to_string(),
                     );
                 }
             }
@@ -618,7 +509,7 @@ pub async fn create_action(
         Ok(Err(e)) => {
             if let Some(ve) = e.downcast_ref::<ValidationError>() {
                 let error_map = ve.to_field_map();
-                let fields = build_field_contexts(&def.fields, &form_data_clone, &error_map);
+                let fields = build_field_contexts(&def.fields, &form_data_clone, &error_map, true);
                 let data = serde_json::json!({
                     "page_title": format!("Create {}", def.singular_name()),
                     "collections": state.sidebar_collections(),
@@ -665,7 +556,7 @@ pub async fn edit_form(
     };
 
     // Check read access
-    let access_result = match check_collection_access_or_forbid(
+    let access_result = match check_access_or_forbid(
         &state, def.access.read.as_deref(), &auth_user, Some(&id), None,
     ) {
         Ok(r) => r,
@@ -753,10 +644,10 @@ pub async fn edit_form(
         })
         .collect();
 
-    let mut fields = build_field_contexts(&def.fields, &values, &HashMap::new());
+    let mut fields = build_field_contexts(&def.fields, &values, &HashMap::new(), true);
 
     // Enrich relationship and array fields with extra data
-    enrich_field_contexts(&mut fields, &def.fields, &document.fields, &state);
+    enrich_field_contexts(&mut fields, &def.fields, &document.fields, &state, true);
 
     if def.is_auth_collection() {
         fields.push(serde_json::json!({
@@ -926,7 +817,7 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
     );
 
     // Check update access
-    match check_collection_access_or_forbid(
+    match check_access_or_forbid(
         state, def.access.update.as_deref(), auth_user, Some(id), None,
     ) {
         Ok(AccessResult::Denied) => return forbidden(state, "You don't have permission to update this item").into_response(),
@@ -952,7 +843,7 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
                 Ok(processed) => inject_upload_metadata(&mut form_data, &processed),
                 Err(e) => {
                     tracing::error!("Upload processing error: {}", e);
-                    let fields = build_field_contexts(&def.fields, &form_data, &HashMap::new());
+                    let fields = build_field_contexts(&def.fields, &form_data, &HashMap::new(), true);
                     let data = serde_json::json!({
                         "page_title": format!("Edit {}", def.singular_name()),
                         "collections": state.sidebar_collections(),
@@ -996,48 +887,22 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
 
     let pool = state.pool.clone();
     let runner = state.hook_runner.clone();
-    let hooks = def.hooks.clone();
     let slug_owned = slug.to_string();
     let id_owned = id.to_string();
-    let is_auth = def.is_auth_collection();
     let def_owned = def.clone();
     let form_data_clone = form_data.clone();
     let user_doc = get_user_doc(auth_user).cloned();
+    let locale = locale_ctx.as_ref().and_then(|ctx| match &ctx.mode {
+        query::LocaleMode::Single(l) => Some(l.clone()),
+        _ => None,
+    });
     let result = tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().context("DB connection")?;
-        let tx = conn.transaction().context("Start transaction")?;
-
-        let hook_ctx = HookContext {
-            collection: slug_owned.clone(),
-            operation: "update".to_string(),
-            data: form_data.iter()
-                .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
-                .collect(),
-            locale: locale_ctx.as_ref().and_then(|ctx| match &ctx.mode {
-                query::LocaleMode::Single(l) => Some(l.clone()),
-                _ => None,
-            }),
-        };
-        let final_ctx = runner.run_before_write(
-            &hooks, &def_owned.fields, hook_ctx, &tx, &slug_owned, Some(&id_owned), user_doc.as_ref(),
-        )?;
-        let final_data = lifecycle::hook_ctx_to_string_map(&final_ctx);
-        let doc = query::update(&tx, &slug_owned, &def_owned, &id_owned, &final_data, locale_ctx.as_ref())?;
-
-        // Save join table data (has-many relationships and arrays)
-        query::save_join_table_data(&tx, &slug_owned, &def_owned, &doc.id, &join_data)?;
-
-        // Update password if provided (auth collections only)
-        if is_auth {
-            if let Some(ref pw) = password {
-                if !pw.is_empty() {
-                    query::update_password(&tx, &slug_owned, &doc.id, pw)?;
-                }
-            }
-        }
-
-        tx.commit().context("Commit transaction")?;
-        Ok::<_, anyhow::Error>(doc)
+        crate::service::update_document(
+            &pool, &runner, &slug_owned, &id_owned, &def_owned,
+            form_data, &join_data,
+            password.as_deref(), locale_ctx.as_ref(), locale,
+            user_doc.as_ref(),
+        )
     }).await;
 
     let locale_suffix = form_locale
@@ -1067,7 +932,7 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
         Ok(Err(e)) => {
             if let Some(ve) = e.downcast_ref::<ValidationError>() {
                 let error_map = ve.to_field_map();
-                let fields = build_field_contexts(&def.fields, &form_data_clone, &error_map);
+                let fields = build_field_contexts(&def.fields, &form_data_clone, &error_map, true);
                 let data = serde_json::json!({
                     "page_title": format!("Edit {}", def.singular_name()),
                     "collections": state.sidebar_collections(),
@@ -1116,7 +981,7 @@ pub async fn delete_confirm(
     };
 
     // Check delete access
-    match check_collection_access_or_forbid(
+    match check_access_or_forbid(
         &state, def.access.delete.as_deref(), &auth_user, Some(&id), None,
     ) {
         Ok(AccessResult::Denied) => return forbidden(&state, "You don't have permission to delete this item").into_response(),
@@ -1164,17 +1029,17 @@ async fn delete_action_impl(state: &AdminState, slug: &str, id: &str, auth_user:
     let def = {
         let reg = match state.registry.read() {
             Ok(r) => r,
-            Err(_) => return Redirect::to("/admin/collections").into_response(),
+            Err(_) => return axum::response::Redirect::to("/admin/collections").into_response(),
         };
         reg.get_collection(slug).cloned()
     };
     let def = match def {
         Some(d) => d,
-        None => return Redirect::to("/admin/collections").into_response(),
+        None => return axum::response::Redirect::to("/admin/collections").into_response(),
     };
 
     // Check delete access
-    match check_collection_access_or_forbid(
+    match check_access_or_forbid(
         state, def.access.delete.as_deref(), auth_user, Some(id), None,
     ) {
         Ok(AccessResult::Denied) => return forbidden(state, "You don't have permission to delete this item").into_response(),
@@ -1199,21 +1064,9 @@ async fn delete_action_impl(state: &AdminState, slug: &str, id: &str, auth_user:
     let id_owned = id.to_string();
     let user_doc = get_user_doc(auth_user).cloned();
     let result = tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().context("DB connection")?;
-        let tx = conn.transaction().context("Start transaction")?;
-
-        let hook_ctx = HookContext {
-            collection: slug_owned.clone(),
-            operation: "delete".to_string(),
-            data: [("id".to_string(), serde_json::Value::String(id_owned.clone()))].into(),
-            locale: None,
-        };
-        runner.run_hooks_with_conn(
-            &hooks, HookEvent::BeforeDelete, hook_ctx, &tx, user_doc.as_ref(),
-        )?;
-        query::delete(&tx, &slug_owned, &id_owned)?;
-        tx.commit().context("Commit transaction")?;
-        Ok::<_, anyhow::Error>(())
+        crate::service::delete_document(
+            &pool, &runner, &slug_owned, &id_owned, &hooks, user_doc.as_ref(),
+        )
     }).await;
 
     match result {
@@ -1243,634 +1096,5 @@ async fn delete_action_impl(state: &AdminState, slug: &str, id: &str, auth_user:
         }
     }
 
-    Redirect::to(&format!("/admin/collections/{}", slug)).into_response()
-}
-
-// --- Helpers ---
-
-/// Auto-generate a label from a field name (e.g. "my_field" → "My Field").
-fn auto_label_from_name(name: &str) -> String {
-    name.split('_')
-        .map(|w| {
-            let mut c = w.chars();
-            match c.next() {
-                None => String::new(),
-                Some(f) => f.to_uppercase().chain(c).collect(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-/// Build field context objects for template rendering.
-fn build_field_contexts(
-    fields: &[crate::core::field::FieldDefinition],
-    values: &HashMap<String, String>,
-    errors: &HashMap<String, String>,
-) -> Vec<serde_json::Value> {
-    fields.iter().filter(|field| !field.admin.hidden).map(|field| {
-        let value = values.get(&field.name).cloned().unwrap_or_default();
-        let label = field.admin.label.as_ref()
-            .map(|ls| ls.resolve_default().to_string())
-            .unwrap_or_else(|| auto_label_from_name(&field.name));
-
-        let mut ctx = serde_json::json!({
-            "name": field.name,
-            "field_type": field.field_type.as_str(),
-            "label": label,
-            "required": field.required,
-            "value": value,
-            "placeholder": field.admin.placeholder.as_ref().map(|ls| ls.resolve_default()),
-            "description": field.admin.description.as_ref().map(|ls| ls.resolve_default()),
-            "readonly": field.admin.readonly,
-        });
-
-        if let Some(err) = errors.get(&field.name) {
-            ctx["error"] = serde_json::json!(err);
-        }
-
-        match &field.field_type {
-            FieldType::Select => {
-                let options: Vec<_> = field.options.iter().map(|opt| {
-                    serde_json::json!({
-                        "label": opt.label.resolve_default(),
-                        "value": opt.value,
-                        "selected": opt.value == value,
-                    })
-                }).collect();
-                ctx["options"] = serde_json::json!(options);
-            }
-            FieldType::Checkbox => {
-                let checked = matches!(value.as_str(), "1" | "true" | "on" | "yes");
-                ctx["checked"] = serde_json::json!(checked);
-            }
-            FieldType::Relationship => {
-                if let Some(ref rc) = field.relationship {
-                    ctx["relationship_collection"] = serde_json::json!(rc.collection);
-                    ctx["has_many"] = serde_json::json!(rc.has_many);
-                }
-            }
-            FieldType::Array => {
-                let sub_fields: Vec<_> = field.fields.iter().map(|sf| {
-                    let sf_label = sf.admin.label.as_ref()
-                        .map(|ls| ls.resolve_default().to_string())
-                        .unwrap_or_else(|| auto_label_from_name(&sf.name));
-                    serde_json::json!({
-                        "name": sf.name,
-                        "field_type": sf.field_type.as_str(),
-                        "label": sf_label,
-                        "required": sf.required,
-                    })
-                }).collect();
-                ctx["sub_fields"] = serde_json::json!(sub_fields);
-                ctx["row_count"] = serde_json::json!(0);
-            }
-            FieldType::Group => {
-                let sub_fields: Vec<_> = field.fields.iter().map(|sf| {
-                    let col_name = format!("{}__{}", field.name, sf.name);
-                    let sub_value = values.get(&col_name).cloned().unwrap_or_default();
-                    let sub_label = sf.admin.label.as_ref()
-                        .map(|ls| ls.resolve_default().to_string())
-                        .unwrap_or_else(|| auto_label_from_name(&sf.name));
-                    let mut sub_ctx = serde_json::json!({
-                        "name": col_name,
-                        "field_type": sf.field_type.as_str(),
-                        "label": sub_label,
-                        "required": sf.required,
-                        "value": sub_value,
-                        "placeholder": sf.admin.placeholder.as_ref().map(|ls| ls.resolve_default()),
-                        "description": sf.admin.description.as_ref().map(|ls| ls.resolve_default()),
-                        "readonly": sf.admin.readonly,
-                    });
-                    if sf.field_type == FieldType::Checkbox {
-                        let checked = matches!(sub_value.as_str(), "1" | "true" | "on" | "yes");
-                        sub_ctx["checked"] = serde_json::json!(checked);
-                    }
-                    if sf.field_type == FieldType::Select {
-                        let options: Vec<_> = sf.options.iter().map(|opt| {
-                            serde_json::json!({
-                                "label": opt.label.resolve_default(),
-                                "value": opt.value,
-                                "selected": opt.value == sub_value,
-                            })
-                        }).collect();
-                        sub_ctx["options"] = serde_json::json!(options);
-                    }
-                    sub_ctx
-                }).collect();
-                ctx["sub_fields"] = serde_json::json!(sub_fields);
-                if field.admin.collapsed {
-                    ctx["collapsed"] = serde_json::json!(true);
-                }
-            }
-            FieldType::Upload => {
-                if let Some(ref rc) = field.relationship {
-                    ctx["relationship_collection"] = serde_json::json!(rc.collection);
-                }
-            }
-            FieldType::Blocks => {
-                let block_defs: Vec<_> = field.blocks.iter().map(|bd| {
-                    let block_fields: Vec<_> = bd.fields.iter().map(|sf| {
-                        let sf_label = sf.admin.label.as_ref()
-                            .map(|ls| ls.resolve_default().to_string())
-                            .unwrap_or_else(|| auto_label_from_name(&sf.name));
-                        serde_json::json!({
-                            "name": sf.name,
-                            "field_type": sf.field_type.as_str(),
-                            "label": sf_label,
-                            "required": sf.required,
-                        })
-                    }).collect();
-                    serde_json::json!({
-                        "block_type": bd.block_type,
-                        "label": bd.label.as_ref().map(|ls| ls.resolve_default()).unwrap_or(&bd.block_type),
-                        "fields": block_fields,
-                    })
-                }).collect();
-                ctx["block_definitions"] = serde_json::json!(block_defs);
-                ctx["row_count"] = serde_json::json!(0);
-            }
-            _ => {}
-        }
-
-        ctx
-    }).collect()
-}
-
-/// Enrich field contexts with data that requires DB access:
-/// - Relationship fields: fetch available options from related collection
-/// - Array fields: populate existing rows from hydrated document data
-fn enrich_field_contexts(
-    fields: &mut [serde_json::Value],
-    field_defs: &[crate::core::field::FieldDefinition],
-    doc_fields: &HashMap<String, serde_json::Value>,
-    state: &AdminState,
-) {
-    let reg = match state.registry.read() {
-        Ok(r) => r,
-        Err(_) => return,
-    };
-    let conn = match state.pool.get() {
-        Ok(c) => c,
-        Err(_) => return,
-    };
-
-    for (ctx, field_def) in fields.iter_mut().zip(field_defs.iter().filter(|f| !f.admin.hidden)) {
-        match field_def.field_type {
-            FieldType::Relationship => {
-                if let Some(ref rc) = field_def.relationship {
-                    // Fetch documents from related collection for options
-                    if let Some(related_def) = reg.get_collection(&rc.collection) {
-                        let title_field = related_def.title_field().map(|s| s.to_string());
-                        let find_query = query::FindQuery::default();
-                        if let Ok(docs) = query::find(&conn, &rc.collection, related_def, &find_query, None) {
-                            if rc.has_many {
-                                // Get selected IDs from hydrated document
-                                let selected_ids: std::collections::HashSet<String> = match doc_fields.get(&field_def.name) {
-                                    Some(serde_json::Value::Array(arr)) => {
-                                        arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()
-                                    }
-                                    _ => std::collections::HashSet::new(),
-                                };
-                                let options: Vec<_> = docs.iter().map(|doc| {
-                                    let label = title_field.as_ref()
-                                        .and_then(|f| doc.get_str(f))
-                                        .unwrap_or(&doc.id);
-                                    serde_json::json!({
-                                        "value": doc.id,
-                                        "label": label,
-                                        "selected": selected_ids.contains(&doc.id),
-                                    })
-                                }).collect();
-                                ctx["relationship_options"] = serde_json::json!(options);
-                            } else {
-                                // Has-one: current value from context
-                                let current_value = ctx.get("value")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                let options: Vec<_> = docs.iter().map(|doc| {
-                                    let label = title_field.as_ref()
-                                        .and_then(|f| doc.get_str(f))
-                                        .unwrap_or(&doc.id);
-                                    serde_json::json!({
-                                        "value": doc.id,
-                                        "label": label,
-                                        "selected": doc.id == current_value,
-                                    })
-                                }).collect();
-                                ctx["relationship_options"] = serde_json::json!(options);
-                            }
-                        }
-                    }
-                }
-            }
-            FieldType::Array => {
-                // Populate rows from hydrated document data
-                let rows: Vec<serde_json::Value> = match doc_fields.get(&field_def.name) {
-                    Some(serde_json::Value::Array(arr)) => {
-                        arr.iter().enumerate().map(|(idx, row)| {
-                            let row_obj = row.as_object();
-                            let sub_values: Vec<_> = field_def.fields.iter().map(|sf| {
-                                let val = row_obj
-                                    .and_then(|m| m.get(&sf.name))
-                                    .map(|v| match v {
-                                        serde_json::Value::String(s) => s.clone(),
-                                        other => other.to_string(),
-                                    })
-                                    .unwrap_or_default();
-                                serde_json::json!({
-                                    "name": sf.name,
-                                    "field_type": sf.field_type.as_str(),
-                                    "value": val,
-                                    "field_name_indexed": format!("{}[{}][{}]", field_def.name, idx, sf.name),
-                                })
-                            }).collect();
-                            serde_json::json!({
-                                "index": idx,
-                                "sub_fields": sub_values,
-                            })
-                        }).collect()
-                    }
-                    _ => Vec::new(),
-                };
-                ctx["row_count"] = serde_json::json!(rows.len());
-                ctx["rows"] = serde_json::json!(rows);
-            }
-            FieldType::Upload => {
-                // Upload is a has-one relationship to an upload collection
-                if let Some(ref rc) = field_def.relationship {
-                    if let Some(related_def) = reg.get_collection(&rc.collection) {
-                        let title_field = related_def.title_field().map(|s| s.to_string());
-                        let admin_thumbnail = related_def.upload.as_ref()
-                            .and_then(|u| u.admin_thumbnail.as_ref().cloned());
-                        let find_query = query::FindQuery::default();
-                        if let Ok(mut docs) = query::find(&conn, &rc.collection, related_def, &find_query, None) {
-                            // Assemble sizes for thumbnail lookup
-                            if let Some(ref upload_config) = related_def.upload {
-                                if upload_config.enabled {
-                                    for doc in &mut docs {
-                                        upload::assemble_sizes_object(doc, upload_config);
-                                    }
-                                }
-                            }
-
-                            let current_value = ctx.get("value")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-
-                            let mut selected_preview_url = None;
-                            let mut selected_filename = None;
-
-                            let options: Vec<_> = docs.iter().map(|doc| {
-                                let label = doc.get_str("filename")
-                                    .or_else(|| title_field.as_ref().and_then(|f| doc.get_str(f)))
-                                    .unwrap_or(&doc.id);
-                                let mime = doc.get_str("mime_type").unwrap_or("");
-                                let is_image = mime.starts_with("image/");
-
-                                // Get thumbnail URL
-                                let thumb_url = if is_image {
-                                    admin_thumbnail.as_ref()
-                                        .and_then(|thumb_name| {
-                                            doc.fields.get("sizes")
-                                                .and_then(|v| v.get(thumb_name))
-                                                .and_then(|v| v.get("url"))
-                                                .and_then(|v| v.as_str())
-                                                .map(|s| s.to_string())
-                                        })
-                                        .or_else(|| doc.get_str("url").map(|s| s.to_string()))
-                                } else {
-                                    None
-                                };
-
-                                let is_selected = doc.id == current_value;
-                                if is_selected {
-                                    selected_preview_url = thumb_url.clone();
-                                    selected_filename = Some(label.to_string());
-                                }
-
-                                let mut opt = serde_json::json!({
-                                    "value": doc.id,
-                                    "label": label,
-                                    "selected": is_selected,
-                                });
-                                if let Some(ref url) = thumb_url {
-                                    opt["thumbnail_url"] = serde_json::json!(url);
-                                }
-                                if is_image {
-                                    opt["is_image"] = serde_json::json!(true);
-                                }
-                                opt["filename"] = serde_json::json!(label);
-                                opt
-                            }).collect();
-                            ctx["relationship_options"] = serde_json::json!(options);
-                            ctx["relationship_collection"] = serde_json::json!(rc.collection);
-
-                            if let Some(url) = selected_preview_url {
-                                ctx["selected_preview_url"] = serde_json::json!(url);
-                            }
-                            if let Some(fname) = selected_filename {
-                                ctx["selected_filename"] = serde_json::json!(fname);
-                            }
-                        }
-                    }
-                }
-            }
-            FieldType::Blocks => {
-                // Populate rows from hydrated document data
-                let rows: Vec<serde_json::Value> = match doc_fields.get(&field_def.name) {
-                    Some(serde_json::Value::Array(arr)) => {
-                        arr.iter().enumerate().map(|(idx, row)| {
-                            let row_obj = row.as_object();
-                            let block_type = row_obj
-                                .and_then(|m| m.get("_block_type"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("unknown");
-                            let block_label = field_def.blocks.iter()
-                                .find(|bd| bd.block_type == block_type)
-                                .and_then(|bd| bd.label.as_ref().map(|ls| ls.resolve_default()))
-                                .unwrap_or(block_type);
-                            let block_def = field_def.blocks.iter()
-                                .find(|bd| bd.block_type == block_type);
-                            let sub_values: Vec<_> = block_def
-                                .map(|bd| bd.fields.iter().map(|sf| {
-                                    let val = row_obj
-                                        .and_then(|m| m.get(&sf.name))
-                                        .map(|v| match v {
-                                            serde_json::Value::String(s) => s.clone(),
-                                            other => other.to_string(),
-                                        })
-                                        .unwrap_or_default();
-                                    serde_json::json!({
-                                        "name": sf.name,
-                                        "field_type": sf.field_type.as_str(),
-                                        "value": val,
-                                        "field_name_indexed": format!("{}[{}][{}]", field_def.name, idx, sf.name),
-                                    })
-                                }).collect())
-                                .unwrap_or_default();
-                            serde_json::json!({
-                                "index": idx,
-                                "_block_type": block_type,
-                                "block_label": block_label,
-                                "sub_fields": sub_values,
-                            })
-                        }).collect()
-                    }
-                    _ => Vec::new(),
-                };
-                ctx["row_count"] = serde_json::json!(rows.len());
-                ctx["rows"] = serde_json::json!(rows);
-            }
-            _ => {}
-        }
-    }
-}
-
-/// Extract join table data from form submission for has-many relationships and array fields.
-/// Returns a map suitable for `query::save_join_table_data`.
-fn extract_join_data_from_form(
-    form: &HashMap<String, String>,
-    field_defs: &[crate::core::field::FieldDefinition],
-) -> HashMap<String, serde_json::Value> {
-    let mut join_data = HashMap::new();
-
-    for field in field_defs {
-        match field.field_type {
-            FieldType::Relationship => {
-                if let Some(ref rc) = field.relationship {
-                    if rc.has_many {
-                        // Has-many: comma-separated IDs in form value
-                        if let Some(val) = form.get(&field.name) {
-                            join_data.insert(field.name.clone(), serde_json::Value::String(val.clone()));
-                        } else {
-                            // Empty selection — clear all
-                            join_data.insert(field.name.clone(), serde_json::Value::String(String::new()));
-                        }
-                    }
-                }
-            }
-            FieldType::Array => {
-                let rows = parse_array_form_data(form, &field.name);
-                let json_rows: Vec<serde_json::Value> = rows.into_iter()
-                    .map(|row| {
-                        let obj: serde_json::Map<String, serde_json::Value> = row.into_iter()
-                            .map(|(k, v)| (k, serde_json::Value::String(v)))
-                            .collect();
-                        serde_json::Value::Object(obj)
-                    })
-                    .collect();
-                join_data.insert(field.name.clone(), serde_json::Value::Array(json_rows));
-            }
-            FieldType::Blocks => {
-                // Same form data pattern as arrays: name[idx][key]
-                // _block_type comes as name[idx][_block_type]
-                let rows = parse_array_form_data(form, &field.name);
-                let json_rows: Vec<serde_json::Value> = rows.into_iter()
-                    .map(|row| {
-                        let obj: serde_json::Map<String, serde_json::Value> = row.into_iter()
-                            .map(|(k, v)| (k, serde_json::Value::String(v)))
-                            .collect();
-                        serde_json::Value::Object(obj)
-                    })
-                    .collect();
-                join_data.insert(field.name.clone(), serde_json::Value::Array(json_rows));
-            }
-            _ => {}
-        }
-    }
-
-    join_data
-}
-
-/// Parse array sub-field data from flat form keys.
-/// Converts keys like `slides[0][title]`, `slides[1][caption]` into
-/// a Vec of row hashmaps.
-fn parse_array_form_data(form: &HashMap<String, String>, field_name: &str) -> Vec<HashMap<String, String>> {
-    let prefix = format!("{}[", field_name);
-    let mut rows: std::collections::BTreeMap<usize, HashMap<String, String>> = std::collections::BTreeMap::new();
-
-    for (key, value) in form {
-        if let Some(rest) = key.strip_prefix(&prefix) {
-            // rest looks like "0][title]"
-            if let Some(bracket_pos) = rest.find(']') {
-                if let Ok(idx) = rest[..bracket_pos].parse::<usize>() {
-                    // After "]" we expect "[fieldname]"
-                    let after = &rest[bracket_pos + 1..];
-                    if let Some(field_key) = after.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
-                        rows.entry(idx).or_default().insert(field_key.to_string(), value.clone());
-                    }
-                }
-            }
-        }
-    }
-
-    rows.into_values().collect()
-}
-
-/// Parse a multipart form request, extracting form fields and an optional file upload.
-async fn parse_multipart_form(
-    request: axum::extract::Request,
-    state: &AdminState,
-) -> Result<(HashMap<String, String>, Option<UploadedFile>), anyhow::Error> {
-    let mut multipart = Multipart::from_request(request, state).await
-        .map_err(|e| anyhow::anyhow!("Failed to parse multipart: {}", e))?;
-
-    let mut form_data = HashMap::new();
-    let mut file: Option<UploadedFile> = None;
-
-    while let Some(field) = multipart.next_field().await
-        .map_err(|e| anyhow::anyhow!("Failed to read multipart field: {}", e))?
-    {
-        let name = field.name().unwrap_or("").to_string();
-        if name == "_file" && field.file_name().is_some() {
-            let filename = field.file_name().unwrap_or("").to_string();
-            let content_type = field.content_type()
-                .unwrap_or("application/octet-stream").to_string();
-            let data = field.bytes().await
-                .map_err(|e| anyhow::anyhow!("Failed to read file data: {}", e))?;
-            if !data.is_empty() {
-                file = Some(UploadedFile {
-                    filename,
-                    content_type,
-                    data: data.to_vec(),
-                });
-            }
-        } else {
-            let text = field.text().await.unwrap_or_default();
-            form_data.insert(name, text);
-        }
-    }
-
-    Ok((form_data, file))
-}
-
-/// Inject upload metadata fields into form data from a processed upload.
-/// Writes per-size typed fields ({name}_url, {name}_width, {name}_height, {name}_webp_url, etc.)
-fn inject_upload_metadata(form_data: &mut HashMap<String, String>, processed: &ProcessedUpload) {
-    form_data.insert("filename".into(), processed.filename.clone());
-    form_data.insert("mime_type".into(), processed.mime_type.clone());
-    form_data.insert("filesize".into(), processed.filesize.to_string());
-    if let Some(w) = processed.width {
-        form_data.insert("width".into(), w.to_string());
-    }
-    if let Some(h) = processed.height {
-        form_data.insert("height".into(), h.to_string());
-    }
-    form_data.insert("url".into(), processed.url.clone());
-
-    // Per-size typed fields
-    for (name, size) in &processed.sizes {
-        form_data.insert(format!("{}_url", name), size.url.clone());
-        form_data.insert(format!("{}_width", name), size.width.to_string());
-        form_data.insert(format!("{}_height", name), size.height.to_string());
-        for (fmt, result) in &size.formats {
-            form_data.insert(format!("{}_{}_url", name, fmt), result.url.clone());
-        }
-    }
-}
-
-/// Fire-and-forget: generate a verification token and send the verification email.
-fn send_verification_email(state: &AdminState, slug: &str, user_id: &str, user_email: &str) {
-    let pool = state.pool.clone();
-    let email_config = state.config.email.clone();
-    let email_renderer = state.email_renderer.clone();
-    let server_config = state.config.server.clone();
-    let slug = slug.to_string();
-    let user_id = user_id.to_string();
-    let user_email = user_email.to_string();
-
-    tokio::task::spawn_blocking(move || {
-        if !crate::core::email::is_configured(&email_config) {
-            tracing::warn!("Email not configured — skipping verification email for {}", user_email);
-            return;
-        }
-
-        let token = nanoid::nanoid!(32);
-
-        let conn = match pool.get() {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::error!("DB connection for verification token: {}", e);
-                return;
-            }
-        };
-        if let Err(e) = query::set_verification_token(&conn, &slug, &user_id, &token) {
-            tracing::error!("Failed to set verification token: {}", e);
-            return;
-        }
-
-        let verify_url = format!(
-            "http://{}:{}/admin/verify-email?token={}",
-            server_config.host, server_config.admin_port, token
-        );
-        let data = serde_json::json!({ "verify_url": verify_url });
-        let html = match email_renderer.render("verify_email", &data) {
-            Ok(h) => h,
-            Err(e) => {
-                tracing::error!("Failed to render verify email template: {}", e);
-                return;
-            }
-        };
-
-        if let Err(e) = crate::core::email::send_email(
-            &email_config, &user_email, "Verify your email", &html, None,
-        ) {
-            tracing::error!("Failed to send verification email: {}", e);
-        }
-    });
-}
-
-fn redirect_response(url: &str) -> axum::response::Response {
-    Redirect::to(url).into_response()
-}
-
-fn html_with_toast(state: &AdminState, template: &str, data: &serde_json::Value, toast: &str) -> axum::response::Response {
-    match state.render(template, data) {
-        Ok(html) => {
-            let mut resp = Html(html).into_response();
-            if let Ok(val) = toast.parse() {
-                resp.headers_mut().insert("X-Crap-Toast", val);
-            }
-            resp
-        }
-        Err(e) => Html(format!("<h1>Template Error</h1><pre>{}</pre>", e)).into_response(),
-    }
-}
-
-fn render_or_error(state: &AdminState, template: &str, data: &serde_json::Value) -> Html<String> {
-    match state.render(template, data) {
-        Ok(html) => Html(html),
-        Err(e) => Html(format!("<h1>Template Error</h1><pre>{}</pre>", e)),
-    }
-}
-
-fn not_found(state: &AdminState, message: &str) -> (StatusCode, Html<String>) {
-    let data = serde_json::json!({
-        "title": "Not Found",
-        "message": message,
-        "collections": state.sidebar_collections(),
-        "globals": state.sidebar_globals(),
-    });
-    let html = match state.render("errors/404", &data) {
-        Ok(html) => Html(html),
-        Err(_) => Html(format!("<h1>404</h1><p>{}</p>", message)),
-    };
-    (StatusCode::NOT_FOUND, html)
-}
-
-fn server_error(state: &AdminState, message: &str) -> (StatusCode, Html<String>) {
-    let data = serde_json::json!({
-        "title": "Server Error",
-        "message": message,
-        "collections": state.sidebar_collections(),
-        "globals": state.sidebar_globals(),
-    });
-    let html = match state.render("errors/500", &data) {
-        Ok(html) => Html(html),
-        Err(_) => Html(format!("<h1>500</h1><p>{}</p>", message)),
-    };
-    (StatusCode::INTERNAL_SERVER_ERROR, html)
+    axum::response::Redirect::to(&format!("/admin/collections/{}", slug)).into_response()
 }

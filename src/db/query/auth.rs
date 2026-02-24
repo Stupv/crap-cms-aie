@@ -1,0 +1,410 @@
+//! Auth-related query functions: email lookup, password, reset tokens, verification.
+
+use anyhow::{Context, Result};
+
+use crate::core::{CollectionDefinition, Document};
+use crate::db::document::row_to_document;
+use super::get_column_names;
+
+/// Find a document by email in an auth collection.
+pub fn find_by_email(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    def: &CollectionDefinition,
+    email: &str,
+) -> Result<Option<Document>> {
+    let column_names = get_column_names(def);
+
+    let sql = format!(
+        "SELECT {} FROM {} WHERE email = ?1",
+        column_names.join(", "),
+        slug
+    );
+
+    let result = conn.query_row(&sql, [email], |row| {
+        row_to_document(row, &column_names)
+    });
+
+    match result {
+        Ok(doc) => Ok(Some(doc)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e).context(format!("Failed to find user by email in {}", slug)),
+    }
+}
+
+/// Get the password hash for a document by ID. Returns None if no hash set.
+pub fn get_password_hash(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    id: &str,
+) -> Result<Option<String>> {
+    let sql = format!("SELECT _password_hash FROM {} WHERE id = ?1", slug);
+
+    let result = conn.query_row(&sql, [id], |row| {
+        row.get::<_, Option<String>>(0)
+    });
+
+    match result {
+        Ok(hash) => Ok(hash),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e).context(format!("Failed to get password hash for {} in {}", id, slug)),
+    }
+}
+
+/// Update the password hash for a document by ID.
+/// Hashes the plaintext password before storing.
+pub fn update_password(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    id: &str,
+    password: &str,
+) -> Result<()> {
+    let hash = crate::core::auth::hash_password(password)?;
+    let sql = format!("UPDATE {} SET _password_hash = ?1 WHERE id = ?2", slug);
+    conn.execute(&sql, rusqlite::params![hash, id])
+        .with_context(|| format!("Failed to update password for {} in {}", id, slug))?;
+    Ok(())
+}
+
+// ── Reset token functions ─────────────────────────────────────────────────
+
+/// Store a password reset token and expiry for a user.
+pub fn set_reset_token(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    user_id: &str,
+    token: &str,
+    exp: i64,
+) -> Result<()> {
+    let sql = format!(
+        "UPDATE {} SET _reset_token = ?1, _reset_token_exp = ?2 WHERE id = ?3",
+        slug
+    );
+    conn.execute(&sql, rusqlite::params![token, exp, user_id])
+        .with_context(|| format!("Failed to set reset token for {} in {}", user_id, slug))?;
+    Ok(())
+}
+
+/// Find a user by their reset token. Returns the document and token expiry.
+pub fn find_by_reset_token(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    def: &CollectionDefinition,
+    token: &str,
+) -> Result<Option<(Document, i64)>> {
+    let column_names = get_column_names(def);
+    let cols = column_names.join(", ");
+    let sql = format!(
+        "SELECT {}, _reset_token_exp FROM {} WHERE _reset_token = ?1",
+        cols, slug
+    );
+
+    let result = conn.query_row(&sql, [token], |row| {
+        let doc = row_to_document(row, &column_names)?;
+        let exp: i64 = row.get(column_names.len())?;
+        Ok((doc, exp))
+    });
+
+    match result {
+        Ok(pair) => Ok(Some(pair)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e).context(format!("Failed to find user by reset token in {}", slug)),
+    }
+}
+
+/// Clear the reset token for a user (after successful reset or expiry).
+pub fn clear_reset_token(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    user_id: &str,
+) -> Result<()> {
+    let sql = format!(
+        "UPDATE {} SET _reset_token = NULL, _reset_token_exp = NULL WHERE id = ?1",
+        slug
+    );
+    conn.execute(&sql, [user_id])
+        .with_context(|| format!("Failed to clear reset token for {} in {}", user_id, slug))?;
+    Ok(())
+}
+
+// ── Email verification functions ──────────────────────────────────────────
+
+/// Store a verification token for a user.
+pub fn set_verification_token(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    user_id: &str,
+    token: &str,
+) -> Result<()> {
+    let sql = format!(
+        "UPDATE {} SET _verification_token = ?1 WHERE id = ?2",
+        slug
+    );
+    conn.execute(&sql, rusqlite::params![token, user_id])
+        .with_context(|| format!("Failed to set verification token for {} in {}", user_id, slug))?;
+    Ok(())
+}
+
+/// Find a user by their verification token.
+pub fn find_by_verification_token(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    def: &CollectionDefinition,
+    token: &str,
+) -> Result<Option<Document>> {
+    let column_names = get_column_names(def);
+    let sql = format!(
+        "SELECT {} FROM {} WHERE _verification_token = ?1",
+        column_names.join(", "), slug
+    );
+
+    let result = conn.query_row(&sql, [token], |row| {
+        row_to_document(row, &column_names)
+    });
+
+    match result {
+        Ok(doc) => Ok(Some(doc)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e).context(format!("Failed to find user by verification token in {}", slug)),
+    }
+}
+
+/// Mark a user as verified (set _verified = 1, clear token).
+pub fn mark_verified(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    user_id: &str,
+) -> Result<()> {
+    let sql = format!(
+        "UPDATE {} SET _verified = 1, _verification_token = NULL WHERE id = ?1",
+        slug
+    );
+    conn.execute(&sql, [user_id])
+        .with_context(|| format!("Failed to mark user {} as verified in {}", user_id, slug))?;
+    Ok(())
+}
+
+/// Check if a user is verified.
+pub fn is_verified(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    user_id: &str,
+) -> Result<bool> {
+    let sql = format!("SELECT _verified FROM {} WHERE id = ?1", slug);
+    let result = conn.query_row(&sql, [user_id], |row| {
+        row.get::<_, Option<i64>>(0)
+    });
+    match result {
+        Ok(Some(v)) => Ok(v != 0),
+        Ok(None) => Ok(false),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+        Err(e) => Err(e).context(format!("Failed to check verification for {} in {}", user_id, slug)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+    use crate::core::collection::*;
+    use crate::core::field::*;
+
+    fn auth_def() -> CollectionDefinition {
+        CollectionDefinition {
+            slug: "users".to_string(),
+            labels: CollectionLabels::default(),
+            timestamps: true,
+            fields: vec![
+                FieldDefinition {
+                    name: "email".to_string(),
+                    field_type: FieldType::Email,
+                    required: true,
+                    unique: true,
+                    validate: None,
+                    default_value: None,
+                    options: vec![],
+                    admin: FieldAdmin::default(),
+                    hooks: FieldHooks::default(),
+                    access: FieldAccess::default(),
+                    relationship: None,
+                    fields: vec![],
+                    blocks: vec![],
+                    localized: false,
+                },
+                FieldDefinition {
+                    name: "name".to_string(),
+                    field_type: FieldType::Text,
+                    required: false,
+                    unique: false,
+                    validate: None,
+                    default_value: None,
+                    options: vec![],
+                    admin: FieldAdmin::default(),
+                    hooks: FieldHooks::default(),
+                    access: FieldAccess::default(),
+                    relationship: None,
+                    fields: vec![],
+                    blocks: vec![],
+                    localized: false,
+                },
+            ],
+            admin: CollectionAdmin::default(),
+            hooks: CollectionHooks::default(),
+            auth: None,
+            upload: None,
+            access: CollectionAccess::default(),
+            live: None,
+        }
+    }
+
+    fn setup_auth_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE users (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE,
+                name TEXT,
+                _password_hash TEXT,
+                _reset_token TEXT,
+                _reset_token_exp INTEGER,
+                _verification_token TEXT,
+                _verified INTEGER DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT
+            );
+            INSERT INTO users (id, email, name, created_at, updated_at)
+            VALUES ('user1', 'test@example.com', 'Test User', '2024-01-01', '2024-01-01');"
+        ).unwrap();
+        conn
+    }
+
+    // ── find_by_email tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn find_by_email_found() {
+        let conn = setup_auth_db();
+        let def = auth_def();
+        let result = find_by_email(&conn, "users", &def, "test@example.com").unwrap();
+        assert!(result.is_some(), "Should find existing user by email");
+        let doc = result.unwrap();
+        assert_eq!(doc.id, "user1");
+    }
+
+    #[test]
+    fn find_by_email_not_found() {
+        let conn = setup_auth_db();
+        let def = auth_def();
+        let result = find_by_email(&conn, "users", &def, "nobody@example.com").unwrap();
+        assert!(result.is_none(), "Should return None for non-existent email");
+    }
+
+    // ── get_password_hash + update_password tests ───────────────────────────
+
+    #[test]
+    fn get_password_hash_none() {
+        let conn = setup_auth_db();
+        let result = get_password_hash(&conn, "users", "user1").unwrap();
+        assert!(result.is_none(), "Should return None when no password hash is set");
+    }
+
+    #[test]
+    fn update_password_then_get() {
+        let conn = setup_auth_db();
+        update_password(&conn, "users", "user1", "secret123").unwrap();
+        let hash = get_password_hash(&conn, "users", "user1").unwrap();
+        assert!(hash.is_some(), "Should return Some after setting password");
+        let hash_str = hash.unwrap();
+        assert!(!hash_str.is_empty(), "Hash should be non-empty");
+        // Argon2 hashes start with $argon2
+        assert!(hash_str.starts_with("$argon2"), "Hash should be an Argon2 hash");
+    }
+
+    // ── set_reset_token + find_by_reset_token tests ─────────────────────────
+
+    #[test]
+    fn set_and_find_reset_token() {
+        let conn = setup_auth_db();
+        let def = auth_def();
+        let exp = 9999999999i64;
+        set_reset_token(&conn, "users", "user1", "reset-abc", exp).unwrap();
+        let result = find_by_reset_token(&conn, "users", &def, "reset-abc").unwrap();
+        assert!(result.is_some(), "Should find user by reset token");
+        let (doc, returned_exp) = result.unwrap();
+        assert_eq!(doc.id, "user1");
+        assert_eq!(returned_exp, exp);
+    }
+
+    #[test]
+    fn find_by_reset_token_wrong() {
+        let conn = setup_auth_db();
+        let def = auth_def();
+        set_reset_token(&conn, "users", "user1", "reset-abc", 9999999999).unwrap();
+        let result = find_by_reset_token(&conn, "users", &def, "wrong-token").unwrap();
+        assert!(result.is_none(), "Should return None for wrong reset token");
+    }
+
+    #[test]
+    fn find_by_reset_token_expired() {
+        let conn = setup_auth_db();
+        let def = auth_def();
+        // Set token with a past expiry (the DB function doesn't check expiry)
+        let past_exp = 1000i64;
+        set_reset_token(&conn, "users", "user1", "reset-expired", past_exp).unwrap();
+        let result = find_by_reset_token(&conn, "users", &def, "reset-expired").unwrap();
+        assert!(result.is_some(), "DB function should return expired tokens (caller checks expiry)");
+        let (doc, returned_exp) = result.unwrap();
+        assert_eq!(doc.id, "user1");
+        assert_eq!(returned_exp, past_exp);
+    }
+
+    // ── clear_reset_token tests ─────────────────────────────────────────────
+
+    #[test]
+    fn clear_reset_token_works() {
+        let conn = setup_auth_db();
+        let def = auth_def();
+        set_reset_token(&conn, "users", "user1", "reset-xyz", 9999999999).unwrap();
+        clear_reset_token(&conn, "users", "user1").unwrap();
+        let result = find_by_reset_token(&conn, "users", &def, "reset-xyz").unwrap();
+        assert!(result.is_none(), "Should return None after clearing reset token");
+    }
+
+    // ── set_verification_token + find_by_verification_token tests ───────────
+
+    #[test]
+    fn set_and_find_verification_token() {
+        let conn = setup_auth_db();
+        let def = auth_def();
+        set_verification_token(&conn, "users", "user1", "verify-abc").unwrap();
+        let result = find_by_verification_token(&conn, "users", &def, "verify-abc").unwrap();
+        assert!(result.is_some(), "Should find user by verification token");
+        let doc = result.unwrap();
+        assert_eq!(doc.id, "user1");
+    }
+
+    #[test]
+    fn find_by_verification_token_wrong() {
+        let conn = setup_auth_db();
+        let def = auth_def();
+        set_verification_token(&conn, "users", "user1", "verify-abc").unwrap();
+        let result = find_by_verification_token(&conn, "users", &def, "wrong-token").unwrap();
+        assert!(result.is_none(), "Should return None for wrong verification token");
+    }
+
+    // ── mark_verified + is_verified tests ───────────────────────────────────
+
+    #[test]
+    fn is_verified_default_false() {
+        let conn = setup_auth_db();
+        let result = is_verified(&conn, "users", "user1").unwrap();
+        assert!(!result, "Newly created user should not be verified");
+    }
+
+    #[test]
+    fn mark_verified_then_check() {
+        let conn = setup_auth_db();
+        mark_verified(&conn, "users", "user1").unwrap();
+        let result = is_verified(&conn, "users", "user1").unwrap();
+        assert!(result, "User should be verified after mark_verified");
+    }
+}

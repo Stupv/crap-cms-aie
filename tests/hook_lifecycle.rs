@@ -812,7 +812,7 @@ fn apply_after_read_no_hooks_returns_same() {
     );
     // _was_read should NOT be present since we used empty hooks
     assert!(
-        result.fields.get("_was_read").is_none(),
+        !result.fields.contains_key("_was_read"),
         "_was_read should not be present with empty hooks"
     );
 }

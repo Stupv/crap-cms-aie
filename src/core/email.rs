@@ -180,8 +180,10 @@ mod tests {
 
     #[test]
     fn is_configured_with_host_true() {
-        let mut config = EmailConfig::default();
-        config.smtp_host = "smtp.example.com".to_string();
+        let config = EmailConfig {
+            smtp_host: "smtp.example.com".to_string(),
+            ..Default::default()
+        };
         assert!(is_configured(&config));
     }
 }

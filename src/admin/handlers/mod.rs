@@ -1,5 +1,6 @@
 //! Axum handler functions for admin UI routes.
 
+mod shared;
 pub mod auth;
 pub mod dashboard;
 pub mod collections;

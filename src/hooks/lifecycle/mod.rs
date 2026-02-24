@@ -1,5 +1,8 @@
 //! Hook execution engine: runs field, collection, and registered hooks within transactions.
 
+pub mod crud;
+pub mod access;
+
 use anyhow::{Context, Result};
 use mlua::{Lua, Value};
 use std::collections::HashMap;
@@ -13,8 +16,10 @@ use crate::core::Document;
 use crate::core::SharedRegistry;
 use crate::core::field::{FieldDefinition, FieldHooks, FieldType};
 use crate::core::validate::{FieldError, ValidationError};
-use crate::config::LocaleConfig;
-use crate::db::query::{self, AccessResult, FindQuery, Filter, FilterOp, FilterClause, LocaleContext};
+use crate::db::query::{self, AccessResult};
+
+use crud::register_crud_functions;
+use access::{check_access_with_lua, check_field_read_access_with_lua, check_field_write_access_with_lua};
 
 /// Events that trigger hooks.
 #[derive(Debug, Clone)]
@@ -67,7 +72,7 @@ pub struct HookContext {
 /// Raw pointer wrapper for injecting a transaction/connection into Lua CRUD
 /// functions via `lua.set_app_data()`. Only valid between `set_app_data` and
 /// `remove_app_data` calls in `run_hooks_with_conn`.
-struct TxContext(*const rusqlite::Connection);
+pub(super) struct TxContext(pub(super) *const rusqlite::Connection);
 
 // Safety: TxContext is only stored in Lua app_data while the originating
 // Connection/Transaction is alive and the Lua mutex is held. The pointer
@@ -77,7 +82,7 @@ unsafe impl Sync for TxContext {}
 
 /// Optional authenticated user context injected alongside TxContext.
 /// CRUD closures read this when overrideAccess = false.
-struct UserContext(Option<Document>);
+pub(super) struct UserContext(pub(super) Option<Document>);
 unsafe impl Send for UserContext {}
 unsafe impl Sync for UserContext {}
 
@@ -104,7 +109,7 @@ impl HookRunner {
         lua.load(&code).exec().context("Failed to set package paths")?;
 
         // Register crap.log, crap.util, crap.collections.define, etc.
-        super::api::register_api(&lua, registry.clone(), config_dir, config)?;
+        crate::hooks::api::register_api(&lua, registry.clone(), config_dir, config)?;
 
         // Register CRUD functions on crap.collections (find, find_by_id, create, update, delete).
         // These read the active transaction from Lua app_data when called inside hooks.
@@ -113,11 +118,11 @@ impl HookRunner {
         // Auto-load collections/*.lua and globals/*.lua
         let collections_dir = config_dir.join("collections");
         if collections_dir.exists() {
-            super::load_lua_dir(&lua, &collections_dir, "collection")?;
+            crate::hooks::load_lua_dir(&lua, &collections_dir, "collection")?;
         }
         let globals_dir = config_dir.join("globals");
         if globals_dir.exists() {
-            super::load_lua_dir(&lua, &globals_dir, "global")?;
+            crate::hooks::load_lua_dir(&lua, &globals_dir, "global")?;
         }
 
         // Execute init.lua so crap.hooks.register() calls take effect in this VM
@@ -261,6 +266,7 @@ impl HookRunner {
     /// Run field-level hooks with an active database connection/transaction injected.
     /// CRUD functions (`crap.collections.find`, `.create`, etc.) become available
     /// to Lua field hooks, sharing the provided connection for transaction atomicity.
+    #[allow(clippy::too_many_arguments)]
     pub fn run_field_hooks_with_conn(
         &self,
         fields: &[FieldDefinition],
@@ -404,6 +410,7 @@ impl HookRunner {
     ///
     /// Field hooks in before-write get full CRUD access (same transaction).
     /// `user` is the authenticated user — propagated to CRUD closures for `overrideAccess`.
+    #[allow(clippy::too_many_arguments)]
     pub fn run_before_write(
         &self,
         hooks: &CollectionHooks,
@@ -562,7 +569,7 @@ impl HookRunner {
                 ctx_table.set("operation", operation)?;
                 let data_table = lua.create_table()?;
                 for (k, v) in data {
-                    data_table.set(k.as_str(), super::api::json_to_lua(&lua, v)?)?;
+                    data_table.set(k.as_str(), crate::hooks::api::json_to_lua(&lua, v)?)?;
                 }
                 ctx_table.set("data", data_table)?;
 
@@ -578,6 +585,7 @@ impl HookRunner {
 
     /// Publish a mutation event: check live setting → run before_broadcast hooks → EventBus.publish().
     /// Spawns into a background task (non-blocking, like fire_after_event).
+    #[allow(clippy::too_many_arguments)]
     pub fn publish_event(
         &self,
         event_bus: &Option<EventBus>,
@@ -684,7 +692,7 @@ impl HookRunner {
                         if k == "id" || k == "created_at" || k == "updated_at" {
                             continue;
                         }
-                        fields.insert(k, super::api::lua_to_json(&lua, &v)?);
+                        fields.insert(k, crate::hooks::api::lua_to_json(&lua, &v)?);
                     }
                     let created_at: Option<String> = tbl.get("created_at").ok();
                     let updated_at: Option<String> = tbl.get("updated_at").ok();
@@ -786,6 +794,7 @@ impl HookRunner {
 
     /// Execute arbitrary Lua code within a transaction + user context.
     /// The Lua code must return a string. Useful for testing CRUD closures.
+    #[allow(dead_code)]
     pub fn eval_lua_with_conn(
         &self,
         code: &str,
@@ -929,7 +938,7 @@ impl HookRunner {
             .with_context(|| format!("Function '{}' not found in module '{}'", func_name, module_path))?;
 
         // Build the Lua value
-        let lua_value = super::api::json_to_lua(&lua, value)?;
+        let lua_value = crate::hooks::api::json_to_lua(&lua, value)?;
 
         // Build context table
         let ctx_table = lua.create_table()?;
@@ -937,7 +946,7 @@ impl HookRunner {
         ctx_table.set("field_name", field_name)?;
         let data_table = lua.create_table()?;
         for (k, v) in data {
-            data_table.set(k.as_str(), super::api::json_to_lua(&lua, v)?)?;
+            data_table.set(k.as_str(), crate::hooks::api::json_to_lua(&lua, v)?)?;
         }
         ctx_table.set("data", data_table)?;
 
@@ -963,7 +972,7 @@ fn context_to_lua_table(lua: &Lua, context: &HookContext) -> mlua::Result<mlua::
     }
     let data_table = lua.create_table()?;
     for (k, v) in &context.data {
-        data_table.set(k.as_str(), super::api::json_to_lua(lua, v)?)?;
+        data_table.set(k.as_str(), crate::hooks::api::json_to_lua(lua, v)?)?;
     }
     ctx_table.set("data", data_table)?;
     Ok(ctx_table)
@@ -1041,7 +1050,7 @@ fn call_before_broadcast_hook(
                 let mut new_data = HashMap::new();
                 for pair in data_tbl.pairs::<String, Value>() {
                     let (k, v) = pair?;
-                    new_data.insert(k, super::api::lua_to_json(lua, &v)?);
+                    new_data.insert(k, crate::hooks::api::lua_to_json(lua, &v)?);
                 }
                 Ok(Some(HookContext { data: new_data, ..context }))
             } else {
@@ -1090,7 +1099,7 @@ fn call_registered_before_broadcast(
                     let mut new_data = HashMap::new();
                     for pair in data_tbl.pairs::<String, Value>() {
                         let (k, v) = pair?;
-                        new_data.insert(k, super::api::lua_to_json(lua, &v)?);
+                        new_data.insert(k, crate::hooks::api::lua_to_json(lua, &v)?);
                     }
                     context = HookContext { data: new_data, ..context };
                 }
@@ -1138,22 +1147,19 @@ fn call_registered_hooks(
         let ctx_table = context_to_lua_table(lua, &context)?;
 
         let result: Value = func.call(ctx_table)?;
-        match result {
-            Value::Table(tbl) => {
-                let data_result: mlua::Result<mlua::Table> = tbl.get("data");
-                if let Ok(data_tbl) = data_result {
-                    let mut new_data = HashMap::new();
-                    for pair in data_tbl.pairs::<String, Value>() {
-                        let (k, v) = pair?;
-                        new_data.insert(k, super::api::lua_to_json(lua, &v)?);
-                    }
-                    context = HookContext {
-                        data: new_data,
-                        ..context
-                    };
+        if let Value::Table(tbl) = result {
+            let data_result: mlua::Result<mlua::Table> = tbl.get("data");
+            if let Ok(data_tbl) = data_result {
+                let mut new_data = HashMap::new();
+                for pair in data_tbl.pairs::<String, Value>() {
+                    let (k, v) = pair?;
+                    new_data.insert(k, crate::hooks::api::lua_to_json(lua, &v)?);
                 }
+                context = HookContext {
+                    data: new_data,
+                    ..context
+                };
             }
-            _ => {}
         }
     }
 
@@ -1236,7 +1242,7 @@ fn call_field_hook_ref(
         .with_context(|| format!("Function '{}' not found in module '{}'", func_name, module_path))?;
 
     // Convert the field value to Lua
-    let lua_value = super::api::json_to_lua(lua, &value)?;
+    let lua_value = crate::hooks::api::json_to_lua(lua, &value)?;
 
     // Build context table
     let ctx_table = lua.create_table()?;
@@ -1245,7 +1251,7 @@ fn call_field_hook_ref(
     ctx_table.set("operation", operation)?;
     let data_table = lua.create_table()?;
     for (k, v) in data {
-        data_table.set(k.as_str(), super::api::json_to_lua(lua, v)?)?;
+        data_table.set(k.as_str(), crate::hooks::api::json_to_lua(lua, v)?)?;
     }
     ctx_table.set("data", data_table)?;
 
@@ -1253,7 +1259,7 @@ fn call_field_hook_ref(
     let result: Value = func.call((lua_value, ctx_table))?;
 
     // Convert result back to JSON
-    super::api::lua_to_json(lua, &result)
+    crate::hooks::api::lua_to_json(lua, &result)
         .map_err(|e| anyhow::anyhow!("Field hook '{}' returned invalid value: {}", hook_ref, e))
 }
 
@@ -1297,7 +1303,7 @@ fn call_hook_ref(lua: &Lua, hook_ref: &str, context: HookContext) -> Result<Hook
                 let mut new_data = HashMap::new();
                 for pair in data_tbl.pairs::<String, Value>() {
                     let (k, v) = pair?;
-                    new_data.insert(k, super::api::lua_to_json(lua, &v)?);
+                    new_data.insert(k, crate::hooks::api::lua_to_json(lua, &v)?);
                 }
                 Ok(HookContext {
                     data: new_data,
@@ -1309,807 +1315,4 @@ fn call_hook_ref(lua: &Lua, hook_ref: &str, context: HookContext) -> Result<Hook
         }
         _ => Ok(context),
     }
-}
-
-// ── Lua CRUD function registration ──────────────────────────────────────────
-
-/// Get the active transaction connection from Lua app_data.
-/// Returns an error if called outside of `run_hooks_with_conn`.
-fn get_tx_conn(lua: &Lua) -> mlua::Result<*const rusqlite::Connection> {
-    let ctx = lua.app_data_ref::<TxContext>()
-        .ok_or_else(|| mlua::Error::RuntimeError(
-            "crap.collections CRUD functions are only available inside hooks \
-             with transaction context (before_change, before_delete, etc.)"
-                .into()
-        ))?;
-    Ok(ctx.0)
-}
-
-/// Check collection-level access using an already-held `&Lua` reference.
-/// Does NOT lock the VM or manage TxContext — caller must ensure those are set.
-/// Returns Allowed if `access_ref` is None (no restriction configured).
-fn check_access_with_lua(
-    lua: &Lua,
-    access_ref: Option<&str>,
-    user: Option<&Document>,
-    id: Option<&str>,
-    data: Option<&HashMap<String, serde_json::Value>>,
-) -> Result<AccessResult> {
-    let func_ref = match access_ref {
-        Some(r) => r,
-        None => return Ok(AccessResult::Allowed),
-    };
-
-    let parts: Vec<&str> = func_ref.split('.').collect();
-    if parts.len() < 2 {
-        return Err(anyhow::anyhow!(
-            "Access ref '{}' must be module.function format", func_ref
-        ));
-    }
-    let module_path = parts[..parts.len() - 1].join(".");
-    let func_name = parts[parts.len() - 1];
-
-    let require: mlua::Function = lua.globals().get("require")?;
-    let module: mlua::Table = require.call(module_path.clone())
-        .with_context(|| format!("Failed to require module '{}'", module_path))?;
-    let func: mlua::Function = module.get(func_name)
-        .with_context(|| format!("Function '{}' not found in module '{}'", func_name, module_path))?;
-
-    // Build context table: { user = ..., id = ..., data = ... }
-    let ctx_table = lua.create_table()?;
-    if let Some(user_doc) = user {
-        let user_table = document_to_lua_table(lua, user_doc)?;
-        ctx_table.set("user", user_table)?;
-    }
-    if let Some(doc_id) = id {
-        ctx_table.set("id", doc_id)?;
-    }
-    if let Some(doc_data) = data {
-        let data_table = lua.create_table()?;
-        for (k, v) in doc_data {
-            data_table.set(k.as_str(), super::api::json_to_lua(lua, v)?)?;
-        }
-        ctx_table.set("data", data_table)?;
-    }
-
-    let result: Value = func.call(ctx_table)?;
-
-    match result {
-        Value::Boolean(true) => Ok(AccessResult::Allowed),
-        Value::Boolean(false) | Value::Nil => Ok(AccessResult::Denied),
-        Value::Table(tbl) => {
-            let mut clauses = Vec::new();
-            for pair in tbl.pairs::<String, Value>() {
-                let (field, value) = pair?;
-                match value {
-                    Value::String(s) => {
-                        clauses.push(FilterClause::Single(Filter {
-                            field,
-                            op: FilterOp::Equals(s.to_str()?.to_string()),
-                        }));
-                    }
-                    Value::Integer(i) => {
-                        clauses.push(FilterClause::Single(Filter {
-                            field,
-                            op: FilterOp::Equals(i.to_string()),
-                        }));
-                    }
-                    Value::Number(n) => {
-                        clauses.push(FilterClause::Single(Filter {
-                            field,
-                            op: FilterOp::Equals(n.to_string()),
-                        }));
-                    }
-                    Value::Table(op_tbl) => {
-                        for op_pair in op_tbl.pairs::<String, Value>() {
-                            let (op_name, op_val) = op_pair?;
-                            let op = lua_parse_filter_op(&op_name, &op_val)?;
-                            clauses.push(FilterClause::Single(Filter {
-                                field: field.clone(),
-                                op,
-                            }));
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            Ok(AccessResult::Constrained(clauses))
-        }
-        _ => Ok(AccessResult::Denied),
-    }
-}
-
-/// Check field-level read access using an already-held `&Lua` reference.
-/// Returns a list of field names that should be stripped (denied fields).
-fn check_field_read_access_with_lua(
-    lua: &Lua,
-    fields: &[FieldDefinition],
-    user: Option<&Document>,
-) -> Vec<String> {
-    let mut denied = Vec::new();
-    for field in fields {
-        if let Some(ref read_ref) = field.access.read {
-            match check_access_with_lua(lua, Some(read_ref), user, None, None) {
-                Ok(AccessResult::Allowed) | Ok(AccessResult::Constrained(_)) => {}
-                Ok(AccessResult::Denied) => denied.push(field.name.clone()),
-                Err(e) => {
-                    tracing::warn!("field access check error for {}: {}", field.name, e);
-                    denied.push(field.name.clone());
-                }
-            }
-        }
-    }
-    denied
-}
-
-/// Check field-level write access using an already-held `&Lua` reference.
-/// Returns a list of field names that should be stripped from the input.
-fn check_field_write_access_with_lua(
-    lua: &Lua,
-    fields: &[FieldDefinition],
-    user: Option<&Document>,
-    operation: &str,
-) -> Vec<String> {
-    let mut denied = Vec::new();
-    for field in fields {
-        let access_ref = match operation {
-            "create" => field.access.create.as_deref(),
-            "update" => field.access.update.as_deref(),
-            _ => None,
-        };
-        if let Some(ref_str) = access_ref {
-            match check_access_with_lua(lua, Some(ref_str), user, None, None) {
-                Ok(AccessResult::Allowed) | Ok(AccessResult::Constrained(_)) => {}
-                Ok(AccessResult::Denied) => denied.push(field.name.clone()),
-                Err(e) => {
-                    tracing::warn!("field write access check error for {}: {}", field.name, e);
-                    denied.push(field.name.clone());
-                }
-            }
-        }
-    }
-    denied
-}
-
-/// Register the CRUD functions on `crap.collections` and `crap.globals`.
-/// They read the active connection from Lua app_data (set by `run_hooks_with_conn`).
-fn register_crud_functions(lua: &Lua, registry: SharedRegistry, locale_config: &LocaleConfig) -> Result<()> {
-    let crap: mlua::Table = lua.globals().get("crap")?;
-    let collections: mlua::Table = crap.get("collections")?;
-
-    // crap.collections.find(collection, query?)
-    // query.depth (optional, default 0): populate relationship fields to this depth
-    // query.locale (optional): locale code or "all"
-    // query.overrideAccess (optional, default true): bypass access control
-    {
-        let reg = registry.clone();
-        let lc = locale_config.clone();
-        let find_fn = lua.create_function(move |lua, (collection, query_table): (String, Option<mlua::Table>)| {
-            let conn_ptr = get_tx_conn(lua)?;
-            // Safety: pointer is valid while TxContext is in app_data
-            let conn = unsafe { &*conn_ptr };
-
-            let depth: i32 = query_table.as_ref()
-                .and_then(|qt| qt.get::<i32>("depth").ok())
-                .unwrap_or(0)
-                .min(10).max(0);
-
-            let locale_str: Option<String> = query_table.as_ref()
-                .and_then(|qt| qt.get::<Option<String>>("locale").ok().flatten());
-            let locale_ctx = LocaleContext::from_locale_string(locale_str.as_deref(), &lc);
-
-            let override_access: bool = query_table.as_ref()
-                .and_then(|qt| qt.get::<Option<bool>>("overrideAccess").ok().flatten())
-                .unwrap_or(true);
-
-            let def = {
-                let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
-                    format!("Registry lock: {}", e)
-                ))?;
-                r.get_collection(&collection)
-                    .cloned()
-                    .ok_or_else(|| mlua::Error::RuntimeError(
-                        format!("Collection '{}' not found", collection)
-                    ))?
-            };
-
-            let mut find_query = match query_table {
-                Some(qt) => lua_table_to_find_query(&qt)?,
-                None => FindQuery::default(),
-            };
-
-            // Enforce access control when overrideAccess = false
-            if !override_access {
-                let user_doc = lua.app_data_ref::<UserContext>()
-                    .and_then(|uc| uc.0.clone());
-                let result = check_access_with_lua(lua, def.access.read.as_deref(), user_doc.as_ref(), None, None)
-                    .map_err(|e| mlua::Error::RuntimeError(format!("access check error: {}", e)))?;
-                match result {
-                    AccessResult::Denied => return Err(mlua::Error::RuntimeError("Read access denied".into())),
-                    AccessResult::Constrained(extra) => find_query.filters.extend(extra),
-                    AccessResult::Allowed => {}
-                }
-            }
-
-            query::validate_query_fields(&def, &find_query, locale_ctx.as_ref())
-                .map_err(|e| mlua::Error::RuntimeError(format!("find error: {}", e)))?;
-
-            let mut docs = query::find(conn, &collection, &def, &find_query, locale_ctx.as_ref())
-                .map_err(|e| mlua::Error::RuntimeError(format!("find error: {}", e)))?;
-            let total = query::count(conn, &collection, &def, &find_query.filters, locale_ctx.as_ref())
-                .map_err(|e| mlua::Error::RuntimeError(format!("count error: {}", e)))?;
-
-            // Hydrate join table data + populate relationships
-            let select_slice = find_query.select.as_deref();
-            for doc in &mut docs {
-                query::hydrate_document(conn, &collection, &def, doc, select_slice)
-                    .map_err(|e| mlua::Error::RuntimeError(format!("hydrate error: {}", e)))?;
-            }
-            if depth > 0 {
-                let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
-                    format!("Registry lock: {}", e)
-                ))?;
-                for doc in &mut docs {
-                    let mut visited = std::collections::HashSet::new();
-                    query::populate_relationships(
-                        conn, &r, &collection, &def, doc, depth, &mut visited, select_slice,
-                    ).map_err(|e| mlua::Error::RuntimeError(format!("populate error: {}", e)))?;
-                }
-            }
-            // Apply select field stripping for find results
-            if let Some(ref sel) = find_query.select {
-                for doc in &mut docs {
-                    query::apply_select_to_document(doc, sel);
-                }
-            }
-
-            // Field-level read stripping when overrideAccess = false
-            if !override_access {
-                let user_doc = lua.app_data_ref::<UserContext>()
-                    .and_then(|uc| uc.0.clone());
-                let denied = check_field_read_access_with_lua(lua, &def.fields, user_doc.as_ref());
-                if !denied.is_empty() {
-                    for doc in &mut docs {
-                        for name in &denied {
-                            doc.fields.remove(name);
-                        }
-                    }
-                }
-            }
-
-            find_result_to_lua(lua, &docs, total)
-        })?;
-        collections.set("find", find_fn)?;
-    }
-
-    // crap.collections.find_by_id(collection, id, opts?)
-    // opts.depth (optional, default 0): populate relationship fields to this depth
-    // opts.locale (optional): locale code or "all"
-    // opts.overrideAccess (optional, default true): bypass access control
-    {
-        let reg = registry.clone();
-        let lc = locale_config.clone();
-        let find_by_id_fn = lua.create_function(move |lua, (collection, id, opts): (String, String, Option<mlua::Table>)| {
-            let conn_ptr = get_tx_conn(lua)?;
-            let conn = unsafe { &*conn_ptr };
-
-            let depth: i32 = opts.as_ref()
-                .and_then(|o| o.get::<i32>("depth").ok())
-                .unwrap_or(0)
-                .min(10).max(0);
-
-            let locale_str: Option<String> = opts.as_ref()
-                .and_then(|o| o.get::<Option<String>>("locale").ok().flatten());
-            let locale_ctx = LocaleContext::from_locale_string(locale_str.as_deref(), &lc);
-
-            let override_access: bool = opts.as_ref()
-                .and_then(|o| o.get::<Option<bool>>("overrideAccess").ok().flatten())
-                .unwrap_or(true);
-
-            let def = {
-                let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
-                    format!("Registry lock: {}", e)
-                ))?;
-                r.get_collection(&collection)
-                    .cloned()
-                    .ok_or_else(|| mlua::Error::RuntimeError(
-                        format!("Collection '{}' not found", collection)
-                    ))?
-            };
-
-            let select: Option<Vec<String>> = opts.as_ref()
-                .and_then(|o| o.get::<mlua::Table>("select").ok())
-                .map(|t| t.sequence_values::<String>().filter_map(|r| r.ok()).collect());
-
-            // Check access and determine constraints
-            let access_constraints = if !override_access {
-                let user_doc = lua.app_data_ref::<UserContext>()
-                    .and_then(|uc| uc.0.clone());
-                let result = check_access_with_lua(lua, def.access.read.as_deref(), user_doc.as_ref(), Some(&id), None)
-                    .map_err(|e| mlua::Error::RuntimeError(format!("access check error: {}", e)))?;
-                match result {
-                    AccessResult::Denied => return Err(mlua::Error::RuntimeError("Read access denied".into())),
-                    AccessResult::Constrained(extra) => Some(extra),
-                    AccessResult::Allowed => None,
-                }
-            } else {
-                None
-            };
-
-            // If constrained, use find with id filter + constraints
-            let mut doc = if let Some(constraints) = access_constraints {
-                let mut filters = constraints;
-                filters.push(FilterClause::Single(Filter {
-                    field: "id".to_string(),
-                    op: FilterOp::Equals(id.clone()),
-                }));
-                let query = FindQuery { filters, ..Default::default() };
-                let docs = query::find(conn, &collection, &def, &query, locale_ctx.as_ref())
-                    .map_err(|e| mlua::Error::RuntimeError(format!("find error: {}", e)))?;
-                docs.into_iter().next()
-            } else {
-                query::find_by_id(conn, &collection, &def, &id, locale_ctx.as_ref())
-                    .map_err(|e| mlua::Error::RuntimeError(format!("find_by_id error: {}", e)))?
-            };
-
-            if let Some(ref mut d) = doc {
-                let select_slice = select.as_deref();
-                query::hydrate_document(conn, &collection, &def, d, select_slice)
-                    .map_err(|e| mlua::Error::RuntimeError(format!("hydrate error: {}", e)))?;
-                if depth > 0 {
-                    let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
-                        format!("Registry lock: {}", e)
-                    ))?;
-                    let mut visited = std::collections::HashSet::new();
-                    query::populate_relationships(
-                        conn, &r, &collection, &def, d, depth, &mut visited, select_slice,
-                    ).map_err(|e| mlua::Error::RuntimeError(format!("populate error: {}", e)))?;
-                }
-                if let Some(ref sel) = select {
-                    query::apply_select_to_document(d, sel);
-                }
-            }
-
-            // Field-level read stripping when overrideAccess = false
-            if !override_access {
-                if let Some(ref mut d) = doc {
-                    let user_doc = lua.app_data_ref::<UserContext>()
-                        .and_then(|uc| uc.0.clone());
-                    let denied = check_field_read_access_with_lua(lua, &def.fields, user_doc.as_ref());
-                    for name in &denied {
-                        d.fields.remove(name);
-                    }
-                }
-            }
-
-            match doc {
-                Some(d) => Ok(Value::Table(document_to_lua_table(lua, &d)?)),
-                None => Ok(Value::Nil),
-            }
-        })?;
-        collections.set("find_by_id", find_by_id_fn)?;
-    }
-
-    // crap.collections.create(collection, data, opts?)
-    // opts.locale (optional): locale code to write to
-    // opts.overrideAccess (optional, default true): bypass access control
-    {
-        let reg = registry.clone();
-        let lc = locale_config.clone();
-        let create_fn = lua.create_function(move |lua, (collection, data_table, opts): (String, mlua::Table, Option<mlua::Table>)| {
-            let conn_ptr = get_tx_conn(lua)?;
-            let conn = unsafe { &*conn_ptr };
-
-            let locale_str: Option<String> = opts.as_ref()
-                .and_then(|o| o.get::<Option<String>>("locale").ok().flatten());
-            let locale_ctx = LocaleContext::from_locale_string(locale_str.as_deref(), &lc);
-
-            let override_access: bool = opts.as_ref()
-                .and_then(|o| o.get::<Option<bool>>("overrideAccess").ok().flatten())
-                .unwrap_or(true);
-
-            let def = {
-                let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
-                    format!("Registry lock: {}", e)
-                ))?;
-                r.get_collection(&collection)
-                    .cloned()
-                    .ok_or_else(|| mlua::Error::RuntimeError(
-                        format!("Collection '{}' not found", collection)
-                    ))?
-            };
-
-            let mut data = lua_table_to_hashmap(&data_table)?;
-
-            // Enforce access control when overrideAccess = false
-            if !override_access {
-                let user_doc = lua.app_data_ref::<UserContext>()
-                    .and_then(|uc| uc.0.clone());
-                let result = check_access_with_lua(lua, def.access.create.as_deref(), user_doc.as_ref(), None, None)
-                    .map_err(|e| mlua::Error::RuntimeError(format!("access check error: {}", e)))?;
-                if matches!(result, AccessResult::Denied) {
-                    return Err(mlua::Error::RuntimeError("Create access denied".into()));
-                }
-                let denied = check_field_write_access_with_lua(lua, &def.fields, user_doc.as_ref(), "create");
-                for name in &denied {
-                    data.remove(name);
-                }
-            }
-
-            let doc = query::create(conn, &collection, &def, &data, locale_ctx.as_ref())
-                .map_err(|e| mlua::Error::RuntimeError(format!("create error: {}", e)))?;
-
-            document_to_lua_table(lua, &doc)
-        })?;
-        collections.set("create", create_fn)?;
-    }
-
-    // crap.collections.update(collection, id, data, opts?)
-    // opts.locale (optional): locale code to write to
-    // opts.overrideAccess (optional, default true): bypass access control
-    {
-        let reg = registry.clone();
-        let lc = locale_config.clone();
-        let update_fn = lua.create_function(move |lua, (collection, id, data_table, opts): (String, String, mlua::Table, Option<mlua::Table>)| {
-            let conn_ptr = get_tx_conn(lua)?;
-            let conn = unsafe { &*conn_ptr };
-
-            let locale_str: Option<String> = opts.as_ref()
-                .and_then(|o| o.get::<Option<String>>("locale").ok().flatten());
-            let locale_ctx = LocaleContext::from_locale_string(locale_str.as_deref(), &lc);
-
-            let override_access: bool = opts.as_ref()
-                .and_then(|o| o.get::<Option<bool>>("overrideAccess").ok().flatten())
-                .unwrap_or(true);
-
-            let def = {
-                let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
-                    format!("Registry lock: {}", e)
-                ))?;
-                r.get_collection(&collection)
-                    .cloned()
-                    .ok_or_else(|| mlua::Error::RuntimeError(
-                        format!("Collection '{}' not found", collection)
-                    ))?
-            };
-
-            let mut data = lua_table_to_hashmap(&data_table)?;
-
-            // Enforce access control when overrideAccess = false
-            if !override_access {
-                let user_doc = lua.app_data_ref::<UserContext>()
-                    .and_then(|uc| uc.0.clone());
-                let result = check_access_with_lua(lua, def.access.update.as_deref(), user_doc.as_ref(), Some(&id), None)
-                    .map_err(|e| mlua::Error::RuntimeError(format!("access check error: {}", e)))?;
-                if matches!(result, AccessResult::Denied) {
-                    return Err(mlua::Error::RuntimeError("Update access denied".into()));
-                }
-                let denied = check_field_write_access_with_lua(lua, &def.fields, user_doc.as_ref(), "update");
-                for name in &denied {
-                    data.remove(name);
-                }
-            }
-
-            let doc = query::update(conn, &collection, &def, &id, &data, locale_ctx.as_ref())
-                .map_err(|e| mlua::Error::RuntimeError(format!("update error: {}", e)))?;
-
-            document_to_lua_table(lua, &doc)
-        })?;
-        collections.set("update", update_fn)?;
-    }
-
-    // crap.collections.delete(collection, id, opts?)
-    // opts.overrideAccess (optional, default true): bypass access control
-    {
-        let reg = registry.clone();
-        let delete_fn = lua.create_function(move |lua, (collection, id, opts): (String, String, Option<mlua::Table>)| {
-            let conn_ptr = get_tx_conn(lua)?;
-            let conn = unsafe { &*conn_ptr };
-
-            let override_access: bool = opts.as_ref()
-                .and_then(|o| o.get::<Option<bool>>("overrideAccess").ok().flatten())
-                .unwrap_or(true);
-
-            // Enforce access control when overrideAccess = false
-            if !override_access {
-                let def = {
-                    let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
-                        format!("Registry lock: {}", e)
-                    ))?;
-                    r.get_collection(&collection)
-                        .cloned()
-                        .ok_or_else(|| mlua::Error::RuntimeError(
-                            format!("Collection '{}' not found", collection)
-                        ))?
-                };
-                let user_doc = lua.app_data_ref::<UserContext>()
-                    .and_then(|uc| uc.0.clone());
-                let result = check_access_with_lua(lua, def.access.delete.as_deref(), user_doc.as_ref(), Some(&id), None)
-                    .map_err(|e| mlua::Error::RuntimeError(format!("access check error: {}", e)))?;
-                if matches!(result, AccessResult::Denied) {
-                    return Err(mlua::Error::RuntimeError("Delete access denied".into()));
-                }
-            }
-
-            query::delete(conn, &collection, &id)
-                .map_err(|e| mlua::Error::RuntimeError(format!("delete error: {}", e)))?;
-
-            Ok(true)
-        })?;
-        collections.set("delete", delete_fn)?;
-    }
-
-    // ── Globals CRUD ─────────────────────────────────────────────────────────
-
-    let globals: mlua::Table = crap.get("globals")?;
-
-    // crap.globals.get(slug, opts?)
-    // opts.locale (optional): locale code or "all"
-    {
-        let reg = registry.clone();
-        let lc = locale_config.clone();
-        let get_fn = lua.create_function(move |lua, (slug, opts): (String, Option<mlua::Table>)| {
-            let conn_ptr = get_tx_conn(lua)?;
-            let conn = unsafe { &*conn_ptr };
-
-            let locale_str: Option<String> = opts.as_ref()
-                .and_then(|o| o.get::<Option<String>>("locale").ok().flatten());
-            let locale_ctx = LocaleContext::from_locale_string(locale_str.as_deref(), &lc);
-
-            let def = {
-                let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
-                    format!("Registry lock: {}", e)
-                ))?;
-                r.get_global(&slug)
-                    .cloned()
-                    .ok_or_else(|| mlua::Error::RuntimeError(
-                        format!("Global '{}' not found", slug)
-                    ))?
-            };
-
-            let doc = query::get_global(conn, &slug, &def, locale_ctx.as_ref())
-                .map_err(|e| mlua::Error::RuntimeError(format!("get_global error: {}", e)))?;
-
-            document_to_lua_table(lua, &doc)
-        })?;
-        globals.set("get", get_fn)?;
-    }
-
-    // crap.globals.update(slug, data, opts?)
-    // opts.locale (optional): locale code to write to
-    {
-        let reg = registry.clone();
-        let lc = locale_config.clone();
-        let update_fn = lua.create_function(move |lua, (slug, data_table, opts): (String, mlua::Table, Option<mlua::Table>)| {
-            let conn_ptr = get_tx_conn(lua)?;
-            let conn = unsafe { &*conn_ptr };
-
-            let locale_str: Option<String> = opts.as_ref()
-                .and_then(|o| o.get::<Option<String>>("locale").ok().flatten());
-            let locale_ctx = LocaleContext::from_locale_string(locale_str.as_deref(), &lc);
-
-            let def = {
-                let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
-                    format!("Registry lock: {}", e)
-                ))?;
-                r.get_global(&slug)
-                    .cloned()
-                    .ok_or_else(|| mlua::Error::RuntimeError(
-                        format!("Global '{}' not found", slug)
-                    ))?
-            };
-
-            let data = lua_table_to_hashmap(&data_table)?;
-            let doc = query::update_global(conn, &slug, &def, &data, locale_ctx.as_ref())
-                .map_err(|e| mlua::Error::RuntimeError(format!("update_global error: {}", e)))?;
-
-            document_to_lua_table(lua, &doc)
-        })?;
-        globals.set("update", update_fn)?;
-    }
-
-    Ok(())
-}
-
-// ── Lua <-> Rust type conversion helpers ────────────────────────────────────
-
-/// Convert a Lua query table to a FindQuery.
-/// Supports both simple filters (`{ status = "published" }`) and operator-based
-/// filters (`{ title = { contains = "hello" } }`).
-fn lua_table_to_find_query(tbl: &mlua::Table) -> mlua::Result<FindQuery> {
-    let filters = if let Ok(filters_tbl) = tbl.get::<mlua::Table>("filters") {
-        let mut clauses = Vec::new();
-        for pair in filters_tbl.pairs::<String, Value>() {
-            let (field, value) = pair?;
-
-            // Handle "or" key for OR groups
-            if field == "or" {
-                if let Value::Table(or_array) = value {
-                    let mut groups = Vec::new();
-                    for element in or_array.sequence_values::<mlua::Table>() {
-                        let tbl = element?;
-                        let mut group = Vec::new();
-                        for inner_pair in tbl.pairs::<String, Value>() {
-                            let (f, v) = inner_pair?;
-                            match v {
-                                Value::String(s) => {
-                                    group.push(Filter {
-                                        field: f,
-                                        op: FilterOp::Equals(s.to_str()?.to_string()),
-                                    });
-                                }
-                                Value::Integer(i) => {
-                                    group.push(Filter {
-                                        field: f,
-                                        op: FilterOp::Equals(i.to_string()),
-                                    });
-                                }
-                                Value::Number(n) => {
-                                    group.push(Filter {
-                                        field: f,
-                                        op: FilterOp::Equals(n.to_string()),
-                                    });
-                                }
-                                Value::Table(op_tbl) => {
-                                    for op_pair in op_tbl.pairs::<String, Value>() {
-                                        let (op_name, op_val) = op_pair?;
-                                        let op = lua_parse_filter_op(&op_name, &op_val)?;
-                                        group.push(Filter {
-                                            field: f.clone(),
-                                            op,
-                                        });
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        groups.push(group);
-                    }
-                    clauses.push(FilterClause::Or(groups));
-                }
-                continue;
-            }
-
-            match value {
-                // Simple string value -> Equals
-                Value::String(s) => {
-                    clauses.push(FilterClause::Single(Filter {
-                        field,
-                        op: FilterOp::Equals(s.to_str()?.to_string()),
-                    }));
-                }
-                // Number -> Equals with string representation
-                Value::Integer(i) => {
-                    clauses.push(FilterClause::Single(Filter {
-                        field,
-                        op: FilterOp::Equals(i.to_string()),
-                    }));
-                }
-                Value::Number(n) => {
-                    clauses.push(FilterClause::Single(Filter {
-                        field,
-                        op: FilterOp::Equals(n.to_string()),
-                    }));
-                }
-                // Table -> operator-based filter
-                Value::Table(op_tbl) => {
-                    for op_pair in op_tbl.pairs::<String, Value>() {
-                        let (op_name, op_val) = op_pair?;
-                        let op = lua_parse_filter_op(&op_name, &op_val)?;
-                        clauses.push(FilterClause::Single(Filter {
-                            field: field.clone(),
-                            op,
-                        }));
-                    }
-                }
-                _ => {} // skip nil, bool, etc.
-            }
-        }
-        clauses
-    } else {
-        Vec::new()
-    };
-
-    let order_by: Option<String> = tbl.get("order_by").ok();
-    let limit: Option<i64> = tbl.get("limit").ok();
-    let offset: Option<i64> = tbl.get("offset").ok();
-    let select: Option<Vec<String>> = tbl.get::<mlua::Table>("select").ok()
-        .map(|t| t.sequence_values::<String>().filter_map(|r| r.ok()).collect());
-
-    Ok(FindQuery { filters, order_by, limit, offset, select })
-}
-
-/// Parse a Lua filter operator name + value into a FilterOp.
-fn lua_parse_filter_op(op_name: &str, value: &Value) -> mlua::Result<FilterOp> {
-    let to_string = |v: &Value| -> mlua::Result<String> {
-        match v {
-            Value::String(s) => Ok(s.to_str()?.to_string()),
-            Value::Integer(i) => Ok(i.to_string()),
-            Value::Number(n) => Ok(n.to_string()),
-            Value::Boolean(b) => Ok(b.to_string()),
-            _ => Err(mlua::Error::RuntimeError("filter value must be string, number, or boolean".into())),
-        }
-    };
-
-    match op_name {
-        "equals" => Ok(FilterOp::Equals(to_string(value)?)),
-        "not_equals" => Ok(FilterOp::NotEquals(to_string(value)?)),
-        "like" => Ok(FilterOp::Like(to_string(value)?)),
-        "contains" => Ok(FilterOp::Contains(to_string(value)?)),
-        "greater_than" => Ok(FilterOp::GreaterThan(to_string(value)?)),
-        "less_than" => Ok(FilterOp::LessThan(to_string(value)?)),
-        "greater_than_or_equal" => Ok(FilterOp::GreaterThanOrEqual(to_string(value)?)),
-        "less_than_or_equal" => Ok(FilterOp::LessThanOrEqual(to_string(value)?)),
-        "in" => {
-            if let Value::Table(t) = value {
-                let mut vals = Vec::new();
-                for v in t.clone().sequence_values::<Value>() {
-                    vals.push(to_string(&v?)?);
-                }
-                Ok(FilterOp::In(vals))
-            } else {
-                Err(mlua::Error::RuntimeError("'in' operator requires a table/array".into()))
-            }
-        }
-        "not_in" => {
-            if let Value::Table(t) = value {
-                let mut vals = Vec::new();
-                for v in t.clone().sequence_values::<Value>() {
-                    vals.push(to_string(&v?)?);
-                }
-                Ok(FilterOp::NotIn(vals))
-            } else {
-                Err(mlua::Error::RuntimeError("'not_in' operator requires a table/array".into()))
-            }
-        }
-        "exists" => Ok(FilterOp::Exists),
-        "not_exists" => Ok(FilterOp::NotExists),
-        _ => Err(mlua::Error::RuntimeError(format!("unknown filter operator '{}'", op_name))),
-    }
-}
-
-/// Convert a Lua data table to a HashMap<String, String> for create/update.
-fn lua_table_to_hashmap(tbl: &mlua::Table) -> mlua::Result<HashMap<String, String>> {
-    let mut map = HashMap::new();
-    for pair in tbl.pairs::<String, Value>() {
-        let (k, v) = pair?;
-        let s = match v {
-            Value::String(s) => s.to_str()?.to_string(),
-            Value::Integer(i) => i.to_string(),
-            Value::Number(n) => n.to_string(),
-            Value::Boolean(b) => b.to_string(),
-            Value::Nil => continue,
-            _ => continue,
-        };
-        map.insert(k, s);
-    }
-    Ok(map)
-}
-
-/// Convert a Document to a Lua table.
-fn document_to_lua_table(lua: &Lua, doc: &crate::core::Document) -> mlua::Result<mlua::Table> {
-    let tbl = lua.create_table()?;
-    tbl.set("id", doc.id.as_str())?;
-    for (k, v) in &doc.fields {
-        tbl.set(k.as_str(), super::api::json_to_lua(lua, v)?)?;
-    }
-    if let Some(ref ts) = doc.created_at {
-        tbl.set("created_at", ts.as_str())?;
-    }
-    if let Some(ref ts) = doc.updated_at {
-        tbl.set("updated_at", ts.as_str())?;
-    }
-    Ok(tbl)
-}
-
-/// Convert a find result (documents + total) to a Lua table.
-fn find_result_to_lua(lua: &Lua, docs: &[crate::core::Document], total: i64) -> mlua::Result<mlua::Table> {
-    let tbl = lua.create_table()?;
-    let docs_tbl = lua.create_table()?;
-    for (i, doc) in docs.iter().enumerate() {
-        docs_tbl.set(i + 1, document_to_lua_table(lua, doc)?)?;
-    }
-    tbl.set("documents", docs_tbl)?;
-    tbl.set("total", total)?;
-    Ok(tbl)
 }

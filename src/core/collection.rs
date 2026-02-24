@@ -163,6 +163,7 @@ impl CollectionDefinition {
     }
 
     /// Get the display label resolved for a specific locale.
+    #[allow(dead_code)]
     pub fn display_name_for(&self, locale: &str, default_locale: &str) -> &str {
         self.labels.plural.as_ref()
             .map(|ls| ls.resolve(locale, default_locale))
@@ -171,6 +172,7 @@ impl CollectionDefinition {
     }
 
     /// Get the singular label resolved for a specific locale.
+    #[allow(dead_code)]
     pub fn singular_name_for(&self, locale: &str, default_locale: &str) -> &str {
         self.labels.singular.as_ref()
             .map(|ls| ls.resolve(locale, default_locale))
@@ -220,6 +222,7 @@ impl GlobalDefinition {
     }
 
     /// Get the display label resolved for a specific locale.
+    #[allow(dead_code)]
     pub fn display_name_for(&self, locale: &str, default_locale: &str) -> &str {
         self.labels.singular.as_ref()
             .map(|ls| ls.resolve(locale, default_locale))

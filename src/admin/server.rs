@@ -21,6 +21,8 @@ use crate::hooks::lifecycle::HookRunner;
 use super::AdminState;
 use super::handlers::{auth as auth_handlers, dashboard, collections, globals, static_assets, uploads, events};
 
+/// Start the admin HTTP server (Axum) with all routes, middleware, and static file serving.
+#[allow(clippy::too_many_arguments)]
 pub async fn start(
     addr: &str,
     config: CrapConfig,

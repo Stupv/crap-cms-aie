@@ -20,6 +20,7 @@ impl Default for Registry {
 }
 
 impl Registry {
+    /// Create an empty registry with no collections or globals.
     pub fn new() -> Self {
         Self {
             collections: HashMap::new(),
@@ -27,24 +28,29 @@ impl Registry {
         }
     }
 
+    /// Create a new registry wrapped in `Arc<RwLock<>>` for shared ownership.
     pub fn shared() -> SharedRegistry {
         Arc::new(RwLock::new(Self::new()))
     }
 
+    /// Register a collection definition, keyed by slug. Overwrites any existing definition.
     pub fn register_collection(&mut self, def: CollectionDefinition) {
         tracing::debug!("Registering collection '{}'", def.slug);
         self.collections.insert(def.slug.clone(), def);
     }
 
+    /// Register a global definition, keyed by slug. Overwrites any existing definition.
     pub fn register_global(&mut self, def: GlobalDefinition) {
         tracing::debug!("Registering global '{}'", def.slug);
         self.globals.insert(def.slug.clone(), def);
     }
 
+    /// Look up a collection definition by slug.
     pub fn get_collection(&self, slug: &str) -> Option<&CollectionDefinition> {
         self.collections.get(slug)
     }
 
+    /// Look up a global definition by slug.
     pub fn get_global(&self, slug: &str) -> Option<&GlobalDefinition> {
         self.globals.get(slug)
     }

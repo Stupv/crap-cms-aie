@@ -17,6 +17,7 @@ pub struct Document {
 
 #[allow(dead_code)]
 impl Document {
+    /// Create an empty document with the given ID and no fields or timestamps.
     pub fn new(id: String) -> Self {
         Self {
             id,

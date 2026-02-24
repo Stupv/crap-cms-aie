@@ -61,10 +61,7 @@ pub async fn serve_upload(
             )
         }).await;
 
-        let allowed = match access {
-            Ok(Ok(AccessResult::Allowed)) | Ok(Ok(AccessResult::Constrained(_))) => true,
-            _ => false,
-        };
+        let allowed = matches!(access, Ok(Ok(AccessResult::Allowed)) | Ok(Ok(AccessResult::Constrained(_))));
 
         if !allowed {
             return StatusCode::NOT_FOUND.into_response();

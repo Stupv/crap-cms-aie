@@ -2630,7 +2630,7 @@ fn count_with_filter() {
     }
     migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Sync failed");
 
-    let statuses = vec!["published", "draft", "published"];
+    let statuses = ["published", "draft", "published"];
     for (i, status) in statuses.iter().enumerate() {
         let mut data = HashMap::new();
         data.insert("title".to_string(), format!("Post {}", i));

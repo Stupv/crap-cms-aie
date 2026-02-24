@@ -30,6 +30,7 @@ pub fn verify_password(password: &str, hash: &str) -> Result<bool> {
 /// Contains the JWT claims and the full user document from the database.
 #[derive(Debug, Clone)]
 pub struct AuthUser {
+    #[allow(dead_code)]
     pub claims: Claims,
     pub user_doc: crate::core::Document,
 }

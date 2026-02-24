@@ -550,9 +550,10 @@ async fn edit_form_returns_200() {
     let cookie = make_auth_cookie(&app, &user_id, "edit@test.com");
 
     // Create a document first
-    let reg = app.registry.read().unwrap();
-    let def = reg.get_collection("posts").unwrap().clone();
-    drop(reg);
+    let def = {
+        let reg = app.registry.read().unwrap();
+        reg.get_collection("posts").unwrap().clone()
+    };
     let mut conn = app.pool.get().unwrap();
     let tx = conn.transaction().unwrap();
     let data = std::collections::HashMap::from([("title".to_string(), "Edit Me".to_string())]);
@@ -561,7 +562,7 @@ async fn edit_form_returns_200() {
 
     let resp = app.router
         .oneshot(
-            Request::get(&format!("/admin/collections/posts/{}", doc.id))
+            Request::get(format!("/admin/collections/posts/{}", doc.id))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -578,9 +579,10 @@ async fn update_action_updates_document() {
     let cookie = make_auth_cookie(&app, &user_id, "update@test.com");
 
     // Create a doc first
-    let reg = app.registry.read().unwrap();
-    let def = reg.get_collection("posts").unwrap().clone();
-    drop(reg);
+    let def = {
+        let reg = app.registry.read().unwrap();
+        reg.get_collection("posts").unwrap().clone()
+    };
     let mut conn = app.pool.get().unwrap();
     let tx = conn.transaction().unwrap();
     let data = std::collections::HashMap::from([("title".to_string(), "Original".to_string())]);
@@ -589,7 +591,7 @@ async fn update_action_updates_document() {
 
     let resp = app.router
         .oneshot(
-            Request::post(&format!("/admin/collections/posts/{}", doc.id))
+            Request::post(format!("/admin/collections/posts/{}", doc.id))
                 .header("cookie", &cookie)
                 .header("content-type", "application/x-www-form-urlencoded")
                 .body(Body::from("title=Updated"))
@@ -612,9 +614,10 @@ async fn delete_action_removes_document() {
     let cookie = make_auth_cookie(&app, &user_id, "delete@test.com");
 
     // Create a doc first
-    let reg = app.registry.read().unwrap();
-    let def = reg.get_collection("posts").unwrap().clone();
-    drop(reg);
+    let def = {
+        let reg = app.registry.read().unwrap();
+        reg.get_collection("posts").unwrap().clone()
+    };
     let mut conn = app.pool.get().unwrap();
     let tx = conn.transaction().unwrap();
     let data = std::collections::HashMap::from([("title".to_string(), "Delete Me".to_string())]);
@@ -623,7 +626,7 @@ async fn delete_action_removes_document() {
 
     let resp = app.router
         .oneshot(
-            Request::delete(&format!("/admin/collections/posts/{}", doc.id))
+            Request::delete(format!("/admin/collections/posts/{}", doc.id))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),

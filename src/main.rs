@@ -12,6 +12,7 @@ mod db;
 mod hooks;
 mod admin;
 mod api;
+mod service;
 mod typegen;
 
 /// Parse a key=value pair for --field arguments.

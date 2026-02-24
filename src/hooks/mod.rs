@@ -62,6 +62,7 @@ fn setup_package_paths(lua: &Lua, config_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Load and execute all `.lua` files in a directory (used for `collections/` and `globals/`).
 pub(crate) fn load_lua_dir(lua: &Lua, dir: &Path, kind: &str) -> Result<()> {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .with_context(|| format!("Failed to read {} directory: {}", kind, dir.display()))?

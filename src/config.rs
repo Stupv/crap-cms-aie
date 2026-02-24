@@ -212,6 +212,7 @@ impl Default for AdminConfig {
 }
 
 impl CrapConfig {
+    /// Load configuration from `crap.toml` in the config directory, falling back to defaults.
     pub fn load(config_dir: &Path) -> Result<Self> {
         let config_path = config_dir.join("crap.toml");
         if config_path.exists() {
