@@ -31,6 +31,7 @@ message FindRequest {
   optional string where = 6;
   optional int32 depth = 7;
   optional string locale = 8;
+  repeated string select = 9;
 }
 
 message FindResponse {
@@ -43,6 +44,7 @@ message FindByIDRequest {
   string id = 2;
   optional int32 depth = 3;
   optional string locale = 4;
+  repeated string select = 5;
 }
 
 message FindByIDResponse {

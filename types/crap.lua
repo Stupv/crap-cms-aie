@@ -239,13 +239,18 @@ crap = {}
 
 --- @alias crap.FilterValue string|crap.FilterOperators
 
+--- @class crap.OrCondition : table<string, crap.FilterValue>
+--- A single OR group — an object of field filters that are AND-ed together.
+
 --- @class crap.FindQuery
---- @field filters?  table<string, crap.FilterValue>  Field filters. String values = equals, table values = operators.
---- @field order_by? string                 Sort field (prefix with "-" for desc).
---- @field limit?    integer                Max results to return.
---- @field offset?   integer                Number of results to skip.
---- @field depth?    integer                Population depth for relationship fields (default: 0). 0 = IDs only.
---- @field locale?   string                 Locale code for localized fields (e.g., "en", "de", "all"). Nil = default locale.
+--- @field filters?        table<string, crap.FilterValue>  Field filters. String values = equals, table values = operators. Use `["or"]` key for OR groups.
+--- @field order_by?       string                 Sort field (prefix with "-" for desc).
+--- @field limit?          integer                Max results to return.
+--- @field offset?         integer                Number of results to skip.
+--- @field depth?          integer                Population depth for relationship fields (default: 0). 0 = IDs only.
+--- @field locale?         string                 Locale code for localized fields (e.g., "en", "de", "all"). Nil = default locale.
+--- @field select?         string[]               Fields to return. Nil/empty = all fields. Always includes id, created_at, updated_at.
+--- @field overrideAccess? boolean                Skip access control checks (default: true). Set to false to enforce collection-level and field-level access for the current user.
 
 --- @class crap.FindResult
 --- @field documents crap.Document[]  Matching documents.
@@ -322,8 +327,10 @@ function crap.collections.define(slug, config) end
 function crap.collections.find(collection, query) end
 
 --- @class crap.FindByIdOptions
---- @field depth? integer  Population depth for relationship fields (default: 0). 0 = IDs only.
---- @field locale? string  Locale code for localized fields (e.g., "en", "de", "all"). Nil = default locale.
+--- @field depth?          integer   Population depth for relationship fields (default: 0). 0 = IDs only.
+--- @field locale?         string    Locale code for localized fields (e.g., "en", "de", "all"). Nil = default locale.
+--- @field select?         string[]  Fields to return. Nil/empty = all fields. Always includes id.
+--- @field overrideAccess? boolean   Skip access control checks (default: true). Set to false to enforce collection-level and field-level access for the current user.
 
 --- Find a single document by ID.
 --- Inside hooks, runs within the parent operation's transaction.
@@ -334,10 +341,12 @@ function crap.collections.find(collection, query) end
 function crap.collections.find_by_id(collection, id, opts) end
 
 --- @class crap.CreateOptions
---- @field locale? string  Locale code for localized fields. Nil = default locale.
+--- @field locale?         string   Locale code for localized fields. Nil = default locale.
+--- @field overrideAccess? boolean  Skip access control checks (default: true). Set to false to enforce collection-level and field-level access for the current user.
 
 --- @class crap.UpdateOptions
---- @field locale? string  Locale code for localized fields. Nil = default locale.
+--- @field locale?         string   Locale code for localized fields. Nil = default locale.
+--- @field overrideAccess? boolean  Skip access control checks (default: true). Set to false to enforce collection-level and field-level access for the current user.
 
 --- Create a new document.
 --- Inside hooks, runs within the parent operation's transaction.
@@ -356,12 +365,16 @@ function crap.collections.create(collection, data, opts) end
 --- @return crap.Document
 function crap.collections.update(collection, id, data, opts) end
 
+--- @class crap.DeleteOptions
+--- @field overrideAccess? boolean  Skip access control checks (default: true). Set to false to enforce collection-level access for the current user.
+
 --- Delete a document.
 --- Inside hooks, runs within the parent operation's transaction.
 --- @param collection string  Collection slug.
 --- @param id         string  Document ID.
+--- @param opts?      crap.DeleteOptions  Optional options.
 --- @return boolean success
-function crap.collections.delete(collection, id) end
+function crap.collections.delete(collection, id, opts) end
 
 
 -- ── crap.globals ─────────────────────────────────────────────

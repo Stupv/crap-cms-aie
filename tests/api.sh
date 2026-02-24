@@ -129,6 +129,48 @@ grpcurl -plaintext -d '{
 }' "$ADDR" crap.ContentAPI/Find
 }
 
+# List posts with OR filter (title contains "hello" OR status = "draft")
+find_posts_or() {
+grpcurl -plaintext -d '{
+  "collection": "posts",
+  "where": "{\"or\":[{\"title\":{\"contains\":\"hello\"}},{\"status\":\"draft\"}]}"
+}' "$ADDR" crap.ContentAPI/Find
+}
+
+# List posts with OR + AND: status = "published" AND (title contains "hello" OR title contains "world")
+find_posts_or_with_and() {
+grpcurl -plaintext -d '{
+  "collection": "posts",
+  "where": "{\"status\":\"published\",\"or\":[{\"title\":{\"contains\":\"hello\"}},{\"title\":{\"contains\":\"world\"}}]}"
+}' "$ADDR" crap.ContentAPI/Find
+}
+
+# List posts with OR multi-condition groups: (status = "published" AND title contains "hello") OR (status = "draft")
+find_posts_or_multi() {
+grpcurl -plaintext -d '{
+  "collection": "posts",
+  "where": "{\"or\":[{\"status\":\"published\",\"title\":{\"contains\":\"hello\"}},{\"status\":\"draft\"}]}"
+}' "$ADDR" crap.ContentAPI/Find
+}
+
+# List posts with field selection (only title and status)
+find_posts_select() {
+grpcurl -plaintext -d '{
+  "collection": "posts",
+  "select": ["title", "status"]
+}' "$ADDR" crap.ContentAPI/Find
+}
+
+# Find a post by ID with field selection
+find_post_by_id_select() {
+  local id="${1:?Usage: find_post_by_id_select <id>}"
+  grpcurl -plaintext -d "{
+    \"collection\": \"posts\",
+    \"id\": \"$id\",
+    \"select\": [\"title\", \"status\"]
+  }" "$ADDR" crap.ContentAPI/FindByID
+}
+
 # List all pages
 find_pages() {
 grpcurl -plaintext -d '{

@@ -94,6 +94,56 @@ crap.collections.find("posts", {
 -- SQL: WHERE status = ? AND created_at > ? AND title LIKE ?
 ```
 
+## OR Groups
+
+Use the `["or"]` key to combine groups of conditions with OR logic. Each element is a table of AND-ed conditions:
+
+```lua
+-- title contains "hello" OR category = "news"
+crap.collections.find("posts", {
+    filters = {
+        ["or"] = {
+            { title = { contains = "hello" } },
+            { category = "news" },
+        },
+    },
+})
+-- SQL: WHERE (title LIKE '%hello%' OR category = ?)
+```
+
+OR can combine with top-level AND filters:
+
+```lua
+-- status = "published" AND (title contains "hello" OR title contains "world")
+crap.collections.find("posts", {
+    filters = {
+        status = "published",
+        ["or"] = {
+            { title = { contains = "hello" } },
+            { title = { contains = "world" } },
+        },
+    },
+})
+-- SQL: WHERE status = ? AND (title LIKE '%hello%' OR title LIKE '%world%')
+```
+
+Each OR element can have multiple fields (AND-ed within the group):
+
+```lua
+-- (status = "published" AND title contains "hello") OR (status = "draft")
+crap.collections.find("posts", {
+    filters = {
+        ["or"] = {
+            { status = "published", title = { contains = "hello" } },
+            { status = "draft" },
+        },
+    },
+})
+-- SQL: WHERE ((status = ? AND title LIKE '%hello%') OR status = ?)
+```
+
+> **Note:** `or` is not a Lua keyword, but `["or"]` bracket syntax is recommended for clarity.
+
 ## Value Types
 
 Filter values are always converted to strings for SQL parameter binding. Numbers and booleans are stringified:

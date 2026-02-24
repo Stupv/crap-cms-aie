@@ -239,6 +239,7 @@ pub async fn update_action(
     let slug_owned = slug.clone();
     let def_owned = def.clone();
     let form_data_clone = form_data.clone();
+    let user_doc = get_user_doc(&auth_user).cloned();
     let result = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().context("DB connection")?;
         let tx = conn.transaction().context("Start transaction")?;
@@ -256,7 +257,7 @@ pub async fn update_action(
         };
         let global_table = format!("_global_{}", slug_owned);
         let final_ctx = runner.run_before_write(
-            &hooks, &def_owned.fields, hook_ctx, &tx, &global_table, Some("default"),
+            &hooks, &def_owned.fields, hook_ctx, &tx, &global_table, Some("default"), user_doc.as_ref(),
         )?;
         let final_data = lifecycle::hook_ctx_to_string_map(&final_ctx);
         let doc = query::update_global(&tx, &slug_owned, &def_owned, &final_data, locale_ctx.as_ref())?;

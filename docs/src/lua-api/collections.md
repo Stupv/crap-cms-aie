@@ -47,11 +47,13 @@ end
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `filters` | table | `{}` | Field filters. See [Filter Operators](filter-operators.md). |
+| `filters` | table | `{}` | Field filters. See [Filter Operators](filter-operators.md). Supports `["or"]` key for OR groups. |
 | `order_by` | string | `nil` | Sort field. Prefix with `-` for descending. |
 | `limit` | integer | `nil` | Max results to return. |
 | `offset` | integer | `nil` | Number of results to skip. |
 | `depth` | integer | `0` | Population depth for relationship fields. |
+| `select` | string[] | `nil` | Fields to return. `nil` = all fields. Always includes `id`, `created_at`, `updated_at`. |
+| `overrideAccess` | boolean | `true` | Skip access control checks. Set to `false` to enforce collection-level and field-level access for the current user. |
 
 ## crap.collections.find_by_id(collection, id, opts?)
 
@@ -67,6 +69,9 @@ end
 
 -- With population depth
 local doc = crap.collections.find_by_id("posts", "abc123", { depth = 2 })
+
+-- With field selection (only return title and status)
+local doc = crap.collections.find_by_id("posts", "abc123", { select = { "title", "status" } })
 ```
 
 ### Options
@@ -74,8 +79,10 @@ local doc = crap.collections.find_by_id("posts", "abc123", { depth = 2 })
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `depth` | integer | `0` | Population depth for relationship fields. |
+| `select` | string[] | `nil` | Fields to return. `nil` = all fields. Always includes `id`. |
+| `overrideAccess` | boolean | `true` | Skip access control checks. Set to `false` to enforce collection-level and field-level access for the current user. |
 
-## crap.collections.create(collection, data)
+## crap.collections.create(collection, data, opts?)
 
 Create a new document. Returns the created document.
 
@@ -90,7 +97,14 @@ local doc = crap.collections.create("posts", {
 print(doc.id)  -- auto-generated nanoid
 ```
 
-## crap.collections.update(collection, id, data)
+### Options
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `locale` | string | `nil` | Locale code for localized fields. |
+| `overrideAccess` | boolean | `true` | Skip access control checks. Set to `false` to enforce collection-level and field-level access for the current user. |
+
+## crap.collections.update(collection, id, data, opts?)
 
 Update an existing document. Returns the updated document.
 
@@ -103,7 +117,14 @@ local doc = crap.collections.update("posts", "abc123", {
 })
 ```
 
-## crap.collections.delete(collection, id)
+### Options
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `locale` | string | `nil` | Locale code for localized fields. |
+| `overrideAccess` | boolean | `true` | Skip access control checks. Set to `false` to enforce collection-level and field-level access for the current user. |
+
+## crap.collections.delete(collection, id, opts?)
 
 Delete a document. Returns `true` on success.
 
@@ -111,4 +132,31 @@ Delete a document. Returns `true` on success.
 
 ```lua
 crap.collections.delete("posts", "abc123")
+
+-- With access control enforcement
+crap.collections.delete("posts", "abc123", { overrideAccess = false })
+```
+
+### Options
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `overrideAccess` | boolean | `true` | Skip access control checks. Set to `false` to enforce collection-level access for the current user. |
+
+## Access Control in Hooks
+
+By default, all Lua CRUD functions bypass access control (`overrideAccess = true`). This matches PayloadCMS behavior — hooks are trusted server-side code with full access.
+
+When you set `overrideAccess = false`, the function enforces the same access rules as the external API:
+
+- **Collection-level access** — the relevant access function (`read`, `create`, `update`, `delete`) is called with the authenticated user from the original request.
+- **Field-level access** — for `find`/`find_by_id`, fields the user can't read are stripped from results. For `create`/`update`, fields the user can't write are silently removed from the input data.
+- **Constrained read access** — if a read access function returns a filter table instead of `true`, those filters are merged into the query (same as the gRPC/admin behavior).
+
+```lua
+-- Example: fetch only posts the current user is allowed to see
+local result = crap.collections.find("posts", {
+    filters = { status = "published" },
+    overrideAccess = false,
+})
 ```

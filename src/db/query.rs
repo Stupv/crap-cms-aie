@@ -83,19 +83,23 @@ pub struct Filter {
 }
 
 /// A filter clause: either a single condition or an OR group.
+/// Each OR element is a group of AND-ed filters: `(a AND b) OR (c AND d)`.
 #[derive(Debug, Clone)]
 pub enum FilterClause {
     Single(Filter),
-    Or(Vec<Filter>),
+    Or(Vec<Vec<Filter>>),
 }
 
-/// Parameters for a find query: filters, ordering, and pagination.
+/// Parameters for a find query: filters, ordering, pagination, and field selection.
 #[derive(Debug, Default, Clone)]
 pub struct FindQuery {
     pub filters: Vec<FilterClause>,
     pub order_by: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    /// Optional list of fields to return. `None` = all fields.
+    /// Always includes `id`, `created_at`, `updated_at`.
+    pub select: Option<Vec<String>>,
 }
 
 /// Check that a string is a safe SQL identifier (alphanumeric + underscore).
@@ -122,9 +126,11 @@ pub fn validate_query_fields(def: &CollectionDefinition, query: &FindQuery, loca
     for clause in &query.filters {
         match clause {
             FilterClause::Single(f) => validate_field_name(&f.field, &valid)?,
-            FilterClause::Or(filters) => {
-                for f in filters {
-                    validate_field_name(&f.field, &valid)?;
+            FilterClause::Or(groups) => {
+                for group in groups {
+                    for f in group {
+                        validate_field_name(&f.field, &valid)?;
+                    }
                 }
             }
         }
@@ -149,6 +155,10 @@ pub fn find(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition,
             (names.clone(), names)
         }
     };
+
+    let (select_exprs, result_names) = apply_select_filter(
+        select_exprs, result_names, query.select.as_ref(), def,
+    );
 
     let mut sql = format!("SELECT {} FROM {}", select_exprs.join(", "), slug);
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
@@ -403,9 +413,11 @@ pub fn count(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition
     for clause in filters {
         match clause {
             FilterClause::Single(f) => validate_field_name(&f.field, &valid)?,
-            FilterClause::Or(fs) => {
-                for f in fs {
-                    validate_field_name(&f.field, &valid)?;
+            FilterClause::Or(groups) => {
+                for group in groups {
+                    for f in group {
+                        validate_field_name(&f.field, &valid)?;
+                    }
                 }
             }
         }
@@ -554,6 +566,93 @@ fn get_global_column_names(def: &GlobalDefinition) -> Vec<String> {
     names
 }
 
+/// Filter SELECT columns based on a `select` list. If `select` is None or empty,
+/// returns all columns (backward compat). Always includes `id`, `created_at`, `updated_at`.
+/// For group fields: selecting `"seo"` includes all `seo__*` sub-columns.
+fn apply_select_filter(
+    select_exprs: Vec<String>,
+    result_names: Vec<String>,
+    select: Option<&Vec<String>>,
+    def: &CollectionDefinition,
+) -> (Vec<String>, Vec<String>) {
+    let select = match select {
+        Some(s) if !s.is_empty() => s,
+        _ => return (select_exprs, result_names),
+    };
+
+    // Build set of group field names for prefix matching
+    let group_names: HashSet<&str> = def.fields.iter()
+        .filter(|f| f.field_type == FieldType::Group)
+        .map(|f| f.name.as_str())
+        .collect();
+
+    let mut out_exprs = Vec::new();
+    let mut out_names = Vec::new();
+
+    for (expr, name) in select_exprs.into_iter().zip(result_names.into_iter()) {
+        // Always include system columns
+        if name == "id" || name == "created_at" || name == "updated_at" {
+            out_exprs.push(expr);
+            out_names.push(name);
+            continue;
+        }
+
+        // Check if the result name is directly selected
+        if select.iter().any(|s| s == &name) {
+            out_exprs.push(expr);
+            out_names.push(name);
+            continue;
+        }
+
+        // Check group prefix: if select contains "seo" and name is "seo__title"
+        if let Some(prefix) = name.split("__").next() {
+            if group_names.contains(prefix) && select.iter().any(|s| s == prefix) {
+                out_exprs.push(expr);
+                out_names.push(name);
+                continue;
+            }
+        }
+
+        // Check locale suffix: name might be "title__en" for a localized field "title"
+        // The result_names for locale columns in All mode are "field__locale",
+        // but for Single/Default mode they're aliased to "field" already.
+        // We need to match the base field name against the select list.
+        let base = name.split("__").next().unwrap_or(&name);
+        if base != name && !group_names.contains(base) && select.iter().any(|s| s == base) {
+            out_exprs.push(expr);
+            out_names.push(name);
+            continue;
+        }
+    }
+
+    (out_exprs, out_names)
+}
+
+/// Strip fields not in `select` from a document. Always keeps `id`.
+/// Used for post-query field stripping (e.g., after `find_by_id`).
+pub fn apply_select_to_document(doc: &mut Document, select: &[String]) {
+    doc.fields.retain(|key, _| {
+        if select.iter().any(|s| s == key) {
+            return true;
+        }
+        // Group field: if select contains "seo", keep "seo" (the hydrated group object)
+        // Also keep sub-columns like "seo__title" if "seo" is selected (pre-hydration)
+        if let Some(prefix) = key.split("__").next() {
+            if prefix != key && select.iter().any(|s| s == prefix) {
+                return true;
+            }
+        }
+        false
+    });
+    // Strip timestamps if not selected (find_by_id returns them in the Document struct)
+    if !select.iter().any(|s| s == "created_at") {
+        doc.created_at = None;
+    }
+    if !select.iter().any(|s| s == "updated_at") {
+        doc.updated_at = None;
+    }
+}
+
 /// Build a single filter into a SQL condition + params.
 /// Defense-in-depth: rejects field names that aren't valid identifiers, even if
 /// higher-level validation should have caught them already.
@@ -629,13 +728,20 @@ fn build_where_clause(filters: &[FilterClause], params: &mut Vec<Box<dyn rusqlit
             FilterClause::Single(f) => {
                 conditions.push(build_filter_condition(f, params)?);
             }
-            FilterClause::Or(filters) => {
-                if filters.len() == 1 {
-                    conditions.push(build_filter_condition(&filters[0], params)?);
+            FilterClause::Or(groups) => {
+                if groups.len() == 1 && groups[0].len() == 1 {
+                    conditions.push(build_filter_condition(&groups[0][0], params)?);
                 } else {
                     let mut or_parts = Vec::new();
-                    for f in filters {
-                        or_parts.push(build_filter_condition(f, params)?);
+                    for group in groups {
+                        if group.len() == 1 {
+                            or_parts.push(build_filter_condition(&group[0], params)?);
+                        } else {
+                            let and_parts: Vec<String> = group.iter()
+                                .map(|f| build_filter_condition(f, params))
+                                .collect::<Result<_, _>>()?;
+                            or_parts.push(format!("({})", and_parts.join(" AND ")));
+                        }
                     }
                     conditions.push(format!("({})", or_parts.join(" OR ")));
                 }
@@ -978,10 +1084,12 @@ fn resolve_filters(filters: &[FilterClause], def: &CollectionDefinition, locale_
                 let resolved = resolve_filter_column(&f.field, def, locale_ctx);
                 FilterClause::Single(Filter { field: resolved, op: f.op.clone() })
             }
-            FilterClause::Or(fs) => {
-                FilterClause::Or(fs.iter().map(|f| {
-                    let resolved = resolve_filter_column(&f.field, def, locale_ctx);
-                    Filter { field: resolved, op: f.op.clone() }
+            FilterClause::Or(groups) => {
+                FilterClause::Or(groups.iter().map(|group| {
+                    group.iter().map(|f| {
+                        let resolved = resolve_filter_column(&f.field, def, locale_ctx);
+                        Filter { field: resolved, op: f.op.clone() }
+                    }).collect()
                 }).collect())
             }
         }
@@ -1307,13 +1415,21 @@ pub fn find_block_rows(
 
 /// Hydrate a document with join table data (has-many relationships and arrays).
 /// Populates `doc.fields` with JSON arrays for each join-table field.
+/// If `select` is provided, skip hydrating fields not in the select list.
 pub fn hydrate_document(
     conn: &rusqlite::Connection,
     slug: &str,
     def: &CollectionDefinition,
     doc: &mut Document,
+    select: Option<&[String]>,
 ) -> Result<()> {
     for field in &def.fields {
+        // Skip hydrating fields not in the select list
+        if let Some(sel) = select {
+            if !sel.iter().any(|s| s == &field.name) {
+                continue;
+            }
+        }
         match field.field_type {
             FieldType::Relationship => {
                 if let Some(ref rc) = field.relationship {
@@ -1370,6 +1486,8 @@ fn document_to_json(doc: &Document, collection: &str) -> serde_json::Value {
 
 /// Recursively populate relationship fields with full document objects.
 /// depth=0 is a no-op. Tracks visited (collection, id) pairs to break cycles.
+/// If `select` is provided, only populate relationship fields in the select list.
+/// Recursive calls for nested docs always pass `None` (populate all nested fields).
 pub fn populate_relationships(
     conn: &rusqlite::Connection,
     registry: &crate::core::Registry,
@@ -1378,6 +1496,7 @@ pub fn populate_relationships(
     doc: &mut Document,
     depth: i32,
     visited: &mut HashSet<(String, String)>,
+    select: Option<&[String]>,
 ) -> Result<()> {
     if depth <= 0 {
         return Ok(());
@@ -1392,6 +1511,12 @@ pub fn populate_relationships(
     for field in &def.fields {
         if field.field_type != FieldType::Relationship && field.field_type != FieldType::Upload {
             continue;
+        }
+        // Skip populating fields not in the select list
+        if let Some(sel) = select {
+            if !sel.iter().any(|s| s == &field.name) {
+                continue;
+            }
         }
         let rel = match &field.relationship {
             Some(rc) => rc,
@@ -1430,7 +1555,7 @@ pub fn populate_relationships(
                 }
                 match find_by_id(conn, &rel.collection, &rel_def, id, None)? {
                     Some(mut related_doc) => {
-                        hydrate_document(conn, &rel.collection, &rel_def, &mut related_doc)?;
+                        hydrate_document(conn, &rel.collection, &rel_def, &mut related_doc, None)?;
                         if let Some(ref uc) = rel_def.upload {
                             if uc.enabled {
                                 crate::core::upload::assemble_sizes_object(&mut related_doc, uc);
@@ -1438,7 +1563,7 @@ pub fn populate_relationships(
                         }
                         populate_relationships(
                             conn, registry, &rel.collection, &rel_def,
-                            &mut related_doc, effective_depth - 1, visited,
+                            &mut related_doc, effective_depth - 1, visited, None,
                         )?;
                         populated.push(document_to_json(&related_doc, &rel.collection));
                     }
@@ -1461,7 +1586,7 @@ pub fn populate_relationships(
 
             match find_by_id(conn, &rel.collection, &rel_def, &id, None)? {
                 Some(mut related_doc) => {
-                    hydrate_document(conn, &rel.collection, &rel_def, &mut related_doc)?;
+                    hydrate_document(conn, &rel.collection, &rel_def, &mut related_doc, None)?;
                     if let Some(ref uc) = rel_def.upload {
                         if uc.enabled {
                             crate::core::upload::assemble_sizes_object(&mut related_doc, uc);
@@ -1469,7 +1594,7 @@ pub fn populate_relationships(
                     }
                     populate_relationships(
                         conn, registry, &rel.collection, &rel_def,
-                        &mut related_doc, effective_depth - 1, visited,
+                        &mut related_doc, effective_depth - 1, visited, None,
                     )?;
                     doc.fields.insert(field.name.clone(), document_to_json(&related_doc, &rel.collection));
                 }

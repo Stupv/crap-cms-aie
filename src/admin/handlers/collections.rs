@@ -207,7 +207,9 @@ pub async fn list_items(
                     op: FilterOp::Contains(search_term.clone()),
                 })
                 .collect();
-            filters.push(FilterClause::Or(or_filters));
+            filters.push(FilterClause::Or(
+                or_filters.into_iter().map(|f| vec![f]).collect()
+            ));
         }
     }
 
@@ -216,6 +218,7 @@ pub async fn list_items(
         order_by: def.admin.default_sort.clone(),
         limit: Some(per_page),
         offset: Some(offset),
+        select: None,
     };
 
     let pool = state.pool.clone();
@@ -540,6 +543,7 @@ pub async fn create_action(
     let def_owned = def.clone();
     let is_auth = def.is_auth_collection();
     let form_data_clone = form_data.clone();
+    let user_doc = get_user_doc(&auth_user).cloned();
     let result = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().context("DB connection")?;
         let tx = conn.transaction().context("Start transaction")?;
@@ -556,7 +560,7 @@ pub async fn create_action(
             }),
         };
         let final_ctx = runner.run_before_write(
-            &hooks, &def_owned.fields, hook_ctx, &tx, &slug_owned, None,
+            &hooks, &def_owned.fields, hook_ctx, &tx, &slug_owned, None, user_doc.as_ref(),
         )?;
         let final_data = lifecycle::hook_ctx_to_string_map(&final_ctx);
         let doc = query::create(&tx, &slug_owned, &def_owned, &final_data, locale_ctx.as_ref())?;
@@ -714,7 +718,7 @@ pub async fn edit_form(
 
     // Hydrate join table data (has-many relationships and arrays)
     if let Ok(conn) = state.pool.get() {
-        if let Err(e) = query::hydrate_document(&conn, &slug, &def, &mut document) {
+        if let Err(e) = query::hydrate_document(&conn, &slug, &def, &mut document, None) {
             tracing::warn!("Failed to hydrate document {}: {}", id, e);
         }
     }
@@ -990,6 +994,7 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
     let is_auth = def.is_auth_collection();
     let def_owned = def.clone();
     let form_data_clone = form_data.clone();
+    let user_doc = get_user_doc(auth_user).cloned();
     let result = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().context("DB connection")?;
         let tx = conn.transaction().context("Start transaction")?;
@@ -1006,7 +1011,7 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
             }),
         };
         let final_ctx = runner.run_before_write(
-            &hooks, &def_owned.fields, hook_ctx, &tx, &slug_owned, Some(&id_owned),
+            &hooks, &def_owned.fields, hook_ctx, &tx, &slug_owned, Some(&id_owned), user_doc.as_ref(),
         )?;
         let final_data = lifecycle::hook_ctx_to_string_map(&final_ctx);
         let doc = query::update(&tx, &slug_owned, &def_owned, &id_owned, &final_data, locale_ctx.as_ref())?;
@@ -1184,6 +1189,7 @@ async fn delete_action_impl(state: &AdminState, slug: &str, id: &str, auth_user:
     let hooks = def.hooks.clone();
     let slug_owned = slug.to_string();
     let id_owned = id.to_string();
+    let user_doc = get_user_doc(auth_user).cloned();
     let result = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().context("DB connection")?;
         let tx = conn.transaction().context("Start transaction")?;
@@ -1195,7 +1201,7 @@ async fn delete_action_impl(state: &AdminState, slug: &str, id: &str, auth_user:
             locale: None,
         };
         runner.run_hooks_with_conn(
-            &hooks, HookEvent::BeforeDelete, hook_ctx, &tx,
+            &hooks, HookEvent::BeforeDelete, hook_ctx, &tx, user_doc.as_ref(),
         )?;
         query::delete(&tx, &slug_owned, &id_owned)?;
         tx.commit().context("Commit transaction")?;

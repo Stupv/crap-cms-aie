@@ -93,6 +93,104 @@ grpcurl -plaintext -d '{
 }' localhost:50051 crap.ContentAPI/Find
 ```
 
+## OR Filters
+
+Use the `or` key to combine groups of conditions with OR logic. Each element in the `or` array is an object whose fields are AND-ed together. Multiple `or` groups are joined with OR.
+
+**Lua:**
+
+```lua
+-- title contains "hello" OR category = "news"
+crap.collections.find("posts", {
+    filters = {
+        ["or"] = {
+            { title = { contains = "hello" } },
+            { category = "news" },
+        },
+    },
+})
+
+-- status = "published" AND (title contains "hello" OR title contains "world")
+crap.collections.find("posts", {
+    filters = {
+        status = "published",
+        ["or"] = {
+            { title = { contains = "hello" } },
+            { title = { contains = "world" } },
+        },
+    },
+})
+
+-- Multi-condition groups: (status = "published" AND title contains "hello") OR (status = "draft")
+crap.collections.find("posts", {
+    filters = {
+        ["or"] = {
+            { status = "published", title = { contains = "hello" } },
+            { status = "draft" },
+        },
+    },
+})
+```
+
+**gRPC:**
+
+```bash
+# title contains "hello" OR category = "news"
+grpcurl -plaintext -d '{
+    "collection": "posts",
+    "where": "{\"or\":[{\"title\":{\"contains\":\"hello\"}},{\"category\":\"news\"}]}"
+}' localhost:50051 crap.ContentAPI/Find
+
+# status = "published" AND (title contains "hello" OR title contains "world")
+grpcurl -plaintext -d '{
+    "collection": "posts",
+    "where": "{\"status\":\"published\",\"or\":[{\"title\":{\"contains\":\"hello\"}},{\"title\":{\"contains\":\"world\"}}]}"
+}' localhost:50051 crap.ContentAPI/Find
+```
+
+Top-level filters and `or` groups are combined with AND. Each object inside the `or` array can have multiple fields which are AND-ed together within that group.
+
+## Field Selection (`select`)
+
+Use `select` to specify which fields to return. Reduces data transfer and skips relationship hydration/population for non-selected fields. The `id`, `created_at`, and `updated_at` fields are always included.
+
+**Lua:**
+
+```lua
+-- Return only title and status
+crap.collections.find("posts", {
+    select = { "title", "status" },
+})
+
+-- Works with find_by_id too
+crap.collections.find_by_id("posts", id, {
+    select = { "title", "status" },
+})
+```
+
+**gRPC:**
+
+```bash
+# Return only title and status fields
+grpcurl -plaintext -d '{
+    "collection": "posts",
+    "select": ["title", "status"]
+}' localhost:50051 crap.ContentAPI/Find
+
+# FindByID with select
+grpcurl -plaintext -d '{
+    "collection": "posts",
+    "id": "abc123",
+    "select": ["title", "status"]
+}' localhost:50051 crap.ContentAPI/FindByID
+```
+
+**Behavior:**
+- `select` is optional. When omitted or empty, all fields are returned (backward compatible).
+- System fields (`id`, `created_at`, `updated_at`) are always included.
+- Selecting a group field name (e.g., `"seo"`) includes all its sub-fields.
+- Relationship fields not in `select` are skipped during population (saves N+1 queries).
+
 ## Field Validation
 
 All filter field names and `order_by` fields are validated against the collection's field definitions. Invalid field names return an error. This prevents SQL injection via field names.

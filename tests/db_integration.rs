@@ -526,14 +526,14 @@ fn filter_or_clause() {
     let (_tmp, pool, def) = seed_posts();
     let q = query::FindQuery {
         filters: vec![query::FilterClause::Or(vec![
-            query::Filter {
+            vec![query::Filter {
                 field: "title".to_string(),
                 op: query::FilterOp::Contains("Alpha".to_string()),
-            },
-            query::Filter {
+            }],
+            vec![query::Filter {
                 field: "title".to_string(),
                 op: query::FilterOp::Contains("Gamma".to_string()),
-            },
+            }],
         ])],
         ..Default::default()
     };
@@ -542,6 +542,100 @@ fn filter_or_clause() {
     let titles: Vec<_> = docs.iter().filter_map(|d| d.get_str("title")).collect();
     assert!(titles.contains(&"Alpha Post"));
     assert!(titles.contains(&"Gamma Post"));
+}
+
+#[test]
+fn filter_or_multi_condition_groups() {
+    let (_tmp, pool, def) = seed_posts();
+    // (status = "published" AND title contains "Alpha") OR (title contains "Gamma")
+    let q = query::FindQuery {
+        filters: vec![query::FilterClause::Or(vec![
+            vec![
+                query::Filter {
+                    field: "status".to_string(),
+                    op: query::FilterOp::Equals("published".to_string()),
+                },
+                query::Filter {
+                    field: "title".to_string(),
+                    op: query::FilterOp::Contains("Alpha".to_string()),
+                },
+            ],
+            vec![query::Filter {
+                field: "title".to_string(),
+                op: query::FilterOp::Contains("Gamma".to_string()),
+            }],
+        ])],
+        ..Default::default()
+    };
+    let docs = ops::find_documents(&pool, "posts", &def, &q, None).expect("Find failed");
+    assert_eq!(docs.len(), 2);
+    let titles: Vec<_> = docs.iter().filter_map(|d| d.get_str("title")).collect();
+    assert!(titles.contains(&"Alpha Post"));
+    assert!(titles.contains(&"Gamma Post"));
+}
+
+#[test]
+fn filter_or_with_and_top_level() {
+    let (_tmp, pool, def) = seed_posts();
+    // status = "published" AND (title contains "Alpha" OR title contains "Beta")
+    let q = query::FindQuery {
+        filters: vec![
+            query::FilterClause::Single(query::Filter {
+                field: "status".to_string(),
+                op: query::FilterOp::Equals("published".to_string()),
+            }),
+            query::FilterClause::Or(vec![
+                vec![query::Filter {
+                    field: "title".to_string(),
+                    op: query::FilterOp::Contains("Alpha".to_string()),
+                }],
+                vec![query::Filter {
+                    field: "title".to_string(),
+                    op: query::FilterOp::Contains("Beta".to_string()),
+                }],
+            ]),
+        ],
+        ..Default::default()
+    };
+    let docs = ops::find_documents(&pool, "posts", &def, &q, None).expect("Find failed");
+    // Alpha is published, Beta is draft → only Alpha matches
+    assert_eq!(docs.len(), 1);
+    assert_eq!(docs[0].get_str("title"), Some("Alpha Post"));
+}
+
+#[test]
+fn select_fields_in_find() {
+    let (_tmp, pool, def) = seed_posts();
+    let q = query::FindQuery {
+        select: Some(vec!["title".to_string()]),
+        ..Default::default()
+    };
+    let docs = ops::find_documents(&pool, "posts", &def, &q, None).expect("Find failed");
+    assert!(!docs.is_empty());
+    for doc in &docs {
+        // id is always included
+        assert!(!doc.id.is_empty());
+        // title should be present
+        assert!(doc.fields.contains_key("title"), "title should be in fields");
+        // status should NOT be present (not selected)
+        assert!(!doc.fields.contains_key("status"), "status should not be in fields");
+    }
+}
+
+#[test]
+fn select_fields_apply_to_document() {
+    let (_tmp, pool, def) = seed_posts();
+    let mut docs = ops::find_documents(&pool, "posts", &def, &query::FindQuery::default(), None)
+        .expect("Find failed");
+    assert!(!docs.is_empty());
+    let doc = &mut docs[0];
+    // Before stripping, both fields exist
+    assert!(doc.fields.contains_key("title"));
+    assert!(doc.fields.contains_key("status"));
+    query::apply_select_to_document(doc, &["title".to_string()]);
+    // After stripping, only title remains
+    assert!(doc.fields.contains_key("title"));
+    assert!(!doc.fields.contains_key("status"));
 }
 
 #[test]

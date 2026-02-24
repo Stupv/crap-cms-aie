@@ -345,11 +345,14 @@ impl ContentApi for ContentService {
             filters.extend(constraint_filters.clone());
         }
 
+        let select = if req.select.is_empty() { None } else { Some(req.select.clone()) };
+
         let find_query = FindQuery {
             filters: filters.clone(),
             order_by: req.order_by,
             limit: req.limit,
             offset: req.offset,
+            select: select.clone(),
         };
 
         let locale_ctx = LocaleContext::from_locale_string(req.locale.as_deref(), &self.locale_config);
@@ -374,8 +377,9 @@ impl ContentApi for ContentService {
             let total = ops::count_documents(&pool, &collection, &def_owned, &filters, locale_ctx.as_ref())?;
             // Hydrate join table data (has-many relationships and arrays)
             let conn = pool.get().context("DB connection for hydration")?;
+            let select_slice = select.as_deref();
             for doc in &mut docs {
-                query::hydrate_document(&conn, &collection, &def_owned, doc)?;
+                query::hydrate_document(&conn, &collection, &def_owned, doc, select_slice)?;
             }
             // Assemble sizes for upload collections
             if let Some(ref upload_config) = def_owned.upload {
@@ -394,7 +398,7 @@ impl ContentApi for ContentService {
                 for doc in &mut docs {
                     let mut visited = std::collections::HashSet::new();
                     query::populate_relationships(
-                        &conn, &reg, &collection, &def_owned, doc, depth, &mut visited,
+                        &conn, &reg, &collection, &def_owned, doc, depth, &mut visited, select_slice,
                     )?;
                 }
                 return Ok((docs, total));
@@ -438,6 +442,7 @@ impl ContentApi for ContentService {
         }
 
         let depth = req.depth.unwrap_or(self.default_depth).max(0).min(self.max_depth);
+        let select = if req.select.is_empty() { None } else { Some(req.select.clone()) };
         let locale_ctx = LocaleContext::from_locale_string(req.locale.as_deref(), &self.locale_config);
 
         let pool = self.pool.clone();
@@ -469,10 +474,11 @@ impl ContentApi for ContentService {
             } else {
                 ops::find_document_by_id(&pool, &collection, &def_owned, &id, locale_ctx.as_ref())?
             };
+            let select_slice = select.as_deref();
             // Hydrate join table data (has-many relationships and arrays)
             if let Some(ref mut d) = doc {
                 let conn = pool.get().context("DB connection for hydration")?;
-                query::hydrate_document(&conn, &collection, &def_owned, d)?;
+                query::hydrate_document(&conn, &collection, &def_owned, d, select_slice)?;
             }
             // Assemble sizes for upload collections
             if let Some(ref mut d) = doc {
@@ -491,8 +497,14 @@ impl ContentApi for ContentService {
                         .map_err(|e| anyhow::anyhow!("Registry lock: {}", e))?;
                     let mut visited = std::collections::HashSet::new();
                     query::populate_relationships(
-                        &conn, &reg, &collection, &def_owned, d, depth, &mut visited,
+                        &conn, &reg, &collection, &def_owned, d, depth, &mut visited, select_slice,
                     )?;
+                }
+            }
+            // Apply select field stripping for find_by_id
+            if let Some(ref sel) = select {
+                if let Some(ref mut d) = doc {
+                    query::apply_select_to_document(d, sel);
                 }
             }
             Ok::<_, anyhow::Error>(doc)
@@ -566,6 +578,7 @@ impl ContentApi for ContentService {
         let is_auth = def.is_auth_collection();
         let def_fields = def.fields.clone();
         let def_owned = def;
+        let user_doc = auth_user.as_ref().map(|au| au.user_doc.clone());
         let doc = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().context("DB connection")?;
             let tx = conn.transaction().context("Start transaction")?;
@@ -579,7 +592,7 @@ impl ContentApi for ContentService {
                 locale: None,
             };
             let final_ctx = runner.run_before_write(
-                &hooks, &def_owned.fields, hook_ctx, &tx, &collection, None,
+                &hooks, &def_owned.fields, hook_ctx, &tx, &collection, None, user_doc.as_ref(),
             )?;
             let final_data = lifecycle::hook_ctx_to_string_map(&final_ctx);
             let doc = query::create(&tx, &collection, &def_owned, &final_data, locale_ctx.as_ref())?;
@@ -696,6 +709,7 @@ impl ContentApi for ContentService {
         let is_auth = def.is_auth_collection();
         let def_fields = def.fields.clone();
         let def_owned = def;
+        let user_doc = auth_user.as_ref().map(|au| au.user_doc.clone());
         let doc = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().context("DB connection")?;
             let tx = conn.transaction().context("Start transaction")?;
@@ -709,7 +723,7 @@ impl ContentApi for ContentService {
                 locale: None,
             };
             let final_ctx = runner.run_before_write(
-                &hooks, &def_owned.fields, hook_ctx, &tx, &collection, Some(&id),
+                &hooks, &def_owned.fields, hook_ctx, &tx, &collection, Some(&id), user_doc.as_ref(),
             )?;
             let final_data = lifecycle::hook_ctx_to_string_map(&final_ctx);
             let doc = query::update(&tx, &collection, &def_owned, &id, &final_data, locale_ctx.as_ref())?;
@@ -781,6 +795,7 @@ impl ContentApi for ContentService {
         let hooks = def.hooks.clone();
         let collection = req.collection.clone();
         let id = req.id.clone();
+        let user_doc = auth_user.as_ref().map(|au| au.user_doc.clone());
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().context("DB connection")?;
             let tx = conn.transaction().context("Start transaction")?;
@@ -792,7 +807,7 @@ impl ContentApi for ContentService {
                 locale: None,
             };
             runner.run_hooks_with_conn(
-                &hooks, HookEvent::BeforeDelete, hook_ctx, &tx,
+                &hooks, HookEvent::BeforeDelete, hook_ctx, &tx, user_doc.as_ref(),
             )?;
             query::delete(&tx, &collection, &id)?;
             tx.commit().context("Commit transaction")?;
@@ -901,6 +916,7 @@ impl ContentApi for ContentService {
         let slug = req.slug.clone();
         let def_fields = def.fields.clone();
         let def_owned = def;
+        let user_doc = auth_user.as_ref().map(|au| au.user_doc.clone());
         let doc = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().context("DB connection")?;
             let tx = conn.transaction().context("Start transaction")?;
@@ -915,7 +931,7 @@ impl ContentApi for ContentService {
             };
             let global_table = format!("_global_{}", slug);
             let final_ctx = runner.run_before_write(
-                &hooks, &def_owned.fields, hook_ctx, &tx, &global_table, Some("default"),
+                &hooks, &def_owned.fields, hook_ctx, &tx, &global_table, Some("default"), user_doc.as_ref(),
             )?;
             let final_data = lifecycle::hook_ctx_to_string_map(&final_ctx);
             let doc = query::update_global(&tx, &slug, &def_owned, &final_data, locale_ctx.as_ref())?;
@@ -1452,6 +1468,41 @@ fn parse_where_json(json_str: &str) -> Result<Vec<FilterClause>, String> {
 
     let mut clauses = Vec::new();
     for (field, value) in map {
+        if field == "or" {
+            let arr = value.as_array()
+                .ok_or_else(|| "'or' must be an array".to_string())?;
+            let mut groups = Vec::new();
+            for element in arr {
+                let obj = element.as_object()
+                    .ok_or_else(|| "'or' elements must be objects".to_string())?;
+                let mut group = Vec::new();
+                for (f, v) in obj {
+                    match v {
+                        serde_json::Value::String(s) => {
+                            group.push(Filter {
+                                field: f.clone(),
+                                op: FilterOp::Equals(s.clone()),
+                            });
+                        }
+                        serde_json::Value::Object(ops) => {
+                            for (op_name, op_value) in ops {
+                                let op = parse_filter_op(op_name, op_value)
+                                    .map_err(|e| format!("or field '{}': {}", f, e))?;
+                                group.push(Filter {
+                                    field: f.clone(),
+                                    op,
+                                });
+                            }
+                        }
+                        _ => return Err(format!("or field '{}': value must be string or operator object", f)),
+                    }
+                }
+                groups.push(group);
+            }
+            clauses.push(FilterClause::Or(groups));
+            continue;
+        }
+
         match value {
             serde_json::Value::String(s) => {
                 clauses.push(FilterClause::Single(Filter {
