@@ -110,6 +110,8 @@ pub fn build_router(state: AdminState, has_auth: bool) -> Router {
 
     let config_dir = &state.config_dir;
 
+    let upload_api = crate::api::upload::upload_router(state.clone());
+
     Router::new()
         .route("/admin/login", get(auth_handlers::login_page).post(auth_handlers::login_action))
         .route("/admin/logout", post(auth_handlers::logout_action))
@@ -117,6 +119,7 @@ pub fn build_router(state: AdminState, has_auth: bool) -> Router {
         .route("/admin/reset-password", get(auth_handlers::reset_password_page).post(auth_handlers::reset_password_action))
         .route("/admin/verify-email", get(auth_handlers::verify_email))
         .merge(protected)
+        .nest("/api", upload_api)
         .nest_service("/static", static_assets::overlay_service(config_dir))
         .route("/uploads/{collection_slug}/{filename}", get(uploads::serve_upload))
         .layer(DefaultBodyLimit::max(100 * 1024 * 1024))

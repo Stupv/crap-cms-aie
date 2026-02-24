@@ -743,3 +743,441 @@ async fn static_css_returns_200() {
         ct
     );
 }
+
+// ── 2. Upload API (/api/upload) ─────────────────────────────────────────
+
+fn make_media_def() -> CollectionDefinition {
+    use crap_cms::core::upload::CollectionUpload;
+
+    fn hidden_text(name: &str) -> FieldDefinition {
+        FieldDefinition {
+            name: name.to_string(),
+            field_type: FieldType::Text,
+            required: false,
+            unique: false,
+            validate: None,
+            default_value: None,
+            options: Vec::new(),
+            admin: FieldAdmin { hidden: true, ..Default::default() },
+            hooks: FieldHooks::default(),
+            access: FieldAccess::default(),
+            relationship: None,
+            fields: Vec::new(),
+            blocks: Vec::new(),
+            localized: false,
+        }
+    }
+    fn hidden_number(name: &str) -> FieldDefinition {
+        FieldDefinition {
+            name: name.to_string(),
+            field_type: FieldType::Number,
+            required: false,
+            unique: false,
+            validate: None,
+            default_value: None,
+            options: Vec::new(),
+            admin: FieldAdmin { hidden: true, ..Default::default() },
+            hooks: FieldHooks::default(),
+            access: FieldAccess::default(),
+            relationship: None,
+            fields: Vec::new(),
+            blocks: Vec::new(),
+            localized: false,
+        }
+    }
+
+    CollectionDefinition {
+        slug: "media".to_string(),
+        labels: CollectionLabels {
+            singular: Some(LocalizedString::Plain("Media".to_string())),
+            plural: Some(LocalizedString::Plain("Media".to_string())),
+        },
+        timestamps: true,
+        fields: vec![
+            // Upload metadata fields (normally auto-injected by Lua parser)
+            FieldDefinition {
+                name: "filename".to_string(),
+                field_type: FieldType::Text,
+                required: true,
+                unique: false,
+                validate: None,
+                default_value: None,
+                options: Vec::new(),
+                admin: FieldAdmin { readonly: true, ..Default::default() },
+                hooks: FieldHooks::default(),
+                access: FieldAccess::default(),
+                relationship: None,
+                fields: Vec::new(),
+                blocks: Vec::new(),
+                localized: false,
+            },
+            hidden_text("mime_type"),
+            hidden_number("filesize"),
+            hidden_number("width"),
+            hidden_number("height"),
+            hidden_text("url"),
+            // User-defined field
+            FieldDefinition {
+                name: "alt".to_string(),
+                field_type: FieldType::Text,
+                required: false,
+                unique: false,
+                validate: None,
+                default_value: None,
+                options: Vec::new(),
+                admin: FieldAdmin::default(),
+                hooks: FieldHooks::default(),
+                access: FieldAccess::default(),
+                relationship: None,
+                fields: Vec::new(),
+                blocks: Vec::new(),
+                localized: false,
+            },
+        ],
+        admin: CollectionAdmin::default(),
+        hooks: CollectionHooks::default(),
+        auth: None,
+        upload: Some(CollectionUpload {
+            enabled: true,
+            mime_types: vec!["image/*".to_string(), "application/pdf".to_string()],
+            ..Default::default()
+        }),
+        access: CollectionAccess::default(),
+        live: None,
+        versions: None,
+    }
+}
+
+/// Build a multipart form body with a file and optional text fields.
+fn build_multipart_body(
+    filename: &str,
+    content_type: &str,
+    file_data: &[u8],
+    fields: &[(&str, &str)],
+) -> (String, Vec<u8>) {
+    let boundary = "----CrapTestBoundary";
+    let mut body = Vec::new();
+
+    // File field
+    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(
+        format!(
+            "Content-Disposition: form-data; name=\"_file\"; filename=\"{}\"\r\n",
+            filename
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(format!("Content-Type: {}\r\n\r\n", content_type).as_bytes());
+    body.extend_from_slice(file_data);
+    body.extend_from_slice(b"\r\n");
+
+    // Text fields
+    for (name, value) in fields {
+        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        body.extend_from_slice(
+            format!("Content-Disposition: form-data; name=\"{}\"\r\n\r\n", name).as_bytes(),
+        );
+        body.extend_from_slice(value.as_bytes());
+        body.extend_from_slice(b"\r\n");
+    }
+
+    body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+
+    let content_type = format!("multipart/form-data; boundary={}", boundary);
+    (content_type, body)
+}
+
+fn make_bearer_token(app: &TestApp, user_id: &str, email: &str) -> String {
+    let claims = auth::Claims {
+        sub: user_id.to_string(),
+        collection: "users".to_string(),
+        email: email.to_string(),
+        exp: (chrono::Utc::now().timestamp() as u64) + 3600,
+    };
+    let token = auth::create_token(&claims, &app.jwt_secret).unwrap();
+    format!("Bearer {}", token)
+}
+
+/// A minimal valid PNG (1x1 pixel, transparent).
+fn tiny_png() -> Vec<u8> {
+    // Smallest valid PNG: 1x1 RGBA
+    let mut buf = std::io::Cursor::new(Vec::new());
+    let encoder = image::codecs::png::PngEncoder::new(&mut buf);
+    use image::ImageEncoder;
+    encoder
+        .write_image(&[0u8, 0, 0, 0], 1, 1, image::ExtendedColorType::Rgba8)
+        .unwrap();
+    buf.into_inner()
+}
+
+// ── 2A. Upload API: Create ──────────────────────────────────────────────
+
+#[tokio::test]
+async fn upload_api_create_returns_201_with_document() {
+    let app = setup_app(vec![make_users_def(), make_media_def()], vec![]);
+    let user_id = create_test_user(&app, "uploader@test.com", "secret123");
+    let bearer = make_bearer_token(&app, &user_id, "uploader@test.com");
+
+    let png = tiny_png();
+    let (ct, body) = build_multipart_body("photo.png", "image/png", &png, &[("alt", "Test alt")]);
+
+    let resp = app
+        .router
+        .oneshot(
+            Request::post("/api/upload/media")
+                .header("content-type", ct)
+                .header("authorization", &bearer)
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let body = body_string(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(json["document"]["id"].is_string());
+    assert_eq!(json["document"]["alt"], "Test alt");
+    assert!(json["document"]["filename"].as_str().unwrap().ends_with("photo.png"));
+    assert!(json["document"]["url"].as_str().unwrap().starts_with("/uploads/media/"));
+    assert_eq!(json["document"]["mime_type"], "image/png");
+}
+
+#[tokio::test]
+async fn upload_api_create_no_file_returns_400() {
+    let app = setup_app(vec![make_users_def(), make_media_def()], vec![]);
+    let user_id = create_test_user(&app, "uploader@test.com", "secret123");
+    let bearer = make_bearer_token(&app, &user_id, "uploader@test.com");
+
+    // Multipart with no _file field
+    let boundary = "----CrapTestBoundary";
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(b"Content-Disposition: form-data; name=\"alt\"\r\n\r\nsome text\r\n");
+    body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+
+    let resp = app
+        .router
+        .oneshot(
+            Request::post("/api/upload/media")
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={}", boundary),
+                )
+                .header("authorization", &bearer)
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_string(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(json["error"].as_str().unwrap().contains("No file"));
+}
+
+#[tokio::test]
+async fn upload_api_create_non_upload_collection_returns_400() {
+    let app = setup_app(vec![make_users_def(), make_posts_def()], vec![]);
+    let user_id = create_test_user(&app, "uploader@test.com", "secret123");
+    let bearer = make_bearer_token(&app, &user_id, "uploader@test.com");
+
+    let png = tiny_png();
+    let (ct, body) = build_multipart_body("photo.png", "image/png", &png, &[]);
+
+    let resp = app
+        .router
+        .oneshot(
+            Request::post("/api/upload/posts")
+                .header("content-type", ct)
+                .header("authorization", &bearer)
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_string(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(json["error"].as_str().unwrap().contains("not an upload collection"));
+}
+
+#[tokio::test]
+async fn upload_api_create_unknown_collection_returns_404() {
+    let app = setup_app(vec![make_users_def(), make_media_def()], vec![]);
+    let user_id = create_test_user(&app, "uploader@test.com", "secret123");
+    let bearer = make_bearer_token(&app, &user_id, "uploader@test.com");
+
+    let png = tiny_png();
+    let (ct, body) = build_multipart_body("photo.png", "image/png", &png, &[]);
+
+    let resp = app
+        .router
+        .oneshot(
+            Request::post("/api/upload/nonexistent")
+                .header("content-type", ct)
+                .header("authorization", &bearer)
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn upload_api_create_rejected_mime_returns_400() {
+    let app = setup_app(vec![make_users_def(), make_media_def()], vec![]);
+    let user_id = create_test_user(&app, "uploader@test.com", "secret123");
+    let bearer = make_bearer_token(&app, &user_id, "uploader@test.com");
+
+    // media collection allows image/* and application/pdf — send text/plain
+    let (ct, body) =
+        build_multipart_body("notes.txt", "text/plain", b"hello world", &[]);
+
+    let resp = app
+        .router
+        .oneshot(
+            Request::post("/api/upload/media")
+                .header("content-type", ct)
+                .header("authorization", &bearer)
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_string(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(json["error"].as_str().unwrap().contains("not allowed"));
+}
+
+// ── 2B. Upload API: Update ──────────────────────────────────────────────
+
+#[tokio::test]
+async fn upload_api_update_replaces_file() {
+    let app = setup_app(vec![make_users_def(), make_media_def()], vec![]);
+    let user_id = create_test_user(&app, "uploader@test.com", "secret123");
+    let bearer = make_bearer_token(&app, &user_id, "uploader@test.com");
+
+    // Create first
+    let png = tiny_png();
+    let (ct, body) = build_multipart_body("first.png", "image/png", &png, &[("alt", "First")]);
+
+    let resp = app
+        .router
+        .clone()
+        .oneshot(
+            Request::post("/api/upload/media")
+                .header("content-type", &ct)
+                .header("authorization", &bearer)
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let create_body = body_string(resp.into_body()).await;
+    let create_json: serde_json::Value = serde_json::from_str(&create_body).unwrap();
+    let doc_id = create_json["document"]["id"].as_str().unwrap();
+    let old_filename = create_json["document"]["filename"].as_str().unwrap().to_string();
+
+    // Update with new file
+    let png2 = tiny_png();
+    let (ct2, body2) =
+        build_multipart_body("second.png", "image/png", &png2, &[("alt", "Second")]);
+
+    let resp = app
+        .router
+        .clone()
+        .oneshot(
+            Request::patch(&format!("/api/upload/media/{}", doc_id))
+                .header("content-type", ct2)
+                .header("authorization", &bearer)
+                .body(Body::from(body2))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let update_body = body_string(resp.into_body()).await;
+    let update_json: serde_json::Value = serde_json::from_str(&update_body).unwrap();
+    let new_filename = update_json["document"]["filename"].as_str().unwrap();
+    assert_ne!(new_filename, old_filename, "Filename should change on file replacement");
+    assert_eq!(update_json["document"]["alt"], "Second");
+}
+
+// ── 2C. Upload API: Delete ──────────────────────────────────────────────
+
+#[tokio::test]
+async fn upload_api_delete_returns_success() {
+    let app = setup_app(vec![make_users_def(), make_media_def()], vec![]);
+    let user_id = create_test_user(&app, "uploader@test.com", "secret123");
+    let bearer = make_bearer_token(&app, &user_id, "uploader@test.com");
+
+    // Create first
+    let png = tiny_png();
+    let (ct, body) = build_multipart_body("todelete.png", "image/png", &png, &[]);
+
+    let resp = app
+        .router
+        .clone()
+        .oneshot(
+            Request::post("/api/upload/media")
+                .header("content-type", ct)
+                .header("authorization", &bearer)
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let create_body = body_string(resp.into_body()).await;
+    let create_json: serde_json::Value = serde_json::from_str(&create_body).unwrap();
+    let doc_id = create_json["document"]["id"].as_str().unwrap();
+
+    // Delete
+    let resp = app
+        .router
+        .clone()
+        .oneshot(
+            Request::delete(&format!("/api/upload/media/{}", doc_id))
+                .header("authorization", &bearer)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let del_body = body_string(resp.into_body()).await;
+    let del_json: serde_json::Value = serde_json::from_str(&del_body).unwrap();
+    assert_eq!(del_json["success"], true);
+}
+
+#[tokio::test]
+async fn upload_api_delete_nonexistent_returns_404() {
+    let app = setup_app(vec![make_users_def(), make_media_def()], vec![]);
+    let user_id = create_test_user(&app, "uploader@test.com", "secret123");
+    let bearer = make_bearer_token(&app, &user_id, "uploader@test.com");
+
+    let resp = app
+        .router
+        .oneshot(
+            Request::delete("/api/upload/media/nonexistent-id")
+                .header("authorization", &bearer)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}

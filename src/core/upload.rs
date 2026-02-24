@@ -381,6 +381,31 @@ pub fn assemble_sizes_object(
     }
 }
 
+/// Inject upload metadata fields into form data from a processed upload.
+/// Writes per-size typed fields ({name}_url, {name}_width, {name}_height, {name}_webp_url, etc.)
+pub fn inject_upload_metadata(form_data: &mut HashMap<String, String>, processed: &ProcessedUpload) {
+    form_data.insert("filename".into(), processed.filename.clone());
+    form_data.insert("mime_type".into(), processed.mime_type.clone());
+    form_data.insert("filesize".into(), processed.filesize.to_string());
+    if let Some(w) = processed.width {
+        form_data.insert("width".into(), w.to_string());
+    }
+    if let Some(h) = processed.height {
+        form_data.insert("height".into(), h.to_string());
+    }
+    form_data.insert("url".into(), processed.url.clone());
+
+    // Per-size typed fields
+    for (name, size) in &processed.sizes {
+        form_data.insert(format!("{}_url", name), size.url.clone());
+        form_data.insert(format!("{}_width", name), size.width.to_string());
+        form_data.insert(format!("{}_height", name), size.height.to_string());
+        for (fmt, result) in &size.formats {
+            form_data.insert(format!("{}_{}_url", name, fmt), result.url.clone());
+        }
+    }
+}
+
 /// Delete all files associated with an upload document.
 /// Reads the url and per-size url fields to determine which files to remove.
 pub fn delete_upload_files(

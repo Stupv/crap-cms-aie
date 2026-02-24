@@ -5,11 +5,11 @@ use std::collections::HashMap;
 
 use crate::admin::AdminState;
 use crate::core::field::FieldType;
-use crate::core::upload::{UploadedFile, ProcessedUpload};
+use crate::core::upload::UploadedFile;
 
 /// Extract join table data from form submission for has-many relationships and array fields.
 /// Returns a map suitable for `query::save_join_table_data`.
-pub(super) fn extract_join_data_from_form(
+pub(crate) fn extract_join_data_from_form(
     form: &HashMap<String, String>,
     field_defs: &[crate::core::field::FieldDefinition],
 ) -> HashMap<String, serde_json::Value> {
@@ -89,7 +89,7 @@ fn parse_array_form_data(form: &HashMap<String, String>, field_name: &str) -> Ve
 }
 
 /// Parse a multipart form request, extracting form fields and an optional file upload.
-pub(super) async fn parse_multipart_form(
+pub(crate) async fn parse_multipart_form(
     request: axum::extract::Request,
     state: &AdminState,
 ) -> Result<(HashMap<String, String>, Option<UploadedFile>), anyhow::Error> {
@@ -125,28 +125,4 @@ pub(super) async fn parse_multipart_form(
     Ok((form_data, file))
 }
 
-/// Inject upload metadata fields into form data from a processed upload.
-/// Writes per-size typed fields ({name}_url, {name}_width, {name}_height, {name}_webp_url, etc.)
-pub(super) fn inject_upload_metadata(form_data: &mut HashMap<String, String>, processed: &ProcessedUpload) {
-    form_data.insert("filename".into(), processed.filename.clone());
-    form_data.insert("mime_type".into(), processed.mime_type.clone());
-    form_data.insert("filesize".into(), processed.filesize.to_string());
-    if let Some(w) = processed.width {
-        form_data.insert("width".into(), w.to_string());
-    }
-    if let Some(h) = processed.height {
-        form_data.insert("height".into(), h.to_string());
-    }
-    form_data.insert("url".into(), processed.url.clone());
-
-    // Per-size typed fields
-    for (name, size) in &processed.sizes {
-        form_data.insert(format!("{}_url", name), size.url.clone());
-        form_data.insert(format!("{}_width", name), size.width.to_string());
-        form_data.insert(format!("{}_height", name), size.height.to_string());
-        for (fmt, result) in &size.formats {
-            form_data.insert(format!("{}_{}_url", name, fmt), result.url.clone());
-        }
-    }
-}
 

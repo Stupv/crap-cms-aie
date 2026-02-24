@@ -1,6 +1,6 @@
 //! Collection CRUD handlers: list, create, edit, delete.
 
-mod forms;
+pub(crate) mod forms;
 
 use axum::{
     extract::{Form, FromRequest, Path, Query, State},
@@ -27,7 +27,8 @@ use super::shared::{
     render_or_error, not_found, server_error,
 };
 
-use forms::{extract_join_data_from_form, parse_multipart_form, inject_upload_metadata};
+use crate::core::upload::inject_upload_metadata;
+use forms::{extract_join_data_from_form, parse_multipart_form};
 
 /// GET /admin/collections — list all registered collections
 pub async fn list_collections(

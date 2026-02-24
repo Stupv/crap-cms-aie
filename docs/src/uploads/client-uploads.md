@@ -1,6 +1,16 @@
 # Uploading from Client Apps
 
-File uploads in Crap CMS use HTTP multipart form submission. There is no gRPC upload RPC — files must be uploaded via the admin HTTP endpoint.
+File uploads in Crap CMS use dedicated HTTP endpoints that accept multipart form data and return JSON. These are separate from the admin UI routes and designed for programmatic use.
+
+## Upload API Endpoints
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `POST` | `/api/upload/{slug}` | Upload file + create document |
+| `PATCH` | `/api/upload/{slug}/{id}` | Replace file on existing document |
+| `DELETE` | `/api/upload/{slug}/{id}` | Delete document + files |
+
+All endpoints require authentication via `Authorization: Bearer <jwt>` header and return JSON responses.
 
 ## Upload Flow
 
@@ -9,18 +19,10 @@ Uploading is a two-step process:
 1. **Upload the file** — POST a multipart form to create a document in the upload collection
 2. **Reference it** — use the upload document's ID as a relationship field value in other collections
 
-## HTTP Upload Endpoint
+## Creating an Upload
 
 ```
-POST /admin/collections/{slug}
-Content-Type: multipart/form-data
-Cookie: crap_session=<jwt>
-```
-
-Or with Bearer token:
-
-```
-POST /admin/collections/{slug}
+POST /api/upload/{slug}
 Content-Type: multipart/form-data
 Authorization: Bearer <jwt>
 ```
@@ -32,12 +34,35 @@ Authorization: Bearer <jwt>
 | `_file` | file | The file to upload (**required**) |
 | Any other field | text | Custom fields defined on the collection (e.g., `alt`, `caption`) |
 
+### Response
+
+```
+201 Created
+Content-Type: application/json
+```
+
+```json
+{
+    "document": {
+        "id": "abc123",
+        "filename": "a1b2c3_photo.jpg",
+        "mime_type": "image/jpeg",
+        "filesize": 245760,
+        "url": "/uploads/media/a1b2c3_photo.jpg",
+        "width": 1920,
+        "height": 1080,
+        "alt": "A beautiful sunset",
+        "created_at": "2025-01-15T10:30:00Z",
+        "updated_at": "2025-01-15T10:30:00Z"
+    }
+}
+```
+
 ### Example: cURL
 
 ```bash
-# Upload an image to the "media" collection
-curl -X POST http://localhost:3000/admin/collections/media \
-  -H "Cookie: crap_session=$(get_session_token)" \
+curl -X POST http://localhost:3000/api/upload/media \
+  -H "Authorization: Bearer $TOKEN" \
   -F "_file=@/path/to/photo.jpg" \
   -F "alt=A beautiful sunset"
 ```
@@ -49,13 +74,15 @@ const form = new FormData();
 form.append('_file', fileInput.files[0]);
 form.append('alt', 'A beautiful sunset');
 
-const response = await fetch('/admin/collections/media', {
+const response = await fetch('/api/upload/media', {
   method: 'POST',
   headers: {
     'Authorization': `Bearer ${token}`,
   },
   body: form,
 });
+const { document } = await response.json();
+console.log(document.url); // /uploads/media/a1b2c3_photo.jpg
 ```
 
 ### Example: Python (requests)
@@ -67,12 +94,85 @@ files = {'_file': open('photo.jpg', 'rb')}
 data = {'alt': 'A beautiful sunset'}
 
 response = requests.post(
-    'http://localhost:3000/admin/collections/media',
+    'http://localhost:3000/api/upload/media',
     files=files,
     data=data,
-    cookies={'crap_session': token},
+    headers={'Authorization': f'Bearer {token}'},
 )
+doc = response.json()['document']
 ```
+
+## Replacing a File
+
+Replace the file on an existing upload document. Old files are cleaned up on success.
+
+```
+PATCH /api/upload/{slug}/{id}
+Content-Type: multipart/form-data
+Authorization: Bearer <jwt>
+```
+
+The form fields are the same as create. The `_file` field is optional — if omitted, only the metadata fields are updated.
+
+```bash
+curl -X PATCH http://localhost:3000/api/upload/media/abc123 \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "_file=@/path/to/new-photo.jpg" \
+  -F "alt=Updated caption"
+```
+
+### Response
+
+```json
+{
+    "document": {
+        "id": "abc123",
+        "filename": "x9y8z7_new-photo.jpg",
+        "url": "/uploads/media/x9y8z7_new-photo.jpg",
+        "alt": "Updated caption",
+        "updated_at": "2025-01-15T11:00:00Z"
+    }
+}
+```
+
+## Deleting an Upload
+
+Delete an upload document and all associated files (original + resized + format variants).
+
+```
+DELETE /api/upload/{slug}/{id}
+Authorization: Bearer <jwt>
+```
+
+```bash
+curl -X DELETE http://localhost:3000/api/upload/media/abc123 \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Response
+
+```json
+{
+    "success": true
+}
+```
+
+## Error Responses
+
+All error responses follow the same format:
+
+```json
+{
+    "error": "description of what went wrong"
+}
+```
+
+| Status | Cause |
+|--------|-------|
+| `400` | Bad request (no file, invalid MIME type, file too large, validation error) |
+| `403` | Access denied (missing or invalid token, access control denied) |
+| `404` | Collection or document not found |
+| `500` | Server error |
 
 ## Server Processing
 
@@ -84,41 +184,9 @@ When the server receives an upload:
 4. **Saves** the original file to `uploads/{collection}/{id}_{filename}`
 5. **Resizes** images according to `image_sizes` (if configured)
 6. **Generates** WebP/AVIF variants (if `format_options` configured)
-7. **Creates** a document with all metadata fields populated
-
-## Fetching Upload Documents
-
-After upload, use the gRPC API to fetch the document:
-
-```bash
-grpcurl -plaintext -d '{
-    "collection": "media",
-    "id": "the_upload_id"
-}' localhost:50051 crap.ContentAPI/FindByID
-```
-
-The response includes structured `sizes` data:
-
-```json
-{
-    "filename": "a1b2c3_photo.jpg",
-    "url": "/uploads/media/a1b2c3_photo.jpg",
-    "width": 1920,
-    "height": 1080,
-    "sizes": {
-        "thumbnail": {
-            "url": "/uploads/media/a1b2c3_photo_thumbnail.jpg",
-            "width": 300,
-            "height": 300,
-            "formats": {
-                "webp": { "url": "/uploads/media/a1b2c3_photo_thumbnail.webp" },
-                "avif": { "url": "/uploads/media/a1b2c3_photo_thumbnail.avif" }
-            }
-        }
-    },
-    "alt": "A beautiful sunset"
-}
-```
+7. **Runs** before-hooks within a transaction
+8. **Creates** a document with all metadata fields populated
+9. **Fires** after-hooks and publishes live events
 
 ## Downloading Files
 
@@ -134,7 +202,7 @@ curl http://localhost:3000/uploads/media/a1b2c3_photo_thumbnail.webp
 
 # Protected file (requires auth)
 curl http://localhost:3000/uploads/media/a1b2c3_photo.jpg \
-  -H "Authorization: Bearer ${token}"
+  -H "Authorization: Bearer ${TOKEN}"
 ```
 
 ### Caching
@@ -179,9 +247,10 @@ With `depth = 1`, the upload document is fully populated in the response, giving
 
 ## Authentication
 
-Upload endpoints require the same authentication as any other collection operation. The auth token can be provided via:
+Upload API endpoints use Bearer token authentication:
 
-- **Cookie**: `crap_session=<jwt>` (set by the admin login flow)
-- **Header**: `Authorization: Bearer <jwt>` (from the `Login` gRPC RPC)
+```
+Authorization: Bearer <jwt>
+```
 
-Access control on the upload collection's `create` rule applies.
+Obtain a token via the `Login` gRPC RPC or the admin login flow. Access control on the upload collection (`access.create`, `access.update`, `access.delete`) is enforced the same as for gRPC operations.
