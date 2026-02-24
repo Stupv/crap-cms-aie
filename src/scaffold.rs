@@ -160,10 +160,6 @@ crap.log.info("init.lua loaded successfully")
 
     let abs = target.canonicalize().unwrap_or_else(|_| target.clone());
     println!("Scaffolded config directory: {}", abs.display());
-    println!();
-    println!("Next steps:");
-    println!("  1. Add collections:  crap-cms make collection {} posts", target.display());
-    println!("  2. Start the server: crap-cms serve {}", target.display());
 
     Ok(())
 }

@@ -440,7 +440,8 @@ async fn main() -> Result<()> {
             user_command(action)
         }
         Command::Init { dir } => {
-            scaffold::init(dir)
+            init_command(dir)?;
+            Ok(())
         }
         Command::Make { action } => match action {
             MakeAction::Collection { config, slug, fields, no_timestamps, auth, upload, versions, force } => {
@@ -701,6 +702,97 @@ async fn serve_command(config_dir: &Path) -> Result<()> {
             error!("Server error: {}", e);
             e
         })?;
+
+    Ok(())
+}
+
+// ── init command ──────────────────────────────────────────────────────────
+
+/// Handle the `init` subcommand — scaffold directory, then optionally create collections
+/// and a first admin user via interactive survey.
+fn init_command(dir: Option<PathBuf>) -> Result<()> {
+    use dialoguer::{Confirm, Input};
+
+    let config_dir = dir.clone().unwrap_or_else(|| PathBuf::from("./crap-cms"));
+
+    // 1. Scaffold the base directory
+    scaffold::init(dir)?;
+
+    println!();
+
+    // 2. Auth collection
+    let auth_slug = if Confirm::new()
+        .with_prompt("Create an auth collection (users with login)?")
+        .default(true)
+        .interact()
+        .context("Failed to read auth preference")?
+    {
+        let slug: String = Input::new()
+            .with_prompt("Auth collection slug")
+            .default("users".to_string())
+            .validate_with(|input: &String| -> Result<(), String> {
+                scaffold::validate_slug(input).map_err(|e| e.to_string())
+            })
+            .interact_text()
+            .context("Failed to read auth slug")?;
+        scaffold::make_collection(&config_dir, &slug, None, false, true, false, false, false)?;
+        Some(slug)
+    } else {
+        None
+    };
+
+    // 3. First admin user (right after auth collection)
+    if let Some(ref auth_collection) = auth_slug {
+        println!();
+        if Confirm::new()
+            .with_prompt("Create first admin user now?")
+            .default(true)
+            .interact()
+            .context("Failed to read user creation preference")?
+        {
+            let (pool, registry) = load_config_and_sync(&config_dir)?;
+            user_create(&pool, &registry, auth_collection, None, None, vec![])?;
+        } else {
+            println!("You can create a user later with:");
+            println!("  crap-cms user create {}", config_dir.display());
+        }
+        println!();
+    }
+
+    // 4. Upload collection
+    if Confirm::new()
+        .with_prompt("Create an upload collection (file/image uploads)?")
+        .default(true)
+        .interact()
+        .context("Failed to read upload preference")?
+    {
+        let slug: String = Input::new()
+            .with_prompt("Upload collection slug")
+            .default("media".to_string())
+            .validate_with(|input: &String| -> Result<(), String> {
+                scaffold::validate_slug(input).map_err(|e| e.to_string())
+            })
+            .interact_text()
+            .context("Failed to read upload slug")?;
+        scaffold::make_collection(&config_dir, &slug, None, false, false, true, false, false)?;
+    }
+
+    // 5. Additional collections
+    loop {
+        println!();
+        if !Confirm::new()
+            .with_prompt("Create another collection?")
+            .default(false)
+            .interact()
+            .context("Failed to read collection preference")?
+        {
+            break;
+        }
+        make_collection_command(&config_dir, None, None, false, false, false, false, false)?;
+    }
+
+    println!();
+    println!("Start the server: crap-cms serve {}", config_dir.display());
 
     Ok(())
 }
