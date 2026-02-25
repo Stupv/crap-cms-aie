@@ -239,14 +239,6 @@ enum MakeAction {
         force: bool,
     },
 
-    /// Generate a new migration file
-    Migration {
-        /// Path to the config directory
-        config: PathBuf,
-
-        /// Migration name (e.g., "backfill_slugs"). Prompted if omitted.
-        name: Option<String>,
-    },
 }
 
 #[derive(Subcommand)]
@@ -501,19 +493,6 @@ async fn main() -> Result<()> {
             }
             MakeAction::Hook { config, name, hook_type, collection, position, field, force } => {
                 make_hook_command(&config, name, hook_type, collection, position, field, force)
-            }
-            MakeAction::Migration { config, name } => {
-                let name = match name {
-                    Some(n) => n,
-                    None => {
-                        use dialoguer::Input;
-                        Input::<String>::new()
-                            .with_prompt("Migration name")
-                            .interact_text()
-                            .context("Failed to read migration name")?
-                    }
-                };
-                scaffold::make_migration(&config, &name)
             }
         },
         Command::Blueprint { action } => match action {

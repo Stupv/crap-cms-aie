@@ -9,6 +9,7 @@ my-project/
 ├── crap.toml              # Server/database/auth configuration
 ├── init.lua               # Runs at startup (register global hooks, etc.)
 ├── .luarc.json            # LuaLS config for IDE support
+├── .gitignore             # Ignores data/, uploads/, types/ by default
 ├── collections/           # One .lua file per collection
 │   ├── posts.lua
 │   ├── users.lua
@@ -18,15 +19,18 @@ my-project/
 ├── hooks/                 # Lua modules referenced by hook strings
 │   ├── posts.lua
 │   └── access.lua
+├── migrations/            # Custom SQL migrations (see `migrate` command)
 ├── templates/             # Handlebars overrides for admin UI
 │   └── fields/
 │       └── custom.hbs
+├── translations/          # Admin UI translation overrides (JSON per locale)
+│   └── de.json
 ├── static/                # Static file overrides (CSS, JS, fonts)
 ├── data/                  # SQLite database (auto-created)
 │   └── crap.db
 ├── uploads/               # Uploaded files (auto-created per collection)
 │   └── media/
-└── types/                 # Auto-generated Lua type definitions
+└── types/                 # Auto-generated type definitions (see `typegen`)
     └── crap.lua
 ```
 

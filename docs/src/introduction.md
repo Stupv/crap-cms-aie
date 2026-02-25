@@ -14,15 +14,19 @@ Crap CMS is a headless content management system built in Rust. It combines a co
 
 Crap CMS targets PayloadCMS feature parity:
 
-- **Collections** with 11 field types (text, number, textarea, richtext, select, checkbox, date, email, json, relationship, array)
+- **Collections** with 14 field types (text, number, textarea, richtext, select, checkbox, date, email, json, relationship, array, group, upload, blocks)
 - **Globals** — single-document collections for site-wide settings
 - **Hooks** — field-level, collection-level, and globally registered lifecycle hooks
 - **Access Control** — collection-level and field-level, with filter constraint support
-- **Authentication** — JWT sessions, password login, custom auth strategies
+- **Authentication** — JWT sessions, password login, custom auth strategies, email verification, password reset
 - **Uploads** — file uploads with automatic image resizing and format conversion (WebP, AVIF)
 - **Relationships** — has-one and has-many with configurable population depth
+- **Localization** — per-field opt-in localization with locale-suffixed columns
+- **Versions & Drafts** — document version history with draft/publish workflow
+- **Live Updates** — real-time mutation events via SSE and gRPC streaming
 - **Admin UI** — template overlay system, theme switching, Web Components
 - **gRPC API** — full CRUD with filtering, pagination, and server reflection
+- **CLI Tooling** — interactive scaffolding wizard, blueprints, data export/import, backups
 
 ## Tech Stack
 

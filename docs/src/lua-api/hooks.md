@@ -31,6 +31,7 @@ end)
 | `after_read` | After read, before response |
 | `before_delete` | Before delete |
 | `after_delete` | After delete (fire-and-forget) |
+| `before_broadcast` | Before live event broadcast (can suppress or transform) |
 
 ## crap.hooks.remove(event, fn)
 

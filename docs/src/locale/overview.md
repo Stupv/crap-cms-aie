@@ -99,6 +99,8 @@ Non-localized fields are always written to their single column regardless of the
 
 When locales are configured, the admin edit page shows a **locale selector** in the sidebar. Clicking a locale tab reloads the form with that locale's data. The save action writes to the selected locale.
 
+When editing in a non-default locale, **non-localized fields are shown as readonly** with a "Shared Field" badge. This prevents accidentally overwriting values that are shared across all locales.
+
 ## Lua API
 
 ### Locale in CRUD Operations

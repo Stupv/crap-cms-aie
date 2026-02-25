@@ -117,10 +117,32 @@ crap-cms user change-password <CONFIG> [-c <COLLECTION>] [-e <EMAIL>] [--id <ID>
 crap-cms init [DIR]
 ```
 
-Creates a config directory with `crap.toml`, `init.lua`, `.luarc.json`, `.gitignore`, and empty subdirectories. Defaults to `./crap-cms` if no directory is given.
+Runs an interactive wizard that scaffolds a complete config directory. Defaults to `./crap-cms` if no directory is given.
+
+The wizard prompts for:
+
+| Prompt | Default | Description |
+|--------|---------|-------------|
+| Admin port | `3000` | Port for the admin UI |
+| gRPC port | `50051` | Port for the gRPC API |
+| Enable localization? | No | If yes, prompts for default locale and additional locales |
+| Default locale | `en` | Default locale code (only if localization enabled) |
+| Additional locales | — | Comma-separated (e.g., `de,fr`) |
+| Create auth collection? | Yes | Creates a `users` collection with email/password login |
+| Create first admin user? | Yes | Prompts for email and password immediately |
+| Create upload collection? | Yes | Creates a `media` collection for file/image uploads |
+| Create another collection? | No | Repeat to add more collections interactively |
+
+A 64-character auth secret is auto-generated and written to `crap.toml`.
 
 ```bash
 crap-cms init ./my-project
+```
+
+After scaffolding:
+
+```bash
+crap-cms serve ./my-project
 ```
 
 ### `make` — Generate scaffolding files
@@ -128,18 +150,55 @@ crap-cms init ./my-project
 #### `make collection`
 
 ```bash
-crap-cms make collection <CONFIG> <SLUG> [-F <FIELDS>] [-T] [-f]
+crap-cms make collection <CONFIG> [SLUG] [-F <FIELDS>] [-T] [--auth] [--upload] [--versions] [--no-input] [-f]
 ```
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--fields` | `-F` | Inline field shorthand (e.g., `"title:text:required,body:textarea"`) |
+| `--fields` | `-F` | Inline field shorthand (see below) |
 | `--no-timestamps` | `-T` | Set `timestamps = false` |
+| `--auth` | — | Enable auth (email/password login) |
+| `--upload` | — | Enable uploads (file upload collection) |
+| `--versions` | — | Enable versioning (draft/publish workflow) |
+| `--no-input` | — | Non-interactive mode — skip all prompts, use flags and defaults only |
 | `--force` | `-f` | Overwrite existing file |
 
+Without `--no-input`, missing arguments (slug, fields) are collected via interactive prompts. The field survey asks for name, type, required, and localized (if [localization is enabled](../locale/overview.md)).
+
+**Field shorthand syntax:**
+
+```
+name:type[:modifier][:modifier]...
+```
+
+Modifiers are order-independent:
+
+| Modifier | Description |
+|----------|-------------|
+| `required` | Field is required |
+| `localized` | Field has per-locale values (see [Localization](../locale/overview.md)) |
+
 ```bash
+# Basic
 crap-cms make collection ./my-project posts
-crap-cms make collection ./my-project articles -F "title:text:required,body:richtext"
+
+# With fields
+crap-cms make collection ./my-project articles \
+    -F "title:text:required,body:richtext"
+
+# With localized fields
+crap-cms make collection ./my-project pages \
+    -F "title:text:required:localized,body:textarea:localized,slug:text:required"
+
+# Auth collection
+crap-cms make collection ./my-project users --auth
+
+# Upload collection
+crap-cms make collection ./my-project media --upload
+
+# Non-interactive with versions
+crap-cms make collection ./my-project posts \
+    -F "title:text:required,body:richtext" --versions --no-input
 ```
 
 #### `make global`
@@ -155,23 +214,42 @@ crap-cms make global ./my-project site_settings
 #### `make hook`
 
 ```bash
-crap-cms make hook <CONFIG> <NAME>
+crap-cms make hook <CONFIG> [NAME] [-t <TYPE>] [-c <COLLECTION>] [-l <POSITION>] [-F <FIELD>] [--force]
 ```
 
-Name format: `module.function` (e.g., `posts.auto_slug`).
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--type` | `-t` | Hook type: `collection`, `field`, or `access` |
+| `--collection` | `-c` | Target collection slug |
+| `--position` | `-l` | Lifecycle position (e.g., `before_change`, `after_read`) |
+| `--field` | `-F` | Target field name (field hooks only) |
+| `--force` | — | Overwrite existing file |
+
+Missing flags are resolved via interactive prompts. The wizard lists valid lifecycle positions for the chosen hook type.
+
+**Valid positions by type:**
+
+| Type | Positions |
+|------|-----------|
+| `collection` | `before_validate`, `before_change`, `after_change`, `before_read`, `after_read`, `before_delete`, `after_delete`, `before_broadcast` |
+| `field` | `before_validate`, `before_change`, `after_change`, `after_read` |
+| `access` | `read`, `create`, `update`, `delete` |
 
 ```bash
-crap-cms make hook ./my-project posts.auto_slug
-```
+# Interactive (prompts for everything)
+crap-cms make hook ./my-project
 
-#### `make migration`
+# Fully specified
+crap-cms make hook ./my-project auto_slug \
+    -t collection -c posts -l before_change
 
-```bash
-crap-cms make migration <CONFIG> <NAME>
-```
+# Field hook
+crap-cms make hook ./my-project normalize_email \
+    -t field -c users -l before_validate -F email
 
-```bash
-crap-cms make migration ./my-project backfill_slugs
+# Access hook
+crap-cms make hook ./my-project owner_only \
+    -t access -c posts -l read
 ```
 
 ### `blueprint` — Manage saved blueprints
@@ -276,17 +354,19 @@ crap-cms proto -o ./proto/
 ### `migrate` — Run database migrations
 
 ```bash
-crap-cms migrate <CONFIG> <up|down|list|fresh>
+crap-cms migrate <CONFIG> <create|up|down|list|fresh>
 ```
 
 | Subcommand | Description |
 |------------|-------------|
+| `create <NAME>` | Generate a new migration file (e.g., `backfill_slugs`) |
 | `up` | Sync schema + run pending migrations |
 | `down [-s N]` | Roll back last N migrations (default: 1) |
 | `list` | Show all migration files with status |
-| `fresh [-y]` | Drop all tables and recreate (destructive, requires `-y`) |
+| `fresh [-y\|--confirm]` | Drop all tables and recreate (destructive, requires confirmation) |
 
 ```bash
+crap-cms migrate ./my-project create backfill_slugs
 crap-cms migrate ./my-project up
 crap-cms migrate ./my-project list
 crap-cms migrate ./my-project down -s 2
@@ -307,6 +387,49 @@ crap-cms backup <CONFIG> [-o <DIR>] [-i]
 ```bash
 crap-cms backup ./my-project
 crap-cms backup ./my-project -o /tmp/backups -i
+```
+
+### `templates` — List and extract default admin templates
+
+Extract the compiled-in admin templates and static files into your config directory for customization.
+
+#### `templates list`
+
+```bash
+crap-cms templates list [-t <TYPE>]
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--type` | `-t` | Filter: `templates` or `static` (default: both) |
+
+```bash
+crap-cms templates list
+crap-cms templates list -t templates
+crap-cms templates list -t static
+```
+
+#### `templates extract`
+
+```bash
+crap-cms templates extract <CONFIG> [PATHS...] [-a] [-t <TYPE>] [-f]
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--all` | `-a` | Extract all files |
+| `--type` | `-t` | Filter: `templates` or `static` (only with `--all`) |
+| `--force` | `-f` | Overwrite existing files |
+
+```bash
+# Extract specific files
+crap-cms templates extract ./my-project layout/base.hbs styles.css
+
+# Extract all templates
+crap-cms templates extract ./my-project --all --type templates
+
+# Extract everything, overwriting existing
+crap-cms templates extract ./my-project --all --force
 ```
 
 ## Environment Variables

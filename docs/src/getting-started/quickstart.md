@@ -1,11 +1,51 @@
 # Quick Start
 
-## 1. Run with the example config
+## 1. Scaffold a new project
 
-The repository includes an `example/` config directory with sample collections:
+The fastest way to get started is the interactive `init` wizard:
 
 ```bash
-crap-cms serve ./example
+crap-cms init ./my-project
+```
+
+The wizard walks you through:
+
+1. **Admin port** (default: 3000)
+2. **gRPC port** (default: 50051)
+3. **Localization** — enable and choose locales (e.g., `en`, `de`, `fr`)
+4. **Auth collection** — creates a `users` collection with email/password login
+5. **First admin user** — prompts for email and password right away
+6. **Upload collection** — creates a `media` collection for file/image uploads
+7. **Additional collections** — keep adding as many as you need
+
+A JWT auth secret is auto-generated and written to `crap.toml` so tokens survive restarts.
+
+When it finishes you'll have a ready-to-run config directory:
+
+```
+my-project/
+├── crap.toml
+├── init.lua
+├── .luarc.json
+├── .gitignore
+├── collections/
+│   ├── users.lua
+│   └── media.lua
+├── globals/
+├── hooks/
+├── migrations/
+├── templates/
+├── static/
+├── types/
+│   └── crap.lua
+├── data/
+└── uploads/
+```
+
+## 2. Start the server
+
+```bash
+crap-cms serve ./my-project
 ```
 
 This starts:
@@ -13,25 +53,23 @@ This starts:
 - **Admin UI** at [http://localhost:3000/admin](http://localhost:3000/admin)
 - **gRPC API** at `localhost:50051`
 
-## 2. Bootstrap an admin user
+## 3. Log in to the admin UI
 
-The example config includes a `users` auth collection. Create the first user:
+Visit [http://localhost:3000/admin/login](http://localhost:3000/admin/login) and sign in with the credentials you created during init.
+
+If you skipped user creation during init, bootstrap one now:
 
 ```bash
 # Interactive (prompts for password)
-crap-cms user create ./example -e admin@example.com
+crap-cms user create ./my-project -e admin@example.com
 
 # Non-interactive
-crap-cms user create ./example \
+crap-cms user create ./my-project \
     -e admin@example.com \
     -p secret123 \
     -f role=admin \
     -f name="Admin User"
 ```
-
-## 3. Log in to the admin UI
-
-Visit [http://localhost:3000/admin/login](http://localhost:3000/admin/login) and sign in with the credentials you just created.
 
 ## 4. Create content via gRPC
 
@@ -55,35 +93,19 @@ grpcurl -plaintext localhost:50051 crap.ContentAPI/Create \
     }'
 ```
 
-## 5. Create your own config
+## Alternative: Run with the example config
 
-Scaffold a new project:
-
-```bash
-crap-cms init ./my-project
-```
-
-Or create the structure manually:
+The repository includes an `example/` config directory with sample collections, useful if you're building from source:
 
 ```bash
-mkdir my-project
-mkdir -p my-project/{collections,globals,hooks,templates,static,data}
+git clone https://github.com/your-org/crap-cms.git
+cd crap-cms
+cargo build --release
+./target/release/crap-cms serve ./example
 ```
 
-Create `my-project/collections/posts.lua`:
-
-```lua
-crap.collections.define("posts", {
-    labels = { singular = "Post", plural = "Posts" },
-    fields = {
-        { name = "title", type = "text", required = true },
-        { name = "body", type = "richtext" },
-    },
-})
-```
-
-Run:
+Then bootstrap an admin user:
 
 ```bash
-crap-cms serve ./my-project
+crap-cms user create ./example -e admin@example.com
 ```
