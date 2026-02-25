@@ -313,6 +313,11 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
             let doc = query::create(conn, &collection, &def, &data, locale_ctx.as_ref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("create error: {}", e)))?;
 
+            // Save has-many, array, and blocks join-table data
+            let join_data = lua_table_to_json_map(lua, &data_table)?;
+            query::save_join_table_data(conn, &collection, &def, &doc.id, &join_data)
+                .map_err(|e| mlua::Error::RuntimeError(format!("join data error: {}", e)))?;
+
             // Versioning: set status (only if drafts enabled) and create initial version snapshot
             if def.has_versions() {
                 if def.has_drafts() {
@@ -330,6 +335,11 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                     }
                 }
             }
+
+            // Hydrate join-table fields before returning
+            let mut doc = doc;
+            query::hydrate_document(conn, &collection, &def, &mut doc, None)
+                .map_err(|e| mlua::Error::RuntimeError(format!("hydrate error: {}", e)))?;
 
             document_to_lua_table(lua, &doc)
         })?;
@@ -424,6 +434,11 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                 let doc = query::update(conn, &collection, &def, &id, &data, locale_ctx.as_ref())
                     .map_err(|e| mlua::Error::RuntimeError(format!("update error: {}", e)))?;
 
+                // Save has-many, array, and blocks join-table data
+                let join_data = lua_table_to_json_map(lua, &data_table)?;
+                query::save_join_table_data(conn, &collection, &def, &doc.id, &join_data)
+                    .map_err(|e| mlua::Error::RuntimeError(format!("join data error: {}", e)))?;
+
                 // Versioning: set status to published (only if drafts enabled) and create version
                 if def.has_versions() {
                     if def.has_drafts() {
@@ -441,6 +456,11 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                         }
                     }
                 }
+
+                // Hydrate join-table fields before returning
+                let mut doc = doc;
+                query::hydrate_document(conn, &collection, &def, &mut doc, None)
+                    .map_err(|e| mlua::Error::RuntimeError(format!("hydrate error: {}", e)))?;
 
                 document_to_lua_table(lua, &doc)
             }
@@ -562,6 +582,19 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
 }
 
 // ── Lua <-> Rust type conversion helpers ────────────────────────────────────
+
+/// Convert a Lua data table to HashMap<String, serde_json::Value>.
+/// Preserves nested tables (blocks, arrays, has-many IDs) unlike lua_table_to_hashmap
+/// which only handles scalars.
+fn lua_table_to_json_map(lua: &Lua, tbl: &mlua::Table) -> mlua::Result<HashMap<String, serde_json::Value>> {
+    let mut map = HashMap::new();
+    for pair in tbl.pairs::<String, Value>() {
+        let (k, v) = pair?;
+        if matches!(v, Value::Nil) { continue; }
+        map.insert(k, crate::hooks::api::lua_to_json(lua, &v)?);
+    }
+    Ok(map)
+}
 
 /// Convert a Lua query table to a FindQuery.
 /// Supports both simple filters (`{ status = "published" }`) and operator-based

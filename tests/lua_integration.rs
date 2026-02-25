@@ -26,14 +26,15 @@ fn init_lua_loads_example_config() {
     assert_eq!(posts.title_field(), Some("title"));
     assert!(posts.fields.iter().any(|f| f.name == "title"));
     assert!(posts.fields.iter().any(|f| f.name == "slug"));
-    assert!(posts.fields.iter().any(|f| f.name == "status"));
+    assert!(posts.fields.iter().any(|f| f.name == "excerpt"));
     assert!(posts.fields.iter().any(|f| f.name == "content"));
 
     // Check pages collection
     let pages = reg.get_collection("pages").unwrap();
     assert_eq!(pages.display_name(), "Pages");
     assert!(pages.fields.iter().any(|f| f.name == "title"));
-    assert!(pages.fields.iter().any(|f| f.name == "published"));
+    assert!(pages.fields.iter().any(|f| f.name == "slug"));
+    assert!(pages.fields.iter().any(|f| f.name == "content"));
 
     // Example config defines "site_settings" global
     assert!(
@@ -43,12 +44,7 @@ fn init_lua_loads_example_config() {
     let settings = reg.get_global("site_settings").unwrap();
     assert!(settings.fields.iter().any(|f| f.name == "site_name"));
 
-    // Check articles collection has versioning config
-    let articles = reg.get_collection("articles").expect("articles collection not found");
-    assert_eq!(articles.display_name(), "Articles");
-    assert!(articles.has_versions(), "articles should have versions enabled");
-    assert!(articles.has_drafts(), "articles should have drafts enabled");
-    let vc = articles.versions.as_ref().unwrap();
-    assert!(vc.drafts);
-    assert_eq!(vc.max_versions, 20);
+    // Check posts collection has versioning config
+    assert!(posts.has_versions(), "posts should have versions enabled");
+    assert!(posts.has_drafts(), "posts should have drafts enabled (live = true)");
 }

@@ -1,9 +1,14 @@
-crap.log.info("Crap CMS initializing...")
+-- init.lua — Six Seven blog
+-- Runs once at startup. Register global hooks and log startup info.
 
--- Global hook: audit log for all before_change events
-crap.hooks.register("before_change", function(ctx)
-    crap.log.info("[audit] " .. ctx.operation .. " on " .. ctx.collection)
-    return ctx
+crap.log.info("Six Seven blog initializing...")
+
+-- Global hook: log all content changes
+crap.hooks.register("after_change", function(context)
+    local op = context.operation or "unknown"
+    local collection = context.collection or "unknown"
+    local id = context.data and context.data.id or "?"
+    crap.log.info(string.format("[%s] %s %s", collection, op, id))
 end)
 
-crap.log.info("init.lua loaded successfully")
+crap.log.info("Six Seven blog ready")

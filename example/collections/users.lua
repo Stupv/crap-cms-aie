@@ -1,38 +1,21 @@
--- Example with custom auth strategies (uncomment to enable):
---
--- crap.collections.define("users", {
---     auth = {
---         strategies = {
---             {
---                 name = "api-key",
---                 authenticate = "hooks.auth.api_key_check",
---             },
---         },
---         -- disable_local = true,  -- set to disable password login
---     },
---     ...
--- })
-
 crap.collections.define("users", {
-    auth = true,
     labels = {
         singular = "User",
         plural = "Users",
     },
     timestamps = true,
+    auth = true,
     admin = {
-        use_as_title = "name",
+        use_as_title = "email",
         default_sort = "-created_at",
-        list_searchable_fields = { "name", "email" },
     },
     fields = {
-        -- email is auto-injected when auth = true (if not defined here)
         {
             name = "name",
             type = "text",
             required = true,
             admin = {
-                placeholder = "Full name",
+                description = "Display name shown on posts",
             },
         },
         {
@@ -43,7 +26,33 @@ crap.collections.define("users", {
             options = {
                 { label = "Admin", value = "admin" },
                 { label = "Editor", value = "editor" },
+                { label = "Author", value = "author" },
             },
         },
+        {
+            name = "avatar",
+            type = "upload",
+            relationship = {
+                collection = "media",
+            },
+            admin = {
+                description = "Profile picture",
+                width = "half",
+            },
+        },
+        {
+            name = "bio",
+            type = "textarea",
+            admin = {
+                description = "Short author biography",
+                width = "full",
+            },
+        },
+    },
+    access = {
+        read = "access.anyone",
+        create = "access.admin_only",
+        update = "access.self_or_admin",
+        delete = "access.admin_only",
     },
 })

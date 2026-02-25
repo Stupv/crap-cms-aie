@@ -182,6 +182,10 @@ enum MakeAction {
         #[arg(long)]
         versions: bool,
 
+        /// Non-interactive mode — skip all prompts, use flags and defaults only
+        #[arg(long)]
+        no_input: bool,
+
         /// Overwrite existing file
         #[arg(short, long)]
         force: bool,
@@ -444,8 +448,8 @@ async fn main() -> Result<()> {
             Ok(())
         }
         Command::Make { action } => match action {
-            MakeAction::Collection { config, slug, fields, no_timestamps, auth, upload, versions, force } => {
-                make_collection_command(&config, slug, fields, no_timestamps, auth, upload, versions, force)
+            MakeAction::Collection { config, slug, fields, no_timestamps, auth, upload, versions, no_input, force } => {
+                make_collection_command(&config, slug, fields, no_timestamps, auth, upload, versions, !no_input, force)
             }
             MakeAction::Global { config, slug, force } => {
                 let slug = match slug {
@@ -788,7 +792,7 @@ fn init_command(dir: Option<PathBuf>) -> Result<()> {
         {
             break;
         }
-        make_collection_command(&config_dir, None, None, false, false, false, false, false)?;
+        make_collection_command(&config_dir, None, None, false, false, false, false, true /* interactive */, false)?;
     }
 
     println!();
@@ -941,6 +945,7 @@ fn make_collection_command(
     auth: bool,
     upload: bool,
     versions: bool,
+    interactive: bool,
     force: bool,
 ) -> Result<()> {
     use dialoguer::{Input, Select, Confirm};
@@ -948,7 +953,7 @@ fn make_collection_command(
     // 1. Resolve slug
     let slug = match slug {
         Some(s) => s,
-        None => {
+        None if interactive => {
             Input::<String>::new()
                 .with_prompt("Collection slug")
                 .validate_with(|input: &String| -> Result<(), String> {
@@ -966,14 +971,13 @@ fn make_collection_command(
                 .interact_text()
                 .context("Failed to read collection slug")?
         }
+        None => anyhow::bail!("Collection slug is required (or omit --no-input for interactive mode)"),
     };
 
-    // 2. Resolve fields — if --fields provided, use as-is; otherwise interactive builder
-    // Detect interactive mode before the field builder runs (it sets fields_shorthand to Some)
-    let interactive = fields.is_none();
+    // 2. Resolve fields — survey when interactive and not provided via --fields
     let fields_shorthand = match fields {
         Some(s) => Some(s),
-        None => {
+        None if interactive => {
             println!("Define fields (empty name to finish):");
             let mut parts: Vec<String> = Vec::new();
 
@@ -1015,6 +1019,7 @@ fn make_collection_command(
                 Some(parts.join(","))
             }
         }
+        None => None, // non-interactive, use defaults
     };
 
     // 3. Resolve timestamps (only prompt in interactive mode)

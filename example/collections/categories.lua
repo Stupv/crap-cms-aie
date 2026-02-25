@@ -1,7 +1,7 @@
-crap.collections.define("tags", {
+crap.collections.define("categories", {
     labels = {
-        singular = "Tag",
-        plural = "Tags",
+        singular = "Category",
+        plural = "Categories",
     },
     timestamps = true,
     admin = {
@@ -27,13 +27,20 @@ crap.collections.define("tags", {
                 before_validate = { "hooks.auto_slug" },
             },
         },
+        {
+            name = "description",
+            type = "textarea",
+            admin = {
+                description = "Describe what this category covers",
+            },
+        },
     },
     hooks = {
         before_change = { "hooks.trim_title" },
     },
     access = {
         read = "access.anyone",
-        create = "access.authenticated",
+        create = "access.editor_or_admin",
         update = "access.editor_or_admin",
         delete = "access.admin_only",
     },
