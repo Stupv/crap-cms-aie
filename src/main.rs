@@ -246,6 +246,34 @@ enum MakeAction {
         force: bool,
     },
 
+    /// Generate a job Lua file
+    Job {
+        /// Path to the config directory
+        config: PathBuf,
+
+        /// Job slug (e.g., "cleanup_expired"). Prompted if omitted.
+        slug: Option<String>,
+
+        /// Cron schedule expression (e.g., "0 3 * * *")
+        #[arg(short, long)]
+        schedule: Option<String>,
+
+        /// Queue name (default: "default")
+        #[arg(short, long)]
+        queue: Option<String>,
+
+        /// Max retry attempts (default: 0)
+        #[arg(short, long)]
+        retries: Option<u32>,
+
+        /// Timeout in seconds (default: 60)
+        #[arg(short, long)]
+        timeout: Option<u64>,
+
+        /// Overwrite existing file
+        #[arg(short, long)]
+        force: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -502,6 +530,19 @@ enum JobsAction {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    // Initialize tracing subscriber early so all commands get logging.
+    // RUST_LOG env overrides. Default: crap_cms=debug for serve, info for others.
+    let default_filter = match &cli.command {
+        Command::Serve { .. } => "crap_cms=debug,info",
+        _ => "crap_cms=info,warn",
+    };
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(default_filter)),
+        )
+        .init();
+
     match cli.command {
         Command::Serve { config, detach } => {
             if detach {
@@ -541,6 +582,22 @@ async fn main() -> Result<()> {
             }
             MakeAction::Hook { config, name, hook_type, collection, position, field, force } => {
                 make_hook_command(&config, name, hook_type, collection, position, field, force)
+            }
+            MakeAction::Job { config, slug, schedule, queue, retries, timeout, force } => {
+                let slug = match slug {
+                    Some(s) => s,
+                    None => {
+                        use dialoguer::Input;
+                        Input::<String>::new()
+                            .with_prompt("Job slug")
+                            .validate_with(|input: &String| -> Result<(), String> {
+                                scaffold::validate_slug(input).map_err(|e| e.to_string())
+                            })
+                            .interact_text()
+                            .context("Failed to read job slug")?
+                    }
+                };
+                scaffold::make_job(&config, &slug, schedule.as_deref(), queue.as_deref(), retries, timeout, force)
             }
         },
         Command::Blueprint { action } => match action {
@@ -834,13 +891,6 @@ fn detach_serve(config_dir: &Path) -> Result<()> {
 
 /// Start the admin UI and gRPC servers.
 async fn serve_command(config_dir: &Path) -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("crap_cms=debug,info")),
-        )
-        .init();
-
     let config_dir = config_dir.canonicalize().unwrap_or_else(|_| config_dir.to_path_buf());
 
     info!("Config directory: {}", config_dir.display());

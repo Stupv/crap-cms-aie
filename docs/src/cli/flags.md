@@ -252,6 +252,31 @@ crap-cms make hook ./my-project owner_only \
     -t access -c posts -l read
 ```
 
+#### `make job`
+
+```bash
+crap-cms make job <CONFIG> [SLUG] [-s <SCHEDULE>] [-q <QUEUE>] [-r <RETRIES>] [-t <TIMEOUT>] [-f]
+```
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--schedule` | `-s` | — | Cron expression (e.g., `"0 3 * * *"`) |
+| `--queue` | `-q` | `default` | Queue name |
+| `--retries` | `-r` | 0 | Max retry attempts |
+| `--timeout` | `-t` | 60 | Timeout in seconds |
+| `--force` | `-f` | — | Overwrite existing file |
+
+```bash
+# Interactive (prompts for slug)
+crap-cms make job ./my-project
+
+# With schedule
+crap-cms make job ./my-project cleanup_expired -s "0 3 * * *" -r 3 -t 300
+
+# Simple job (triggered from hooks)
+crap-cms make job ./my-project send_welcome_email
+```
+
 ### `blueprint` — Manage saved blueprints
 
 #### `blueprint save`
