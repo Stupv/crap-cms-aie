@@ -297,6 +297,7 @@ mod tests {
                     fields: vec![],
                     blocks: vec![],
                     localized: false,
+                    picker_appearance: None,
                 },
                 FieldDefinition {
                     name: "status".to_string(),
@@ -313,6 +314,7 @@ mod tests {
                     fields: vec![],
                     blocks: vec![],
                     localized: false,
+                    picker_appearance: None,
                 },
             ],
             admin: CollectionAdmin::default(),

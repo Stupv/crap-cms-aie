@@ -332,6 +332,60 @@ pub(crate) fn locale_write_column(field_name: &str, field: &FieldDefinition, loc
     field_name.to_string()
 }
 
+/// Normalize a date value for storage.
+///
+/// - Full ISO 8601 with timezone (`2026-01-15T09:00:00Z`, `2026-01-15T09:00:00+05:00`)
+///   → re-format as `YYYY-MM-DDTHH:MM:SS.000Z` (UTC)
+/// - Date only (`2026-01-15`) → `2026-01-15T12:00:00.000Z` (UTC noon, prevents timezone drift)
+/// - datetime-local format (`2026-01-15T09:00`) → treat as UTC → `2026-01-15T09:00:00.000Z`
+/// - Time only (`14:30`) → passthrough
+/// - Month only (`2026-01`) → passthrough
+/// - Anything else → passthrough (validation catches garbage)
+pub fn normalize_date_value(value: &str) -> String {
+    use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, Utc};
+
+    // Time only: HH:MM or HH:MM:SS
+    if value.len() <= 8 && value.contains(':') && !value.contains('T') {
+        return value.to_string();
+    }
+
+    // Month only: YYYY-MM (exactly 7 chars, dash at position 4)
+    if value.len() == 7 && value.as_bytes().get(4) == Some(&b'-') && !value.contains('T') {
+        return value.to_string();
+    }
+
+    // Try full RFC 3339 / ISO 8601 with timezone (e.g., 2026-01-15T09:00:00Z, 2026-01-15T09:00:00+05:00)
+    if let Ok(dt) = DateTime::<FixedOffset>::parse_from_rfc3339(value) {
+        let utc = dt.with_timezone(&Utc);
+        return utc.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    }
+
+    // Try date only: YYYY-MM-DD (10 chars)
+    if value.len() == 10 {
+        if let Ok(d) = NaiveDate::parse_from_str(value, "%Y-%m-%d") {
+            let noon = d.and_hms_opt(12, 0, 0).unwrap();
+            return noon.and_utc().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        }
+    }
+
+    // Try datetime-local format: YYYY-MM-DDTHH:MM (16 chars, no timezone)
+    if value.len() == 16 && value.contains('T') {
+        if let Ok(ndt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M") {
+            return ndt.and_utc().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        }
+    }
+
+    // Try datetime without timezone: YYYY-MM-DDTHH:MM:SS (19 chars)
+    if value.len() == 19 && value.contains('T') {
+        if let Ok(ndt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S") {
+            return ndt.and_utc().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        }
+    }
+
+    // Anything else: passthrough
+    value.to_string()
+}
+
 /// Coerce a form string value to the appropriate SQLite type.
 pub(crate) fn coerce_value(field_type: &FieldType, value: &str) -> Box<dyn rusqlite::types::ToSql> {
     match field_type {
@@ -346,6 +400,13 @@ pub(crate) fn coerce_value(field_type: &FieldType, value: &str) -> Box<dyn rusql
                 Box::new(f)
             } else {
                 Box::new(rusqlite::types::Null)
+            }
+        }
+        FieldType::Date => {
+            if value.is_empty() {
+                Box::new(rusqlite::types::Null)
+            } else {
+                Box::new(normalize_date_value(value))
             }
         }
         _ => {
@@ -467,6 +528,7 @@ mod tests {
             fields: Vec::new(),
             blocks: Vec::new(),
             localized: false,
+            picker_appearance: None,
         }
     }
 
@@ -770,5 +832,80 @@ mod tests {
         assert!(valid.contains("title"), "Text fields should be included");
         assert!(!valid.contains("tags"), "Array fields should be excluded");
         assert!(!valid.contains("content"), "Blocks fields should be excluded");
+    }
+
+    // ── normalize_date_value tests ──────────────────────────────────────────
+
+    #[test]
+    fn normalize_date_only_to_utc_noon() {
+        assert_eq!(normalize_date_value("2026-01-15"), "2026-01-15T12:00:00.000Z");
+    }
+
+    #[test]
+    fn normalize_full_iso_utc() {
+        assert_eq!(normalize_date_value("2026-01-15T09:00:00Z"), "2026-01-15T09:00:00.000Z");
+    }
+
+    #[test]
+    fn normalize_iso_with_millis() {
+        assert_eq!(normalize_date_value("2026-01-15T09:00:00.000Z"), "2026-01-15T09:00:00.000Z");
+    }
+
+    #[test]
+    fn normalize_iso_with_offset() {
+        assert_eq!(normalize_date_value("2026-01-15T09:00:00+05:00"), "2026-01-15T04:00:00.000Z");
+    }
+
+    #[test]
+    fn normalize_datetime_local() {
+        assert_eq!(normalize_date_value("2026-01-15T09:00"), "2026-01-15T09:00:00.000Z");
+    }
+
+    #[test]
+    fn normalize_datetime_no_tz() {
+        assert_eq!(normalize_date_value("2026-01-15T09:00:00"), "2026-01-15T09:00:00.000Z");
+    }
+
+    #[test]
+    fn normalize_time_only_passthrough() {
+        assert_eq!(normalize_date_value("14:30"), "14:30");
+    }
+
+    #[test]
+    fn normalize_month_only_passthrough() {
+        assert_eq!(normalize_date_value("2026-01"), "2026-01");
+    }
+
+    #[test]
+    fn normalize_garbage_passthrough() {
+        assert_eq!(normalize_date_value("garbage"), "garbage");
+    }
+
+    // ── coerce_value Date tests ─────────────────────────────────────────────
+
+    #[test]
+    fn coerce_value_date_empty_is_null() {
+        use rusqlite::types::ToSql;
+        let val = coerce_value(&FieldType::Date, "");
+        let output = val.to_sql().unwrap();
+        match output {
+            rusqlite::types::ToSqlOutput::Owned(rusqlite::types::Value::Null) => {}
+            other => panic!("Expected Null for empty date, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn coerce_value_date_normalizes() {
+        use rusqlite::types::ToSql;
+        let val = coerce_value(&FieldType::Date, "2026-03-15");
+        let output = val.to_sql().unwrap();
+        let text = match &output {
+            rusqlite::types::ToSqlOutput::Owned(rusqlite::types::Value::Text(s)) => s.clone(),
+            rusqlite::types::ToSqlOutput::Borrowed(rusqlite::types::ValueRef::Text(b)) => {
+                std::str::from_utf8(b).unwrap().to_string()
+            }
+            other => panic!("Expected normalized date string, got {:?}", other),
+        };
+        assert_eq!(text, "2026-03-15T12:00:00.000Z");
     }
 }

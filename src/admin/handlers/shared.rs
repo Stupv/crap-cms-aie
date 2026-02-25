@@ -252,6 +252,23 @@ pub(super) fn build_field_contexts(
                     ctx["collapsed"] = serde_json::json!(true);
                 }
             }
+            FieldType::Date => {
+                let appearance = field.picker_appearance.as_deref().unwrap_or("dayOnly");
+                ctx["picker_appearance"] = serde_json::json!(appearance);
+                match appearance {
+                    "dayOnly" => {
+                        // Stored as "2026-01-15T12:00:00.000Z", input expects "2026-01-15"
+                        let date_val = if value.len() >= 10 { &value[..10] } else { &value };
+                        ctx["date_only_value"] = serde_json::json!(date_val);
+                    }
+                    "dayAndTime" => {
+                        // Stored as "2026-01-15T09:00:00.000Z", input expects "2026-01-15T09:00"
+                        let dt_val = if value.len() >= 16 { &value[..16] } else { &value };
+                        ctx["datetime_local_value"] = serde_json::json!(dt_val);
+                    }
+                    _ => {} // timeOnly, monthOnly: value passes through as-is
+                }
+            }
             FieldType::Upload => {
                 if let Some(ref rc) = field.relationship {
                     ctx["relationship_collection"] = serde_json::json!(rc.collection);
@@ -759,6 +776,7 @@ mod tests {
             fields: Vec::new(),
             blocks: Vec::new(),
             localized: false,
+            picker_appearance: None,
         }
     }
 
@@ -850,5 +868,58 @@ mod tests {
         assert_eq!(opts.len(), 2);
         assert_eq!(opts[0]["value"], "left");
         assert_eq!(opts[1]["value"], "center");
+    }
+
+    // --- build_field_contexts: date field tests ---
+
+    #[test]
+    fn build_field_contexts_date_default_day_only() {
+        let date_field = make_field("published_at", FieldType::Date);
+        let fields = vec![date_field];
+        let mut values = HashMap::new();
+        values.insert("published_at".to_string(), "2026-01-15T12:00:00.000Z".to_string());
+        let errors = HashMap::new();
+        let result = build_field_contexts(&fields, &values, &errors, false, false);
+        assert_eq!(result[0]["picker_appearance"], "dayOnly");
+        assert_eq!(result[0]["date_only_value"], "2026-01-15");
+    }
+
+    #[test]
+    fn build_field_contexts_date_day_and_time() {
+        let mut date_field = make_field("event_at", FieldType::Date);
+        date_field.picker_appearance = Some("dayAndTime".to_string());
+        let fields = vec![date_field];
+        let mut values = HashMap::new();
+        values.insert("event_at".to_string(), "2026-01-15T09:30:00.000Z".to_string());
+        let errors = HashMap::new();
+        let result = build_field_contexts(&fields, &values, &errors, false, false);
+        assert_eq!(result[0]["picker_appearance"], "dayAndTime");
+        assert_eq!(result[0]["datetime_local_value"], "2026-01-15T09:30");
+    }
+
+    #[test]
+    fn build_field_contexts_date_time_only() {
+        let mut date_field = make_field("reminder", FieldType::Date);
+        date_field.picker_appearance = Some("timeOnly".to_string());
+        let fields = vec![date_field];
+        let mut values = HashMap::new();
+        values.insert("reminder".to_string(), "14:30".to_string());
+        let errors = HashMap::new();
+        let result = build_field_contexts(&fields, &values, &errors, false, false);
+        assert_eq!(result[0]["picker_appearance"], "timeOnly");
+        assert_eq!(result[0]["value"], "14:30");
+    }
+
+    #[test]
+    fn build_field_contexts_date_month_only() {
+        let mut date_field = make_field("birth_month", FieldType::Date);
+        date_field.picker_appearance = Some("monthOnly".to_string());
+        let fields = vec![date_field];
+        let mut values = HashMap::new();
+        values.insert("birth_month".to_string(), "2026-01".to_string());
+        let errors = HashMap::new();
+        let result = build_field_contexts(&fields, &values, &errors, false, false);
+        assert_eq!(result[0]["picker_appearance"], "monthOnly");
+        assert_eq!(result[0]["value"], "2026-01");
     }
 }

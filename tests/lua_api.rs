@@ -2472,3 +2472,33 @@ fn context_flows_to_after_hooks() {
         "after_change hook should receive the context set by before-hooks"
     );
 }
+
+// ── Date normalization integration tests ────────────────────────────────────
+
+#[test]
+fn date_field_normalizes_date_only_to_utc_noon() {
+    let (_tmp, pool, _reg, runner) = setup_with_db();
+    let result = eval_lua_db(&runner, &pool, r#"
+        local doc = crap.collections.create("articles", {
+            title = "Date Test 1",
+            published_at = "2026-03-15",
+        })
+        local found = crap.collections.find_by_id("articles", doc.id)
+        return found.published_at
+    "#);
+    assert_eq!(result, "2026-03-15T12:00:00.000Z");
+}
+
+#[test]
+fn date_field_normalizes_full_datetime() {
+    let (_tmp, pool, _reg, runner) = setup_with_db();
+    let result = eval_lua_db(&runner, &pool, r#"
+        local doc = crap.collections.create("articles", {
+            title = "Date Test 2",
+            event_at = "2026-03-15T09:00:00Z",
+        })
+        local found = crap.collections.find_by_id("articles", doc.id)
+        return found.event_at
+    "#);
+    assert_eq!(result, "2026-03-15T09:00:00.000Z");
+}

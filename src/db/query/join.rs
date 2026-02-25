@@ -564,7 +564,7 @@ mod tests {
                 required: false, unique: false, validate: None, default_value: None,
                 options: vec![], admin: FieldAdmin::default(), hooks: FieldHooks::default(),
                 access: FieldAccess::default(), relationship: None, fields: vec![],
-                blocks: vec![], localized: false,
+                blocks: vec![], localized: false, picker_appearance: None,
             },
             FieldDefinition {
                 name: "value".to_string(),
@@ -572,7 +572,7 @@ mod tests {
                 required: false, unique: false, validate: None, default_value: None,
                 options: vec![], admin: FieldAdmin::default(), hooks: FieldHooks::default(),
                 access: FieldAccess::default(), relationship: None, fields: vec![],
-                blocks: vec![], localized: false,
+                blocks: vec![], localized: false, picker_appearance: None,
             },
         ]
     }
@@ -589,7 +589,7 @@ mod tests {
                     required: false, unique: false, validate: None, default_value: None,
                     options: vec![], admin: FieldAdmin::default(), hooks: FieldHooks::default(),
                     access: FieldAccess::default(), relationship: None, fields: vec![],
-                    blocks: vec![], localized: false,
+                    blocks: vec![], localized: false, picker_appearance: None,
                 },
                 FieldDefinition {
                     name: "tags".to_string(),
@@ -602,7 +602,7 @@ mod tests {
                     required: false, unique: false, validate: None, default_value: None,
                     options: vec![], admin: FieldAdmin::default(), hooks: FieldHooks::default(),
                     access: FieldAccess::default(), fields: vec![],
-                    blocks: vec![], localized: false,
+                    blocks: vec![], localized: false, picker_appearance: None,
                 },
                 FieldDefinition {
                     name: "items".to_string(),
@@ -611,7 +611,7 @@ mod tests {
                     required: false, unique: false, validate: None, default_value: None,
                     options: vec![], admin: FieldAdmin::default(), hooks: FieldHooks::default(),
                     access: FieldAccess::default(), relationship: None,
-                    blocks: vec![], localized: false,
+                    blocks: vec![], localized: false, picker_appearance: None,
                 },
                 FieldDefinition {
                     name: "content".to_string(),
@@ -619,7 +619,7 @@ mod tests {
                     required: false, unique: false, validate: None, default_value: None,
                     options: vec![], admin: FieldAdmin::default(), hooks: FieldHooks::default(),
                     access: FieldAccess::default(), relationship: None, fields: vec![],
-                    blocks: vec![], localized: false,
+                    blocks: vec![], localized: false, picker_appearance: None,
                 },
             ],
             admin: CollectionAdmin::default(),

@@ -227,6 +227,7 @@ mod tests {
             fields: vec![],
             blocks: vec![],
             localized: false,
+            picker_appearance: None,
         }
     }
 
@@ -252,6 +253,7 @@ mod tests {
             fields: vec![],
             blocks: vec![],
             localized: false,
+            picker_appearance: None,
         }
     }
 
@@ -271,6 +273,7 @@ mod tests {
             fields: vec![],
             blocks: vec![],
             localized: false,
+            picker_appearance: None,
         }
     }
 

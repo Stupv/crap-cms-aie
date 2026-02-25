@@ -33,7 +33,7 @@ Every field type accepts these properties:
 | `richtext` | TEXT | Rich text (HTML string) |
 | `select` | TEXT | Single value from predefined options |
 | `checkbox` | INTEGER | Boolean (0 or 1) |
-| `date` | TEXT | ISO 8601 date or datetime string |
+| `date` | TEXT | Date/datetime/time/month with `picker_appearance` control |
 | `email` | TEXT | Email address |
 | `json` | TEXT | Arbitrary JSON blob |
 | `relationship` | TEXT (has-one) or join table (has-many) | Reference to another collection |

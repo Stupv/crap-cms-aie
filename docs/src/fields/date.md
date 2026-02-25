@@ -1,29 +1,61 @@
 # Date
 
-Date or datetime field stored as an ISO 8601 string.
+Date, datetime, time, or month field with configurable picker appearance and automatic normalization.
 
 ## SQLite Storage
 
-`TEXT` column.
+`TEXT` column. Values are normalized on write (see Storage Format below).
 
 ## Definition
 
 ```lua
-{
-    name = "published_at",
-    type = "date",
-    admin = {
-        placeholder = "2024-01-01",
-    },
-}
+-- Date only (default) — stored as UTC noon to prevent timezone drift
+{ name = "birthday", type = "date" }
+{ name = "birthday", type = "date", picker_appearance = "dayOnly" }
+
+-- Date and time — stored as full ISO 8601 UTC
+{ name = "published_at", type = "date", picker_appearance = "dayAndTime" }
+
+-- Time only — stored as HH:MM
+{ name = "reminder", type = "date", picker_appearance = "timeOnly" }
+
+-- Month only — stored as YYYY-MM
+{ name = "birth_month", type = "date", picker_appearance = "monthOnly" }
 ```
+
+## Picker Appearance
+
+The `picker_appearance` option controls the HTML input type in the admin UI and how values are stored:
+
+| Value | HTML Input | Storage Format | Example |
+|---|---|---|---|
+| `"dayOnly"` (default) | `<input type="date">` | `YYYY-MM-DDT12:00:00.000Z` | `2026-01-15T12:00:00.000Z` |
+| `"dayAndTime"` | `<input type="datetime-local">` | `YYYY-MM-DDTHH:MM:SS.000Z` | `2026-01-15T09:30:00.000Z` |
+| `"timeOnly"` | `<input type="time">` | `HH:MM` | `14:30` |
+| `"monthOnly"` | `<input type="month">` | `YYYY-MM` | `2026-01` |
+
+## Date Normalization
+
+All date values are normalized in `coerce_value` before writing to the database, regardless of how they arrive (admin form or gRPC API):
+
+- **Date only** (`2026-01-15`) → `2026-01-15T12:00:00.000Z` (UTC noon prevents timezone drift)
+- **Full ISO 8601** (`2026-01-15T09:00:00Z`, `2026-01-15T09:00:00+05:00`) → converted to UTC, formatted as `YYYY-MM-DDTHH:MM:SS.000Z`
+- **datetime-local** (`2026-01-15T09:00`) → treated as UTC, formatted as `YYYY-MM-DDTHH:MM:SS.000Z`
+- **Time only** (`14:30`) → stored as-is
+- **Month only** (`2026-01`) → stored as-is
+
+This normalization ensures consistent storage and correct behavior when filtering and sorting.
 
 ## Admin Rendering
 
-Renders as an `<input type="date">` or datetime input in the admin UI.
+Renders as the appropriate HTML5 input type based on `picker_appearance`. For `dayOnly` and `dayAndTime`, the stored ISO string is automatically converted to the format the HTML input expects (`YYYY-MM-DD` and `YYYY-MM-DDTHH:MM` respectively).
+
+## Validation
+
+Non-empty date values are validated against recognized date/datetime/time/month formats. Invalid formats produce a validation error.
 
 ## Notes
 
-- Values are stored as plain text strings — no server-side date parsing
-- Use ISO 8601 format (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS`) for consistent sorting and filtering
-- Comparison operators (`greater_than`, `less_than`) work on the string representation
+- Pure dates are stored with UTC noon (`T12:00:00.000Z`) so timezone offsets up to ±12h never flip the calendar date
+- Comparison operators (`greater_than`, `less_than`) work correctly on the normalized ISO string representation
+- The `picker_appearance` option matches PayloadCMS semantics

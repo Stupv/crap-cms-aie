@@ -48,6 +48,7 @@ fn make_versioned_def() -> CollectionDefinition {
                 fields: Vec::new(),
                 blocks: Vec::new(),
                 localized: false,
+                picker_appearance: None,
             },
             FieldDefinition {
                 name: "body".to_string(),
@@ -64,6 +65,7 @@ fn make_versioned_def() -> CollectionDefinition {
                 fields: Vec::new(),
                 blocks: Vec::new(),
                 localized: false,
+                picker_appearance: None,
             },
         ],
         admin: CollectionAdmin::default(),

@@ -36,6 +36,7 @@ fn make_posts_def() -> CollectionDefinition {
                 fields: Vec::new(),
                 blocks: Vec::new(),
                 localized: false,
+                picker_appearance: None,
             },
             FieldDefinition {
                 name: "status".to_string(),
@@ -52,6 +53,7 @@ fn make_posts_def() -> CollectionDefinition {
                 fields: Vec::new(),
                 blocks: Vec::new(),
                 localized: false,
+                picker_appearance: None,
             },
         ],
         admin: CollectionAdmin::default(),
@@ -167,6 +169,7 @@ fn sync_schema_adds_columns() {
         fields: Vec::new(),
         blocks: Vec::new(),
         localized: false,
+        picker_appearance: None,
     });
     {
         let mut reg = registry.write().unwrap();
@@ -763,6 +766,7 @@ fn make_users_def() -> CollectionDefinition {
                 fields: Vec::new(),
                 blocks: Vec::new(),
                 localized: false,
+                picker_appearance: None,
             },
             FieldDefinition {
                 name: "name".to_string(),
@@ -779,6 +783,7 @@ fn make_users_def() -> CollectionDefinition {
                 fields: Vec::new(),
                 blocks: Vec::new(),
                 localized: false,
+                picker_appearance: None,
             },
         ],
         admin: CollectionAdmin::default(),
@@ -1044,6 +1049,7 @@ fn make_global_def() -> GlobalDefinition {
                 fields: Vec::new(),
                 blocks: Vec::new(),
                 localized: false,
+                picker_appearance: None,
             },
             FieldDefinition {
                 name: "tagline".to_string(),
@@ -1060,6 +1066,7 @@ fn make_global_def() -> GlobalDefinition {
                 fields: Vec::new(),
                 blocks: Vec::new(),
                 localized: false,
+                picker_appearance: None,
             },
         ],
         hooks: CollectionHooks::default(),
@@ -1177,6 +1184,7 @@ fn make_field(name: &str, field_type: FieldType) -> FieldDefinition {
         fields: Vec::new(),
         blocks: Vec::new(),
         localized: false,
+        picker_appearance: None,
     }
 }
 
@@ -2269,6 +2277,7 @@ fn sync_adds_locale_columns() {
                 name: "title".to_string(),
                 field_type: FieldType::Text,
                 localized: true,
+                picker_appearance: None,
                 ..make_field("title", FieldType::Text)
             },
             make_field("slug_field", FieldType::Text),
@@ -2470,6 +2479,7 @@ fn make_localized_def() -> CollectionDefinition {
                 name: "title".to_string(),
                 field_type: FieldType::Text,
                 localized: true,
+                picker_appearance: None,
                 ..make_field("title", FieldType::Text)
             },
             make_field("slug_field", FieldType::Text),
@@ -3103,6 +3113,7 @@ fn make_localized_join_def() -> CollectionDefinition {
                 name: "tags".to_string(),
                 field_type: FieldType::Relationship,
                 localized: true,
+                picker_appearance: None,
                 relationship: Some(RelationshipConfig {
                     collection: "tags".to_string(),
                     has_many: true,
@@ -3115,6 +3126,7 @@ fn make_localized_join_def() -> CollectionDefinition {
                 name: "links".to_string(),
                 field_type: FieldType::Array,
                 localized: true,
+                picker_appearance: None,
                 fields: vec![
                     make_field("url", FieldType::Text),
                     make_field("label", FieldType::Text),
@@ -3126,6 +3138,7 @@ fn make_localized_join_def() -> CollectionDefinition {
                 name: "content".to_string(),
                 field_type: FieldType::Blocks,
                 localized: true,
+                picker_appearance: None,
                 blocks: vec![
                     BlockDefinition {
                         block_type: "paragraph".to_string(),
@@ -3140,6 +3153,7 @@ fn make_localized_join_def() -> CollectionDefinition {
                 name: "meta".to_string(),
                 field_type: FieldType::Blocks,
                 localized: false,
+                picker_appearance: None,
                 blocks: vec![
                     BlockDefinition {
                         block_type: "kv".to_string(),

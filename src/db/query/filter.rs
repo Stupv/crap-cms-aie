@@ -230,6 +230,7 @@ mod tests {
             fields: Vec::new(),
             blocks: Vec::new(),
             localized,
+            picker_appearance: None,
         }
     }
 

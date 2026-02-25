@@ -93,6 +93,7 @@ pub fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Re
                 fields: Vec::new(),
                 blocks: Vec::new(),
                 localized: false,
+                picker_appearance: None,
             });
         }
     }
@@ -357,6 +358,7 @@ fn hidden_text_field(name: &str) -> FieldDefinition {
         fields: Vec::new(),
         blocks: Vec::new(),
         localized: false,
+        picker_appearance: None,
     }
 }
 
@@ -377,6 +379,7 @@ fn hidden_number_field(name: &str) -> FieldDefinition {
         fields: Vec::new(),
         blocks: Vec::new(),
         localized: false,
+        picker_appearance: None,
     }
 }
 
@@ -399,6 +402,7 @@ fn inject_upload_fields(fields: &mut Vec<FieldDefinition>, upload: &CollectionUp
             fields: Vec::new(),
             blocks: Vec::new(),
             localized: false,
+            picker_appearance: None,
         },
         hidden_text_field("mime_type"),
         hidden_number_field("filesize"),
@@ -529,6 +533,13 @@ fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
 
         let localized = get_bool(&field_tbl, "localized", false);
 
+        // Parse picker_appearance for date fields
+        let picker_appearance = if field_type == FieldType::Date {
+            get_string(&field_tbl, "picker_appearance")
+        } else {
+            None
+        };
+
         // Parse block definitions for Blocks type
         let block_defs = if field_type == FieldType::Blocks {
             if let Ok(blocks_tbl) = get_table(&field_tbl, "blocks") {
@@ -555,6 +566,7 @@ fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
             fields: sub_fields,
             blocks: block_defs,
             localized,
+            picker_appearance,
         });
     }
 

@@ -16,6 +16,8 @@ crap.collections.define("articles", {
         { name = "word_count", type = "number",
             validate = "hooks.validators.positive_number",
         },
+        { name = "published_at", type = "date" },
+        { name = "event_at", type = "date", picker_appearance = "dayAndTime" },
     },
     hooks = {
         before_validate = { "hooks.article_hooks.before_validate" },

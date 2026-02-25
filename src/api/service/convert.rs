@@ -442,6 +442,7 @@ mod tests {
             fields: vec![],
             blocks: vec![],
             localized: false,
+            picker_appearance: None,
         }
     }
 
@@ -534,6 +535,7 @@ mod tests {
     fn field_def_to_proto_localized() {
         let field = FieldDefinition {
             localized: true,
+            picker_appearance: None,
             ..make_field("title", FieldType::Text)
         };
 

@@ -49,6 +49,7 @@ fn make_posts_def() -> CollectionDefinition {
                 fields: Vec::new(),
                 blocks: Vec::new(),
                 localized: false,
+                picker_appearance: None,
             },
         ],
         admin: CollectionAdmin::default(),
@@ -85,6 +86,7 @@ fn make_users_def() -> CollectionDefinition {
                 fields: Vec::new(),
                 blocks: Vec::new(),
                 localized: false,
+                picker_appearance: None,
             },
             FieldDefinition {
                 name: "name".to_string(),
@@ -101,6 +103,7 @@ fn make_users_def() -> CollectionDefinition {
                 fields: Vec::new(),
                 blocks: Vec::new(),
                 localized: false,
+                picker_appearance: None,
             },
         ],
         admin: CollectionAdmin::default(),
@@ -136,6 +139,7 @@ fn make_global_def() -> GlobalDefinition {
                 fields: Vec::new(),
                 blocks: Vec::new(),
                 localized: false,
+                picker_appearance: None,
             },
         ],
         hooks: CollectionHooks::default(),
@@ -774,6 +778,7 @@ fn make_media_def() -> CollectionDefinition {
             fields: Vec::new(),
             blocks: Vec::new(),
             localized: false,
+            picker_appearance: None,
         }
     }
     fn hidden_number(name: &str) -> FieldDefinition {
@@ -792,6 +797,7 @@ fn make_media_def() -> CollectionDefinition {
             fields: Vec::new(),
             blocks: Vec::new(),
             localized: false,
+            picker_appearance: None,
         }
     }
 
@@ -819,6 +825,7 @@ fn make_media_def() -> CollectionDefinition {
                 fields: Vec::new(),
                 blocks: Vec::new(),
                 localized: false,
+                picker_appearance: None,
             },
             hidden_text("mime_type"),
             hidden_number("filesize"),
@@ -841,6 +848,7 @@ fn make_media_def() -> CollectionDefinition {
                 fields: Vec::new(),
                 blocks: Vec::new(),
                 localized: false,
+                picker_appearance: None,
             },
         ],
         admin: CollectionAdmin::default(),
@@ -1219,6 +1227,7 @@ fn make_localized_pages_def() -> CollectionDefinition {
                 field_type: FieldType::Text,
                 required: true,
                 localized: true,
+                picker_appearance: None,
                 unique: false,
                 validate: None,
                 default_value: None,
@@ -1235,6 +1244,7 @@ fn make_localized_pages_def() -> CollectionDefinition {
                 field_type: FieldType::Textarea,
                 required: false,
                 localized: true,
+                picker_appearance: None,
                 unique: false,
                 validate: None,
                 default_value: None,

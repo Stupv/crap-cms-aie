@@ -129,6 +129,7 @@ mod tests {
                     fields: vec![],
                     blocks: vec![],
                     localized: false,
+                    picker_appearance: None,
                 },
                 FieldDefinition {
                     name: "tagline".to_string(),
@@ -145,6 +146,7 @@ mod tests {
                     fields: vec![],
                     blocks: vec![],
                     localized: false,
+                    picker_appearance: None,
                 },
             ],
             hooks: CollectionHooks::default(),

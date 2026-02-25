@@ -497,6 +497,7 @@ fn make_field(name: &str, field_type: FieldType) -> FieldDefinition {
         fields: Vec::new(),
         blocks: Vec::new(),
         localized: false,
+        picker_appearance: None,
     }
 }
 

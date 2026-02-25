@@ -150,7 +150,7 @@ mod tests {
             unique: false, validate: None, default_value: None, options: vec![],
             admin: FieldAdmin::default(), hooks: FieldHooks::default(),
             access: FieldAccess::default(), relationship: None,
-            fields: vec![], blocks: vec![], localized: false,
+            fields: vec![], blocks: vec![], localized: false, picker_appearance: None,
         }
     }
 
@@ -163,7 +163,7 @@ mod tests {
             }).collect(),
             admin: FieldAdmin::default(), hooks: FieldHooks::default(),
             access: FieldAccess::default(), relationship: None,
-            fields: vec![], blocks: vec![], localized: false,
+            fields: vec![], blocks: vec![], localized: false, picker_appearance: None,
         }
     }
 

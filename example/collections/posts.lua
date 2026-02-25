@@ -146,6 +146,7 @@ crap.collections.define("posts", {
         {
             name = "published_at",
             type = "date",
+            picker_appearance = "dayAndTime",
             admin = {
                 description = "Schedule publication (defaults to now when published)",
                 width = "half",

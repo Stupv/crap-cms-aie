@@ -909,6 +909,18 @@ impl HookRunner {
                 }
             }
 
+            // Date format validation (only if non-empty)
+            if field.field_type == FieldType::Date && !is_empty {
+                if let Some(serde_json::Value::String(s)) = value {
+                    if !is_valid_date_format(s) {
+                        errors.push(FieldError {
+                            field: field.name.clone(),
+                            message: format!("{} is not a valid date format", field.name),
+                        });
+                    }
+                }
+            }
+
             // Custom validate function (Lua)
             if let Some(ref validate_ref) = field.validate {
                 if let Some(val) = value {
@@ -1298,6 +1310,54 @@ fn read_context_back(lua: &Lua, tbl: &mlua::Table, existing: &mut HashMap<String
             }
         }
     }
+}
+
+/// Check if a string is a recognized date format for the date field type.
+/// Accepts: YYYY-MM-DD, YYYY-MM-DDTHH:MM, YYYY-MM-DDTHH:MM:SS, full ISO 8601/RFC 3339,
+/// HH:MM (time only), HH:MM:SS, YYYY-MM (month only).
+fn is_valid_date_format(value: &str) -> bool {
+    use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime};
+
+    // Time only: HH:MM or HH:MM:SS
+    if value.len() <= 8 && value.contains(':') && !value.contains('T') {
+        let parts: Vec<&str> = value.split(':').collect();
+        if parts.len() >= 2 {
+            return parts.iter().all(|p| p.chars().all(|c| c.is_ascii_digit()));
+        }
+    }
+
+    // Month only: YYYY-MM
+    if value.len() == 7 && value.as_bytes().get(4) == Some(&b'-') && !value.contains('T') {
+        let parts: Vec<&str> = value.split('-').collect();
+        if parts.len() == 2 {
+            return parts[0].len() == 4
+                && parts[0].chars().all(|c| c.is_ascii_digit())
+                && parts[1].len() == 2
+                && parts[1].chars().all(|c| c.is_ascii_digit());
+        }
+    }
+
+    // Full RFC 3339
+    if DateTime::<FixedOffset>::parse_from_rfc3339(value).is_ok() {
+        return true;
+    }
+
+    // Date only: YYYY-MM-DD
+    if value.len() == 10 {
+        return NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok();
+    }
+
+    // datetime-local: YYYY-MM-DDTHH:MM
+    if value.len() == 16 && value.contains('T') {
+        return NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M").is_ok();
+    }
+
+    // YYYY-MM-DDTHH:MM:SS (no timezone)
+    if value.len() == 19 && value.contains('T') {
+        return NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S").is_ok();
+    }
+
+    false
 }
 
 /// Resolve a dotted function reference (e.g., "hooks.posts.auto_slug")

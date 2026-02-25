@@ -96,6 +96,8 @@ crap = {}
 --- @field label? crap.LocalizedString      Display label for the block type (defaults to type name).
 --- @field fields crap.FieldDefinition[]    Fields within this block type.
 
+--- @alias crap.PickerAppearance "dayOnly" | "dayAndTime" | "timeOnly" | "monthOnly"
+
 --- @class crap.FieldDefinition
 --- @field name          string            Column name (required).
 --- @field type          crap.FieldType    Field type (required).
@@ -114,6 +116,7 @@ crap = {}
 --- @field blocks?       crap.BlockDefinition[] Block type definitions for "blocks" type.
 --- @field admin?        crap.FieldAdmin   Admin UI display options.
 --- @field access?       crap.FieldAccess  Field-level access control (read/create/update).
+--- @field picker_appearance? crap.PickerAppearance  For "date" fields: controls HTML input type and storage format. "dayOnly" (default) = date picker, stored as `YYYY-MM-DDT12:00:00.000Z`. "dayAndTime" = datetime-local picker, stored as full ISO 8601 UTC. "timeOnly" = time picker, stored as `HH:MM`. "monthOnly" = month picker, stored as `YYYY-MM`.
 
 
 -- ── Collection Types ─────────────────────────────────────────

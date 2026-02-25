@@ -233,6 +233,10 @@ pub struct FieldDefinition {
     pub blocks: Vec<BlockDefinition>,
     #[serde(default)]
     pub localized: bool,
+    /// For date fields: controls the HTML input type and storage format.
+    /// Valid values: "dayOnly" (default), "dayAndTime", "timeOnly", "monthOnly".
+    #[serde(default)]
+    pub picker_appearance: Option<String>,
 }
 
 impl FieldDefinition {
