@@ -1,0 +1,160 @@
+//! `serve` command — start admin UI and gRPC servers.
+
+use anyhow::{Context, Result};
+use std::path::Path;
+use tracing::{info, warn, error};
+
+/// Re-exec the current binary as a detached background process.
+pub fn detach(config_dir: &Path) -> Result<()> {
+    let exe = std::env::current_exe().context("Failed to determine executable path")?;
+
+    let child = std::process::Command::new(&exe)
+        .arg("serve")
+        .arg(config_dir)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .context("Failed to spawn detached process")?;
+
+    println!("Started crap-cms in background (PID {})", child.id());
+    Ok(())
+}
+
+/// Start the admin UI and gRPC servers.
+pub async fn run(config_dir: &Path) -> Result<()> {
+    let config_dir = config_dir.canonicalize().unwrap_or_else(|_| config_dir.to_path_buf());
+
+    info!("Config directory: {}", config_dir.display());
+
+    // Load config
+    let cfg = crate::config::CrapConfig::load(&config_dir)
+        .context("Failed to load config")?;
+    info!(?cfg, "Configuration loaded");
+
+    // Initialize Lua VM and load collections/globals
+    let registry = crate::hooks::init_lua(&config_dir, &cfg)
+        .context("Failed to initialize Lua VM")?;
+
+    {
+        let reg = registry.read()
+            .map_err(|e| anyhow::anyhow!("Registry lock poisoned: {}", e))?;
+        info!("Loaded {} collection(s), {} global(s)",
+            reg.collections.len(), reg.globals.len());
+        for (slug, col) in &reg.collections {
+            info!("  Collection '{}': {} field(s)", slug, col.fields.len());
+        }
+    }
+
+    // Auto-generate Lua type definitions on startup
+    {
+        let reg = registry.read()
+            .map_err(|e| anyhow::anyhow!("Registry lock poisoned: {}", e))?;
+        match crate::typegen::generate(&config_dir, &reg) {
+            Ok(path) => info!("Generated type definitions: {}", path.display()),
+            Err(e) => warn!("Failed to generate type definitions: {}", e),
+        }
+    }
+
+    // Initialize database
+    let pool = crate::db::pool::create_pool(&config_dir, &cfg)
+        .context("Failed to create database pool")?;
+
+    // Sync database schema from Lua definitions
+    crate::db::migrate::sync_all(&pool, &registry, &cfg.locale)
+        .context("Failed to sync database schema")?;
+
+    // Initialize Lua hook runner (with registry for CRUD access in hooks)
+    let hook_runner = crate::hooks::lifecycle::HookRunner::new(&config_dir, registry.clone(), &cfg)?;
+
+    // Run on_init hooks (synchronous — failure aborts startup)
+    if !cfg.hooks.on_init.is_empty() {
+        info!("Running on_init hooks...");
+        let conn = pool.get().context("DB connection for on_init")?;
+        hook_runner.run_system_hooks_with_conn(&cfg.hooks.on_init, &conn)
+            .context("on_init hooks failed")?;
+        info!("on_init hooks completed");
+    }
+
+    // Resolve JWT secret
+    let jwt_secret = if cfg.auth.secret.is_empty() {
+        let secret = nanoid::nanoid!(64);
+        warn!("No auth.secret in crap.toml — generated random JWT secret (tokens won't survive restarts)");
+        secret
+    } else {
+        cfg.auth.secret.clone()
+    };
+
+    // Log auth collection info
+    {
+        let reg = registry.read()
+            .map_err(|e| anyhow::anyhow!("Registry lock poisoned: {}", e))?;
+        let auth_collections: Vec<_> = reg.collections.values()
+            .filter(|d| d.is_auth_collection())
+            .map(|d| d.slug.as_str())
+            .collect();
+        if auth_collections.is_empty() {
+            info!("No auth collections — admin UI and API are open");
+        } else {
+            info!("Auth collections: {:?} — admin login required", auth_collections);
+        }
+    }
+
+    // Create EventBus for live updates (if enabled)
+    let event_bus = if cfg.live.enabled {
+        let bus = crate::core::event::EventBus::new(cfg.live.channel_capacity);
+        info!("Live event streaming enabled (capacity: {})", cfg.live.channel_capacity);
+        Some(bus)
+    } else {
+        info!("Live event streaming disabled");
+        None
+    };
+
+    // Start servers
+    let admin_addr = format!("{}:{}", cfg.server.host, cfg.server.admin_port);
+    let grpc_addr = format!("{}:{}", cfg.server.host, cfg.server.grpc_port);
+
+    info!("Starting Admin UI on http://{}", admin_addr);
+    info!("Starting gRPC API on {}", grpc_addr);
+
+    let admin_handle = crate::admin::server::start(
+        &admin_addr,
+        cfg.clone(),
+        config_dir.clone(),
+        pool.clone(),
+        registry.clone(),
+        hook_runner.clone(),
+        jwt_secret.clone(),
+        event_bus.clone(),
+    );
+
+    let grpc_handle = crate::api::start_server(
+        &grpc_addr,
+        pool.clone(),
+        registry.clone(),
+        hook_runner.clone(),
+        jwt_secret,
+        &cfg.depth,
+        &cfg,
+        &config_dir,
+        event_bus,
+    );
+
+    // Start the background job scheduler
+    let scheduler_pool = pool.clone();
+    let scheduler_runner = hook_runner.clone();
+    let scheduler_registry = registry.clone();
+    let scheduler_config = cfg.jobs.clone();
+    let scheduler_handle = async move {
+        crate::scheduler::start(scheduler_pool, scheduler_runner, scheduler_registry, scheduler_config)
+            .await
+    };
+
+    tokio::try_join!(admin_handle, grpc_handle, scheduler_handle)
+        .map_err(|e| {
+            error!("Server error: {}", e);
+            e
+        })?;
+
+    Ok(())
+}
