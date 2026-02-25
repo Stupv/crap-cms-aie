@@ -258,8 +258,10 @@ fn check_cron_schedules(
             None => continue,
         };
 
-        // Parse cron expression
-        let schedule = match cron::Schedule::from_str(schedule_str) {
+        // Parse cron expression (the cron crate expects 6-7 fields with seconds;
+        // normalize standard 5-field expressions by prepending "0" for seconds)
+        let normalized = normalize_cron(schedule_str);
+        let schedule = match cron::Schedule::from_str(&normalized) {
             Ok(s) => s,
             Err(e) => {
                 tracing::warn!("Invalid cron expression '{}' for job '{}': {}", schedule_str, slug, e);
@@ -329,4 +331,16 @@ fn recover_stale_jobs(
     }
 
     Ok(())
+}
+
+/// Normalize a cron expression: the `cron` crate expects 6 or 7 fields (with a
+/// leading seconds field), but users write standard 5-field cron (`0 3 * * *`).
+/// If the expression has exactly 5 fields, prepend "0" for seconds.
+fn normalize_cron(expr: &str) -> String {
+    let fields: Vec<&str> = expr.split_whitespace().collect();
+    if fields.len() == 5 {
+        format!("0 {}", expr)
+    } else {
+        expr.to_string()
+    }
 }

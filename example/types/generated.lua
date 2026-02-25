@@ -4,12 +4,14 @@
 ---@field title string
 ---@field slug string
 ---@field description? string
+---@field seo? table
 
 ---@class crap.doc.Categories
 ---@field id string
 ---@field title string
 ---@field slug string
 ---@field description? string
+---@field seo? table
 ---@field created_at? string
 ---@field updated_at? string
 
@@ -29,12 +31,15 @@
 ---@field title? crap.FilterValue
 ---@field slug? crap.FilterValue
 ---@field description? crap.FilterValue
+---@field seo__meta_title? crap.FilterValue
+---@field seo__meta_description? crap.FilterValue
+---@field seo__no_index? crap.FilterValue
 ---@field created_at? crap.FilterValue
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Categories
 ---@field filters? crap.filters.Categories
----@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"description"|"-description"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"description"|"-description"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
 ---@field locale? string
@@ -230,11 +235,13 @@
 ---@class crap.data.Tags
 ---@field title string
 ---@field slug string
+---@field seo? table
 
 ---@class crap.doc.Tags
 ---@field id string
 ---@field title string
 ---@field slug string
+---@field seo? table
 ---@field created_at? string
 ---@field updated_at? string
 
@@ -253,12 +260,15 @@
 ---@field id? crap.FilterValue
 ---@field title? crap.FilterValue
 ---@field slug? crap.FilterValue
+---@field seo__meta_title? crap.FilterValue
+---@field seo__meta_description? crap.FilterValue
+---@field seo__no_index? crap.FilterValue
 ---@field created_at? crap.FilterValue
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Tags
 ---@field filters? crap.filters.Tags
----@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
 ---@field locale? string

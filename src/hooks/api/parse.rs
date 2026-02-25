@@ -1,5 +1,7 @@
 //! Parsing functions for collection/global Lua definitions into Rust types.
 
+use std::str::FromStr;
+
 use anyhow::Result;
 use mlua::{Lua, Table, Value};
 
@@ -681,6 +683,19 @@ pub fn parse_job_definition(slug: &str, config: &Table) -> Result<crate::core::j
         .ok_or_else(|| anyhow::anyhow!("Job '{}' missing required 'handler' field", slug))?;
 
     let schedule = get_string(config, "schedule");
+
+    // Validate cron expression early (the cron crate needs 6-7 fields with seconds;
+    // we accept standard 5-field expressions and normalize by prepending "0")
+    if let Some(ref expr) = schedule {
+        let normalized = {
+            let fields: Vec<&str> = expr.split_whitespace().collect();
+            if fields.len() == 5 { format!("0 {}", expr) } else { expr.clone() }
+        };
+        if cron::Schedule::from_str(&normalized).is_err() {
+            anyhow::bail!("Job '{}' has invalid cron expression '{}'", slug, expr);
+        }
+    }
+
     let queue = get_string(config, "queue").unwrap_or_else(|| "default".to_string());
     let retries = config.get::<Option<u32>>("retries").ok().flatten().unwrap_or(0);
     let timeout = config.get::<Option<u64>>("timeout").ok().flatten().unwrap_or(60);

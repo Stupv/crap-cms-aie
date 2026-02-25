@@ -323,6 +323,21 @@ crap.collections = {}
 --- @param config crap.CollectionConfig  Collection configuration.
 function crap.collections.define(slug, config) end
 
+--- Schema introspection sub-table for collections.
+--- @class crap.collections.config
+crap.collections.config = {}
+
+--- Get a collection's current definition as a Lua table.
+--- Returns the full config compatible with `define()` for round-trip editing.
+--- @param slug string  Collection slug.
+--- @return crap.CollectionConfig?  The collection config, or nil if not found.
+function crap.collections.config.get(slug) end
+
+--- List all registered collections as a slug-keyed table of full configs.
+--- Iterate with `for slug, def in pairs(crap.collections.config.list()) do ... end`.
+--- @return table<string, crap.CollectionConfig>  Slug -> collection config map.
+function crap.collections.config.list() end
+
 --- Find documents matching a query. Returns documents and total count.
 --- Inside hooks, runs within the parent operation's transaction.
 --- @param collection string        Collection slug.
@@ -438,6 +453,21 @@ crap.globals = {}
 --- @param slug   string            Unique global identifier.
 --- @param config crap.GlobalConfig Global configuration.
 function crap.globals.define(slug, config) end
+
+--- Schema introspection sub-table for globals.
+--- @class crap.globals.config
+crap.globals.config = {}
+
+--- Get a global's current definition as a Lua table.
+--- Returns the full config compatible with `define()` for round-trip editing.
+--- @param slug string  Global slug.
+--- @return crap.GlobalConfig?  The global config, or nil if not found.
+function crap.globals.config.get(slug) end
+
+--- List all registered globals as a slug-keyed table of full configs.
+--- Iterate with `for slug, def in pairs(crap.globals.config.list()) do ... end`.
+--- @return table<string, crap.GlobalConfig>  Slug -> global config map.
+function crap.globals.config.list() end
 
 --- @class crap.GlobalGetOptions
 --- @field locale? string  Locale code for localized fields. Nil = default locale.
@@ -859,3 +889,47 @@ function crap.schema.list_collections() end
 --- List all global slugs and labels.
 --- @return { slug: string, labels: { singular?: string, plural?: string } }[]
 function crap.schema.list_globals() end
+
+
+-- ── crap.jobs ─────────────────────────────────────────────
+
+--- Background job definition and queuing API.
+--- @class crap.jobs
+crap.jobs = {}
+
+--- @class crap.JobLabels
+--- @field singular? string  Display label for the job (e.g., "Cleanup Expired Posts").
+
+--- @class crap.JobDefinitionConfig
+--- @field handler         string            Lua function ref for the job handler (required, e.g., "jobs.cleanup.run").
+--- @field schedule?       string            Cron expression (e.g., "0 3 * * *"). If set, job runs on this schedule.
+--- @field queue?          string            Queue name (default: "default").
+--- @field retries?        integer           Max retry attempts on failure (default: 0).
+--- @field timeout?        integer           Seconds before a running job is marked failed (default: 60).
+--- @field concurrency?    integer           Max concurrent runs of this job (default: 1).
+--- @field skip_if_running? boolean          Skip scheduled run if previous still running (default: true).
+--- @field labels?         crap.JobLabels    Display labels for admin UI.
+--- @field access?         string            Lua function ref for access control on gRPC/CLI trigger.
+
+--- @class crap.JobHandlerContext
+--- @field data table<string, any>  Input data from queue() or {} for cron.
+--- @field job  crap.JobInfo        Job metadata.
+
+--- @class crap.JobInfo
+--- @field slug         string   Job definition slug.
+--- @field attempt      integer  Current attempt number (1-based).
+--- @field max_attempts integer  Total max attempts.
+
+--- Define a background job. Call in init.lua or jobs/*.lua files.
+--- The handler function receives a context table with `data` and `job` fields,
+--- and has full CRUD access (crap.collections.find/create/update/delete).
+--- @param slug   string                    Unique job identifier.
+--- @param config crap.JobDefinitionConfig  Job configuration.
+function crap.jobs.define(slug, config) end
+
+--- Queue a job for background execution. Returns the job run ID.
+--- Only available inside hooks with transaction context.
+--- @param slug string                     Job slug (must be previously defined).
+--- @param data? table<string, any>        Input data passed to the handler (default: {}).
+--- @return string job_id  The queued job run ID.
+function crap.jobs.queue(slug, data) end
