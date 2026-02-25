@@ -14,7 +14,7 @@ use crap_cms::admin::AdminState;
 use crap_cms::admin::server::build_router;
 use crap_cms::admin::templates;
 use crap_cms::admin::translations::Translations;
-use crap_cms::config::CrapConfig;
+use crap_cms::config::{CrapConfig, LocaleConfig};
 use crap_cms::core::auth;
 use crap_cms::core::collection::*;
 use crap_cms::core::email::EmailRenderer;
@@ -156,10 +156,19 @@ fn setup_app(
     collections: Vec<CollectionDefinition>,
     globals: Vec<GlobalDefinition>,
 ) -> TestApp {
-    let tmp = tempfile::tempdir().expect("tempdir");
     let mut config = CrapConfig::default();
     config.database.path = "test.db".to_string();
     config.auth.secret = "test-jwt-secret".to_string();
+    setup_app_with_config(collections, globals, config)
+}
+
+fn setup_app_with_config(
+    collections: Vec<CollectionDefinition>,
+    globals: Vec<GlobalDefinition>,
+    config: CrapConfig,
+) -> TestApp {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let config = config;
 
     let db_pool = pool::create_pool(tmp.path(), &config).expect("create pool");
 
@@ -1180,4 +1189,293 @@ async fn upload_api_delete_nonexistent_returns_404() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+// ── Localized collection regression tests ─────────────────────────────
+// Bug: admin list/edit views passed None for locale_ctx, generating SQL
+// with bare column names (e.g. "title") while the actual DB columns are
+// locale-suffixed (e.g. "title__en", "title__de"). This caused 500 errors.
+
+fn make_locale_config() -> LocaleConfig {
+    LocaleConfig {
+        default_locale: "en".to_string(),
+        locales: vec!["en".to_string(), "de".to_string()],
+        fallback: true,
+    }
+}
+
+/// A collection where every field is localized.
+fn make_localized_pages_def() -> CollectionDefinition {
+    CollectionDefinition {
+        slug: "pages".to_string(),
+        labels: CollectionLabels {
+            singular: Some(LocalizedString::Plain("Page".to_string())),
+            plural: Some(LocalizedString::Plain("Pages".to_string())),
+        },
+        timestamps: true,
+        fields: vec![
+            FieldDefinition {
+                name: "title".to_string(),
+                field_type: FieldType::Text,
+                required: true,
+                localized: true,
+                unique: false,
+                validate: None,
+                default_value: None,
+                options: Vec::new(),
+                admin: FieldAdmin::default(),
+                hooks: FieldHooks::default(),
+                access: FieldAccess::default(),
+                relationship: None,
+                fields: Vec::new(),
+                blocks: Vec::new(),
+            },
+            FieldDefinition {
+                name: "body".to_string(),
+                field_type: FieldType::Textarea,
+                required: false,
+                localized: true,
+                unique: false,
+                validate: None,
+                default_value: None,
+                options: Vec::new(),
+                admin: FieldAdmin::default(),
+                hooks: FieldHooks::default(),
+                access: FieldAccess::default(),
+                relationship: None,
+                fields: Vec::new(),
+                blocks: Vec::new(),
+            },
+        ],
+        admin: CollectionAdmin {
+            use_as_title: Some("title".to_string()),
+            ..CollectionAdmin::default()
+        },
+        hooks: CollectionHooks::default(),
+        auth: None,
+        upload: None,
+        access: CollectionAccess::default(),
+        live: None,
+        versions: None,
+    }
+}
+
+fn setup_localized_app() -> TestApp {
+    let mut config = CrapConfig::default();
+    config.database.path = "test.db".to_string();
+    config.auth.secret = "test-jwt-secret".to_string();
+    config.locale = make_locale_config();
+    setup_app_with_config(
+        vec![make_localized_pages_def(), make_users_def()],
+        vec![],
+        config,
+    )
+}
+
+/// Regression: listing a localized collection must return 200, not 500.
+#[tokio::test]
+async fn localized_collection_list_returns_200() {
+    let app = setup_localized_app();
+    let user_id = create_test_user(&app, "admin@test.com", "pass123");
+    let cookie = make_auth_cookie(&app, &user_id, "admin@test.com");
+
+    let resp = app
+        .router
+        .oneshot(
+            Request::get("/admin/collections/pages")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+/// Regression: listing a localized collection with data must show items.
+#[tokio::test]
+async fn localized_collection_list_shows_documents() {
+    let app = setup_localized_app();
+    let user_id = create_test_user(&app, "admin@test.com", "pass123");
+    let cookie = make_auth_cookie(&app, &user_id, "admin@test.com");
+
+    // Insert a document with the default locale
+    {
+        let reg = app.registry.read().unwrap();
+        let def = reg.get_collection("pages").unwrap().clone();
+        drop(reg);
+
+        let locale_ctx = query::LocaleContext {
+            mode: query::LocaleMode::Single("en".to_string()),
+            config: make_locale_config(),
+        };
+        let mut data = std::collections::HashMap::new();
+        data.insert("title".to_string(), "Hello World".to_string());
+        data.insert("body".to_string(), "Page body".to_string());
+        let mut conn = app.pool.get().unwrap();
+        let tx = conn.transaction().unwrap();
+        query::create(&tx, "pages", &def, &data, Some(&locale_ctx)).unwrap();
+        tx.commit().unwrap();
+    }
+
+    let resp = app
+        .router
+        .oneshot(
+            Request::get("/admin/collections/pages")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp.into_body()).await;
+    assert!(body.contains("Hello World"), "list should contain the document title");
+}
+
+/// Regression: creating a document in a localized collection via admin form must succeed.
+#[tokio::test]
+async fn localized_collection_create_via_form() {
+    let app = setup_localized_app();
+    let user_id = create_test_user(&app, "admin@test.com", "pass123");
+    let cookie = make_auth_cookie(&app, &user_id, "admin@test.com");
+
+    let resp = app
+        .router
+        .oneshot(
+            Request::post("/admin/collections/pages")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("cookie", &cookie)
+                .body(Body::from("title=Created+Page&body=Some+content&_locale=en"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    // Successful create redirects (303 See Other)
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+}
+
+/// Regression: the edit page for a localized document must return 200.
+#[tokio::test]
+async fn localized_collection_edit_page_returns_200() {
+    let app = setup_localized_app();
+    let user_id = create_test_user(&app, "admin@test.com", "pass123");
+    let cookie = make_auth_cookie(&app, &user_id, "admin@test.com");
+
+    // Insert a document
+    let doc_id = {
+        let reg = app.registry.read().unwrap();
+        let def = reg.get_collection("pages").unwrap().clone();
+        drop(reg);
+
+        let locale_ctx = query::LocaleContext {
+            mode: query::LocaleMode::Single("en".to_string()),
+            config: make_locale_config(),
+        };
+        let mut data = std::collections::HashMap::new();
+        data.insert("title".to_string(), "Editable Page".to_string());
+        data.insert("body".to_string(), "Content".to_string());
+        let mut conn = app.pool.get().unwrap();
+        let tx = conn.transaction().unwrap();
+        let doc = query::create(&tx, "pages", &def, &data, Some(&locale_ctx)).unwrap();
+        tx.commit().unwrap();
+        doc.id
+    };
+
+    let resp = app
+        .router
+        .oneshot(
+            Request::get(&format!("/admin/collections/pages/{}", doc_id))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp.into_body()).await;
+    assert!(body.contains("Editable Page"), "edit page should contain the document title");
+}
+
+/// Regression: deleting a document in a localized collection must succeed.
+#[tokio::test]
+async fn localized_collection_delete_succeeds() {
+    let app = setup_localized_app();
+    let user_id = create_test_user(&app, "admin@test.com", "pass123");
+    let cookie = make_auth_cookie(&app, &user_id, "admin@test.com");
+
+    // Insert a document
+    let doc_id = {
+        let reg = app.registry.read().unwrap();
+        let def = reg.get_collection("pages").unwrap().clone();
+        drop(reg);
+
+        let locale_ctx = query::LocaleContext {
+            mode: query::LocaleMode::Single("en".to_string()),
+            config: make_locale_config(),
+        };
+        let mut data = std::collections::HashMap::new();
+        data.insert("title".to_string(), "To Delete".to_string());
+        let mut conn = app.pool.get().unwrap();
+        let tx = conn.transaction().unwrap();
+        let doc = query::create(&tx, "pages", &def, &data, Some(&locale_ctx)).unwrap();
+        tx.commit().unwrap();
+        doc.id
+    };
+
+    let resp = app
+        .router
+        .oneshot(
+            Request::delete(format!("/admin/collections/pages/{}", doc_id))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    // Successful delete redirects or returns OK
+    let status = resp.status();
+    assert!(
+        status == StatusCode::SEE_OTHER || status == StatusCode::FOUND || status == StatusCode::OK,
+        "expected redirect after delete, got {}",
+        status
+    );
+}
+
+/// Regression: searching a localized collection must not crash.
+#[tokio::test]
+async fn localized_collection_search_returns_200() {
+    let app = setup_localized_app();
+    let user_id = create_test_user(&app, "admin@test.com", "pass123");
+    let cookie = make_auth_cookie(&app, &user_id, "admin@test.com");
+
+    // Insert a document so search has data to work with
+    {
+        let reg = app.registry.read().unwrap();
+        let def = reg.get_collection("pages").unwrap().clone();
+        drop(reg);
+
+        let locale_ctx = query::LocaleContext {
+            mode: query::LocaleMode::Single("en".to_string()),
+            config: make_locale_config(),
+        };
+        let mut data = std::collections::HashMap::new();
+        data.insert("title".to_string(), "Searchable Page".to_string());
+        let mut conn = app.pool.get().unwrap();
+        let tx = conn.transaction().unwrap();
+        query::create(&tx, "pages", &def, &data, Some(&locale_ctx)).unwrap();
+        tx.commit().unwrap();
+    }
+
+    let resp = app
+        .router
+        .oneshot(
+            Request::get("/admin/collections/pages?search=Searchable")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
 }

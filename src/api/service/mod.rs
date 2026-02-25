@@ -1087,8 +1087,9 @@ impl ContentApi for ContentService {
                 .map_err(|_| Status::unauthenticated("Invalid or expired token"))?;
             let pool = self.pool.clone();
             let registry = self.registry.clone();
+            let locale_config = self.locale_config.clone();
             tokio::task::spawn_blocking(move || {
-                crate::admin::server::load_auth_user(&pool, &registry, &claims)
+                crate::admin::server::load_auth_user(&pool, &registry, &claims, &locale_config)
             })
             .await
             .map_err(|e| Status::internal(format!("Task error: {}", e)))?

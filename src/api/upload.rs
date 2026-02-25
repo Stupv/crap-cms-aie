@@ -36,7 +36,7 @@ fn extract_bearer_user(state: &AdminState, headers: &HeaderMap) -> Option<AuthUs
     let auth_header = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
     let token = auth_header.strip_prefix("Bearer ")?;
     let claims = auth::validate_token(token, &state.jwt_secret).ok()?;
-    load_auth_user(&state.pool, &state.registry, &claims)
+    load_auth_user(&state.pool, &state.registry, &claims, &state.config.locale)
 }
 
 /// Return a JSON error response.

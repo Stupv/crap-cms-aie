@@ -138,6 +138,8 @@ pub async fn list_items(
         select: None,
     };
 
+    let locale_ctx = LocaleContext::from_locale_string(None, &state.config.locale);
+
     let pool = state.pool.clone();
     let runner = state.hook_runner.clone();
     let hooks = def.hooks.clone();
@@ -146,8 +148,8 @@ pub async fn list_items(
     let def_owned = def.clone();
     let read_result = tokio::task::spawn_blocking(move || {
         runner.fire_before_read(&hooks, &slug_owned, "find", HashMap::new())?;
-        let total = ops::count_documents(&pool, &slug_owned, &def_owned, &filters, None)?;
-        let mut docs = ops::find_documents(&pool, &slug_owned, &def_owned, &find_query, None)?;
+        let total = ops::count_documents(&pool, &slug_owned, &def_owned, &filters, locale_ctx.as_ref())?;
+        let mut docs = ops::find_documents(&pool, &slug_owned, &def_owned, &find_query, locale_ctx.as_ref())?;
         // Assemble sizes for upload collections
         if let Some(ref upload_config) = def_owned.upload {
             if upload_config.enabled {
@@ -888,7 +890,7 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
         if let Some(ref upload_config) = def.upload {
             // Load old document to get old file paths for cleanup
             if let Ok(conn) = state.pool.get() {
-                if let Ok(Some(old_doc)) = query::find_by_id(&conn, slug, &def, id, None) {
+                if let Ok(Some(old_doc)) = query::find_by_id(&conn, slug, &def, id, locale_ctx.as_ref()) {
                     old_doc_fields = Some(old_doc.fields.clone());
                 }
             }
@@ -960,7 +962,7 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
             let mut conn = pool.get().map_err(|e| anyhow::anyhow!("DB connection: {}", e))?;
             let tx = conn.transaction().map_err(|e| anyhow::anyhow!("Start transaction: {}", e))?;
             query::set_document_status(&tx, &slug_owned, &id_owned, "draft")?;
-            let doc = query::find_by_id(&tx, &slug_owned, &def_owned, &id_owned, None)?
+            let doc = query::find_by_id(&tx, &slug_owned, &def_owned, &id_owned, locale_ctx.as_ref())?
                 .ok_or_else(|| anyhow::anyhow!("Document not found"))?;
             let snapshot = query::build_snapshot(&tx, &slug_owned, &def_owned, &doc)?;
             query::create_version(&tx, &slug_owned, &id_owned, "draft", &snapshot)?;
@@ -1124,9 +1126,10 @@ async fn delete_action_impl(state: &AdminState, slug: &str, id: &str, auth_user:
     }
 
     // For upload collections, load the document before deleting to get file paths
+    let delete_locale_ctx = LocaleContext::from_locale_string(None, &state.config.locale);
     let upload_doc_fields = if def.is_upload_collection() {
         state.pool.get().ok()
-            .and_then(|conn| query::find_by_id(&conn, slug, &def, id, None).ok().flatten())
+            .and_then(|conn| query::find_by_id(&conn, slug, &def, id, delete_locale_ctx.as_ref()).ok().flatten())
             .map(|doc| doc.fields.clone())
     } else {
         None

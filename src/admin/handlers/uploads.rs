@@ -87,7 +87,7 @@ fn extract_auth_user(
 
     if let Some(token) = extract_cookie(cookie_header, "crap_session") {
         if let Ok(claims) = auth::validate_token(token, &state.jwt_secret) {
-            if let Some(auth_user) = load_auth_user(&state.pool, &state.registry, &claims) {
+            if let Some(auth_user) = load_auth_user(&state.pool, &state.registry, &claims, &state.config.locale) {
                 return Some(auth_user);
             }
         }
@@ -101,7 +101,7 @@ fn extract_auth_user(
 
     if let Some(token) = auth_header.strip_prefix("Bearer ") {
         if let Ok(claims) = auth::validate_token(token, &state.jwt_secret) {
-            if let Some(auth_user) = load_auth_user(&state.pool, &state.registry, &claims) {
+            if let Some(auth_user) = load_auth_user(&state.pool, &state.registry, &claims, &state.config.locale) {
                 return Some(auth_user);
             }
         }

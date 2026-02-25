@@ -65,13 +65,34 @@ pub struct MakeHookOptions<'a> {
     pub force: bool,
 }
 
+/// Options for `init()`. Controls what gets written to `crap.toml`.
+pub struct InitOptions {
+    pub admin_port: u16,
+    pub grpc_port: u16,
+    pub locales: Vec<String>,
+    pub default_locale: String,
+    pub auth_secret: String,
+}
+
+impl Default for InitOptions {
+    fn default() -> Self {
+        Self {
+            admin_port: 3000,
+            grpc_port: 50051,
+            locales: vec![],
+            default_locale: "en".to_string(),
+            auth_secret: nanoid::nanoid!(64),
+        }
+    }
+}
+
 /// Scaffold a new config directory with minimum viable structure.
 ///
 /// Creates: crap.toml, init.lua, .luarc.json, .gitignore, and empty directories
 /// for collections, globals, hooks, templates, and static.
 ///
 /// Refuses to overwrite if the directory already contains a crap.toml.
-pub fn init(dir: Option<PathBuf>) -> Result<()> {
+pub fn init(dir: Option<PathBuf>, opts: &InitOptions) -> Result<()> {
     let target = dir.unwrap_or_else(|| PathBuf::from("./crap-cms"));
 
     // Refuse to overwrite existing config
@@ -96,35 +117,35 @@ pub fn init(dir: Option<PathBuf>) -> Result<()> {
     fs::write(target.join("types/crap.lua"), LUA_API_TYPES)
         .context("Failed to write types/crap.lua")?;
 
-    // crap.toml — sensible defaults with commented-out options
-    fs::write(
-        &toml_path,
-        r#"[server]
-admin_port = 3000
-grpc_port = 50051
-host = "0.0.0.0"
+    // Build crap.toml dynamically from InitOptions
+    let mut toml = String::new();
+    toml.push_str(&format!(
+        "[server]\nadmin_port = {}\ngrpc_port = {}\nhost = \"0.0.0.0\"\n",
+        opts.admin_port, opts.grpc_port
+    ));
+    toml.push_str("\n[database]\npath = \"data/crap.db\"\n");
+    toml.push_str("\n[admin]\ndev_mode = true\n");
+    toml.push_str(&format!(
+        "\n[auth]\nsecret = \"{}\"\n# token_expiry = 7200           # seconds, default 2 hours\n",
+        opts.auth_secret
+    ));
+    toml.push_str("\n[live]\n# enabled = true                # enable SSE + gRPC Subscribe for live mutation events\n# channel_capacity = 1024       # broadcast channel buffer size\n");
 
-[database]
-path = "data/crap.db"
+    if opts.locales.is_empty() {
+        toml.push_str("\n# [locale]\n# default_locale = \"en\"         # default locale for content\n# locales = [\"en\", \"de\"]        # supported locales (empty = disabled)\n# fallback = true               # fall back to default locale if field is empty\n");
+    } else {
+        let locales_str = opts.locales.iter()
+            .map(|l| format!("\"{}\"", l))
+            .collect::<Vec<_>>()
+            .join(", ");
+        toml.push_str(&format!(
+            "\n[locale]\ndefault_locale = \"{}\"\nlocales = [{}]\nfallback = true\n",
+            opts.default_locale, locales_str
+        ));
+    }
 
-[admin]
-dev_mode = true
-
-[auth]
-# secret = "your-secret-here"   # omit to auto-generate (tokens won't survive restarts)
-# token_expiry = 7200           # seconds, default 2 hours
-
-[live]
-# enabled = true                # enable SSE + gRPC Subscribe for live mutation events
-# channel_capacity = 1024       # broadcast channel buffer size
-
-# [locale]
-# default_locale = "en"         # default locale for content
-# locales = ["en", "de"]        # supported locales (empty = disabled)
-# fallback = true               # fall back to default locale if field is empty
-"#,
-    )
-    .context("Failed to write crap.toml")?;
+    fs::write(&toml_path, &toml)
+        .context("Failed to write crap.toml")?;
 
     // init.lua — empty entry point with comments
     fs::write(
@@ -202,11 +223,13 @@ pub fn make_collection(
             name: "alt".to_string(),
             field_type: "text".to_string(),
             required: false,
+            localized: false,
         }],
         None => vec![FieldStub {
             name: "title".to_string(),
             field_type: "text".to_string(),
             required: true,
+            localized: false,
         }],
     };
 
@@ -240,6 +263,9 @@ pub fn make_collection(
         lua.push_str(&format!("            type = \"{}\",\n", field.field_type));
         if field.required {
             lua.push_str("            required = true,\n");
+        }
+        if field.localized {
+            lua.push_str("            localized = true,\n");
         }
         lua.push_str("        },\n");
     }
@@ -1008,9 +1034,13 @@ struct FieldStub {
     name: String,
     field_type: String,
     required: bool,
+    localized: bool,
 }
 
-/// Parse inline field shorthand: "title:text:required,status:select,body:textarea"
+/// Parse inline field shorthand: "title:text:required,status:select,body:textarea:localized"
+///
+/// Modifiers after the type are order-independent flags: `required`, `localized`.
+/// E.g., `"title:text:required:localized"` or `"title:text:localized:required"`.
 fn parse_fields_shorthand(s: &str) -> Result<Vec<FieldStub>> {
 
     let mut fields = Vec::new();
@@ -1022,7 +1052,7 @@ fn parse_fields_shorthand(s: &str) -> Result<Vec<FieldStub>> {
         let segments: Vec<&str> = part.split(':').collect();
         if segments.len() < 2 {
             anyhow::bail!(
-                "Invalid field shorthand '{}' — expected 'name:type[:required]'",
+                "Invalid field shorthand '{}' — expected 'name:type[:required][:localized]'",
                 part
             );
         }
@@ -1035,8 +1065,19 @@ fn parse_fields_shorthand(s: &str) -> Result<Vec<FieldStub>> {
                 VALID_FIELD_TYPES.join(", ")
             );
         }
-        let required = segments.get(2).map(|s| *s == "required").unwrap_or(false);
-        fields.push(FieldStub { name, field_type, required });
+        let mut required = false;
+        let mut localized = false;
+        for seg in &segments[2..] {
+            match *seg {
+                "required" => required = true,
+                "localized" => localized = true,
+                other => anyhow::bail!(
+                    "Unknown modifier '{}' in field '{}' — valid: required, localized",
+                    other, name
+                ),
+            }
+        }
+        fields.push(FieldStub { name, field_type, required, localized });
     }
 
     if fields.is_empty() {
@@ -1085,6 +1126,7 @@ mod tests {
         assert_eq!(fields[0].name, "title");
         assert_eq!(fields[0].field_type, "text");
         assert!(fields[0].required);
+        assert!(!fields[0].localized);
         assert_eq!(fields[1].name, "body");
         assert_eq!(fields[1].field_type, "textarea");
         assert!(!fields[1].required);
@@ -1093,17 +1135,44 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_fields_shorthand_localized() {
+        // localized only
+        let fields = parse_fields_shorthand("title:text:localized").unwrap();
+        assert_eq!(fields[0].name, "title");
+        assert!(!fields[0].required);
+        assert!(fields[0].localized);
+
+        // required + localized (order 1)
+        let fields = parse_fields_shorthand("title:text:required:localized").unwrap();
+        assert!(fields[0].required);
+        assert!(fields[0].localized);
+
+        // localized + required (order 2)
+        let fields = parse_fields_shorthand("title:text:localized:required").unwrap();
+        assert!(fields[0].required);
+        assert!(fields[0].localized);
+
+        // mixed fields: one localized, one not
+        let fields = parse_fields_shorthand("title:text:required:localized,slug:text:required").unwrap();
+        assert_eq!(fields.len(), 2);
+        assert!(fields[0].localized);
+        assert!(!fields[1].localized);
+    }
+
+    #[test]
     fn test_parse_fields_shorthand_invalid() {
         assert!(parse_fields_shorthand("title").is_err());
         assert!(parse_fields_shorthand("title:unknown").is_err());
         assert!(parse_fields_shorthand("").is_err());
+        // unknown modifier
+        assert!(parse_fields_shorthand("title:text:bogus").is_err());
     }
 
     #[test]
     fn test_init_creates_structure() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let target = tmp.path().join("my-project");
-        init(Some(target.clone())).unwrap();
+        init(Some(target.clone()), &InitOptions::default()).unwrap();
 
         assert!(target.join("crap.toml").exists());
         assert!(target.join("init.lua").exists());
@@ -1120,13 +1189,54 @@ mod tests {
     }
 
     #[test]
+    fn test_init_generates_dynamic_toml() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let target = tmp.path().join("dynamic");
+        let opts = InitOptions {
+            admin_port: 4000,
+            grpc_port: 50052,
+            locales: vec![],
+            default_locale: "en".to_string(),
+            auth_secret: "test-secret-123".to_string(),
+        };
+        init(Some(target.clone()), &opts).unwrap();
+
+        let content = fs::read_to_string(target.join("crap.toml")).unwrap();
+        assert!(content.contains("admin_port = 4000"));
+        assert!(content.contains("grpc_port = 50052"));
+        assert!(content.contains("secret = \"test-secret-123\""));
+        // No active [locale] section when locales is empty
+        assert!(content.contains("# [locale]"));
+    }
+
+    #[test]
+    fn test_init_with_locales() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let target = tmp.path().join("localized");
+        let opts = InitOptions {
+            admin_port: 3000,
+            grpc_port: 50051,
+            locales: vec!["en".to_string(), "de".to_string(), "fr".to_string()],
+            default_locale: "en".to_string(),
+            auth_secret: "secret".to_string(),
+        };
+        init(Some(target.clone()), &opts).unwrap();
+
+        let content = fs::read_to_string(target.join("crap.toml")).unwrap();
+        assert!(content.contains("[locale]"));
+        assert!(content.contains("default_locale = \"en\""));
+        assert!(content.contains("locales = [\"en\", \"de\", \"fr\"]"));
+        assert!(content.contains("fallback = true"));
+    }
+
+    #[test]
     fn test_init_refuses_overwrite() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let target = tmp.path().join("existing");
         fs::create_dir_all(&target).unwrap();
         fs::write(target.join("crap.toml"), "# existing").unwrap();
 
-        let result = init(Some(target));
+        let result = init(Some(target), &InitOptions::default());
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("refusing to overwrite"));
     }

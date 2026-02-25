@@ -198,7 +198,7 @@ fn unknown_subcommand_fails() {
 fn init_creates_structure() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let target = tmp.path().join("my-project");
-    scaffold::init(Some(target.clone())).unwrap();
+    scaffold::init(Some(target.clone()), &scaffold::InitOptions::default()).unwrap();
 
     assert!(target.join("crap.toml").exists());
     assert!(target.join("init.lua").exists());
@@ -218,7 +218,7 @@ fn init_creates_structure() {
 fn init_types_content() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let target = tmp.path().join("types-test");
-    scaffold::init(Some(target.clone())).unwrap();
+    scaffold::init(Some(target.clone()), &scaffold::InitOptions::default()).unwrap();
 
     let content = std::fs::read_to_string(target.join("types/crap.lua")).unwrap();
     assert!(!content.is_empty(), "types/crap.lua should not be empty");
@@ -232,7 +232,7 @@ fn init_refuses_existing() {
     std::fs::create_dir_all(&target).unwrap();
     std::fs::write(target.join("crap.toml"), "# existing").unwrap();
 
-    let result = scaffold::init(Some(target));
+    let result = scaffold::init(Some(target), &scaffold::InitOptions::default());
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("refusing to overwrite"));
 }
@@ -241,7 +241,7 @@ fn init_refuses_existing() {
 fn init_custom_dir() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let custom = tmp.path().join("deep").join("nested").join("project");
-    scaffold::init(Some(custom.clone())).unwrap();
+    scaffold::init(Some(custom.clone()), &scaffold::InitOptions::default()).unwrap();
 
     assert!(custom.join("crap.toml").exists());
     assert!(custom.join("init.lua").exists());
@@ -251,7 +251,7 @@ fn init_custom_dir() {
 fn init_content_valid() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let target = tmp.path().join("valid-config");
-    scaffold::init(Some(target.clone())).unwrap();
+    scaffold::init(Some(target.clone()), &scaffold::InitOptions::default()).unwrap();
 
     let cfg = CrapConfig::load(&target);
     assert!(cfg.is_ok(), "scaffolded crap.toml should load: {:?}", cfg.err());
@@ -261,7 +261,7 @@ fn init_content_valid() {
 fn init_lua_loadable() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let target = tmp.path().join("lua-test");
-    scaffold::init(Some(target.clone())).unwrap();
+    scaffold::init(Some(target.clone()), &scaffold::InitOptions::default()).unwrap();
 
     let cfg = CrapConfig::load(&target).unwrap();
     let result = hooks::init_lua(&target, &cfg);
@@ -338,7 +338,7 @@ fn make_collection_invalid_slug() {
 fn make_collection_roundtrip() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let config_dir = tmp.path().join("project");
-    scaffold::init(Some(config_dir.clone())).unwrap();
+    scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
 
     scaffold::make_collection(&config_dir, "articles", Some("title:text:required,body:richtext"), false, false, false, false, false).unwrap();
 
@@ -380,7 +380,7 @@ fn make_global_refuses_overwrite() {
 fn make_global_roundtrip() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let config_dir = tmp.path().join("project");
-    scaffold::init(Some(config_dir.clone())).unwrap();
+    scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
 
     scaffold::make_global(&config_dir, "navigation", false).unwrap();
 
@@ -608,7 +608,7 @@ fn status_collection_counts() {
 fn status_empty_project() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let config_dir = tmp.path().join("empty-project");
-    scaffold::init(Some(config_dir.clone())).unwrap();
+    scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
 
     let cfg = CrapConfig::load(&config_dir).unwrap();
     let registry = hooks::init_lua(&config_dir, &cfg).unwrap();

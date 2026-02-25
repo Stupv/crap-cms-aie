@@ -768,8 +768,61 @@ fn init_command(dir: Option<PathBuf>) -> Result<()> {
 
     let config_dir = dir.clone().unwrap_or_else(|| PathBuf::from("./crap-cms"));
 
+    // Collect init options via interactive prompts
+    let admin_port: u16 = Input::new()
+        .with_prompt("Admin port")
+        .default(3000)
+        .interact_text()
+        .context("Failed to read admin port")?;
+
+    let grpc_port: u16 = Input::new()
+        .with_prompt("gRPC port")
+        .default(50051)
+        .interact_text()
+        .context("Failed to read gRPC port")?;
+
+    let enable_locale = Confirm::new()
+        .with_prompt("Enable localization?")
+        .default(false)
+        .interact()
+        .context("Failed to read localization preference")?;
+
+    let (default_locale, locales) = if enable_locale {
+        let default: String = Input::new()
+            .with_prompt("Default locale")
+            .default("en".to_string())
+            .interact_text()
+            .context("Failed to read default locale")?;
+
+        let extra: String = Input::new()
+            .with_prompt("Additional locales (comma-separated, e.g. \"de,fr\")")
+            .default(String::new())
+            .allow_empty(true)
+            .interact_text()
+            .context("Failed to read additional locales")?;
+
+        let mut all_locales = vec![default.clone()];
+        for l in extra.split(',') {
+            let l = l.trim().to_string();
+            if !l.is_empty() && !all_locales.contains(&l) {
+                all_locales.push(l);
+            }
+        }
+        (default, all_locales)
+    } else {
+        ("en".to_string(), vec![])
+    };
+
+    let opts = scaffold::InitOptions {
+        admin_port,
+        grpc_port,
+        locales,
+        default_locale,
+        auth_secret: nanoid::nanoid!(64),
+    };
+
     // 1. Scaffold the base directory
-    scaffold::init(dir)?;
+    scaffold::init(dir, &opts)?;
 
     println!();
 
@@ -1055,9 +1108,23 @@ fn make_collection_command(
                     .interact()
                     .context("Failed to read required flag")?;
 
+                // Only prompt for localized if localization is enabled in config
+                let localized = if has_locales_enabled(config_dir) {
+                    Confirm::new()
+                        .with_prompt("Localized?")
+                        .default(false)
+                        .interact()
+                        .context("Failed to read localized flag")?
+                } else {
+                    false
+                };
+
                 let mut part = format!("{}:{}", name, field_type);
                 if required {
                     part.push_str(":required");
+                }
+                if localized {
+                    part.push_str(":localized");
                 }
                 parts.push(part);
             }
@@ -1125,6 +1192,19 @@ fn make_collection_command(
     };
 
     scaffold::make_collection(config_dir, &slug, fields_shorthand.as_deref(), no_timestamps, auth, upload, versions, force)
+}
+
+/// Check if localization is enabled in the config dir's crap.toml.
+/// Returns false if the file can't be read or locale.locales is empty/absent.
+fn has_locales_enabled(config_dir: &Path) -> bool {
+    let toml_path = config_dir.join("crap.toml");
+    let content = std::fs::read_to_string(&toml_path).unwrap_or_default();
+    let table: toml::Table = content.parse().unwrap_or_default();
+    table.get("locale")
+        .and_then(|v| v.get("locales"))
+        .and_then(|v| v.as_array())
+        .map(|a| !a.is_empty())
+        .unwrap_or(false)
 }
 
 /// Try to load collection slugs from the config dir for interactive selection.

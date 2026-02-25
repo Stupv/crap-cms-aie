@@ -318,6 +318,8 @@ pub(super) fn enrich_field_contexts(
         Err(_) => return,
     };
 
+    let rel_locale_ctx = LocaleContext::from_locale_string(None, &state.config.locale);
+
     let defs_iter: Box<dyn Iterator<Item = &crate::core::field::FieldDefinition>> = if filter_hidden {
         Box::new(field_defs.iter().filter(|f| !f.admin.hidden))
     } else {
@@ -332,7 +334,7 @@ pub(super) fn enrich_field_contexts(
                     if let Some(related_def) = reg.get_collection(&rc.collection) {
                         let title_field = related_def.title_field().map(|s| s.to_string());
                         let find_query = query::FindQuery::default();
-                        if let Ok(docs) = query::find(&conn, &rc.collection, related_def, &find_query, None) {
+                        if let Ok(docs) = query::find(&conn, &rc.collection, related_def, &find_query, rel_locale_ctx.as_ref()) {
                             if rc.has_many {
                                 // Get selected IDs from hydrated document
                                 let selected_ids: std::collections::HashSet<String> = match doc_fields.get(&field_def.name) {
@@ -438,7 +440,7 @@ pub(super) fn enrich_field_contexts(
                         let admin_thumbnail = related_def.upload.as_ref()
                             .and_then(|u| u.admin_thumbnail.as_ref().cloned());
                         let find_query = query::FindQuery::default();
-                        if let Ok(mut docs) = query::find(&conn, &rc.collection, related_def, &find_query, None) {
+                        if let Ok(mut docs) = query::find(&conn, &rc.collection, related_def, &find_query, rel_locale_ctx.as_ref()) {
                             // Assemble sizes for thumbnail lookup
                             if let Some(ref upload_config) = related_def.upload {
                                 if upload_config.enabled {

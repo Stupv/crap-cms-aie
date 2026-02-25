@@ -145,7 +145,7 @@ async fn auth_middleware(
     if let Some(t) = token {
         if let Ok(claims) = auth::validate_token(t, &state.jwt_secret) {
             // Try to load full user document for access control
-            if let Some(auth_user) = load_auth_user(&state.pool, &state.registry, &claims) {
+            if let Some(auth_user) = load_auth_user(&state.pool, &state.registry, &claims, &state.config.locale) {
                 request.extensions_mut().insert(auth_user);
             }
             request.extensions_mut().insert(claims);
@@ -223,7 +223,7 @@ async fn auth_middleware(
         }).await;
 
         if let Ok(Some((claims, _secret))) = strategy_result {
-            if let Some(auth_user) = load_auth_user(&state.pool, &state.registry, &claims) {
+            if let Some(auth_user) = load_auth_user(&state.pool, &state.registry, &claims, &state.config.locale) {
                 request.extensions_mut().insert(auth_user);
             }
             request.extensions_mut().insert(claims);
@@ -240,13 +240,15 @@ pub(crate) fn load_auth_user(
     pool: &DbPool,
     registry: &SharedRegistry,
     claims: &auth::Claims,
+    locale_config: &crate::config::LocaleConfig,
 ) -> Option<AuthUser> {
     let def = {
         let reg = registry.read().ok()?;
         reg.get_collection(&claims.collection)?.clone()
     };
+    let locale_ctx = query::LocaleContext::from_locale_string(None, locale_config);
     let conn = pool.get().ok()?;
-    let doc = query::find_by_id(&conn, &claims.collection, &def, &claims.sub, None).ok()??;
+    let doc = query::find_by_id(&conn, &claims.collection, &def, &claims.sub, locale_ctx.as_ref()).ok()??;
     Some(AuthUser {
         claims: claims.clone(),
         user_doc: doc,
