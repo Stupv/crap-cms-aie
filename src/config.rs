@@ -184,11 +184,23 @@ impl Default for LiveConfig {
     }
 }
 
-/// Hook configuration — currently just `on_init` script references.
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+/// Hook configuration — `on_init` script references and recursion limits.
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct HooksConfig {
     pub on_init: Vec<String>,
+    /// Max hook recursion depth for Lua CRUD → hook → CRUD chains.
+    /// 0 = disable hooks from Lua CRUD entirely. Default: 3.
+    pub max_depth: u32,
+}
+
+impl Default for HooksConfig {
+    fn default() -> Self {
+        Self {
+            on_init: Vec::new(),
+            max_depth: 3,
+        }
+    }
 }
 
 /// JWT authentication settings.

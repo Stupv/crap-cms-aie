@@ -1072,36 +1072,23 @@ async fn delete_action_impl(state: &AdminState, slug: &str, id: &str, auth_user:
         _ => {}
     }
 
-    // For upload collections, load the document before deleting to get file paths
-    let delete_locale_ctx = LocaleContext::from_locale_string(None, &state.config.locale);
-    let upload_doc_fields = if def.is_upload_collection() {
-        state.pool.get().ok()
-            .and_then(|conn| query::find_by_id(&conn, slug, &def, id, delete_locale_ctx.as_ref()).ok().flatten())
-            .map(|doc| doc.fields.clone())
-    } else {
-        None
-    };
-
-    // Before hooks + delete in a single transaction
+    // Before hooks + delete + upload cleanup in a single transaction
     let pool = state.pool.clone();
     let runner = state.hook_runner.clone();
-    let hooks = def.hooks.clone();
+    let def_clone = def.clone();
     let slug_owned = slug.to_string();
     let id_owned = id.to_string();
     let user_doc = get_user_doc(auth_user).cloned();
+    let config_dir = state.config_dir.clone();
     let result = tokio::task::spawn_blocking(move || {
         crate::service::delete_document(
-            &pool, &runner, &slug_owned, &id_owned, &hooks, user_doc.as_ref(),
+            &pool, &runner, &slug_owned, &id_owned, &def_clone, user_doc.as_ref(),
+            Some(&config_dir),
         )
     }).await;
 
     match result {
         Ok(Ok(_req_context)) => {
-            // Clean up upload files after successful delete
-            if let Some(fields) = upload_doc_fields {
-                upload::delete_upload_files(&state.config_dir, &fields);
-            }
-
             state.hook_runner.publish_event(
                 &state.event_bus, &def.hooks, def.live.as_ref(),
                 crate::core::event::EventTarget::Collection,

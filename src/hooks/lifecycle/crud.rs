@@ -9,8 +9,9 @@ use crate::core::SharedRegistry;
 use crate::db::query::{self, AccessResult, FindQuery, Filter, FilterOp, FilterClause, LocaleContext};
 use crate::db::query::filter::normalize_filter_fields;
 
-use super::TxContext;
-use super::UserContext;
+use super::{TxContext, UserContext, HookDepth, MaxHookDepth};
+use super::{HookContext, HookEvent, FieldHookEvent, hook_ctx_to_string_map};
+use super::{run_hooks_inner, run_field_hooks_inner, validate_fields_inner, apply_after_read_inner};
 use super::access::{check_access_with_lua, check_field_read_access_with_lua, check_field_write_access_with_lua};
 
 /// Get the active transaction connection from Lua app_data.
@@ -27,7 +28,7 @@ pub(crate) fn get_tx_conn(lua: &Lua) -> mlua::Result<*const rusqlite::Connection
 
 /// Register the CRUD functions on `crap.collections` and `crap.globals`.
 /// They read the active connection from Lua app_data (set by `run_hooks_with_conn`).
-pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, locale_config: &LocaleConfig) -> Result<()> {
+pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, locale_config: &LocaleConfig, _max_depth: u32) -> Result<()> {
     let crap: mlua::Table = lua.globals().get("crap")?;
     let collections: mlua::Table = crap.get("collections")?;
 
@@ -67,6 +68,10 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                     ))?
             };
 
+            let draft: bool = query_table.as_ref()
+                .and_then(|qt| qt.get::<Option<bool>>("draft").ok().flatten())
+                .unwrap_or(false);
+
             let mut find_query = match query_table {
                 Some(qt) => lua_table_to_find_query(&qt)?,
                 None => FindQuery::default(),
@@ -74,6 +79,15 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
 
             // Normalize dot notation: group dots → __, array/block/rel dots preserved
             normalize_filter_fields(&mut find_query.filters, &def.fields);
+
+            // Draft-aware filtering: if collection has drafts and draft=false (default),
+            // only return published documents (matches gRPC behavior)
+            if def.has_drafts() && !draft {
+                find_query.filters.push(FilterClause::Single(Filter {
+                    field: "_status".to_string(),
+                    op: FilterOp::Equals("published".to_string()),
+                }));
+            }
 
             // Enforce access control when overrideAccess = false
             if !override_access {
@@ -133,6 +147,11 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                     }
                 }
             }
+
+            // Run after_read hooks (field-level, collection-level, registered)
+            let docs: Vec<_> = docs.into_iter()
+                .map(|doc| apply_after_read_inner(lua, &def.hooks, &def.fields, &collection, "find", doc))
+                .collect();
 
             find_result_to_lua(lua, &docs, total)
         })?;
@@ -233,6 +252,9 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                 }
             }
 
+            // Run after_read hooks
+            let doc = doc.map(|d| apply_after_read_inner(lua, &def.hooks, &def.fields, &collection, "find_by_id", d));
+
             match doc {
                 Some(d) => Ok(Value::Table(document_to_lua_table(lua, &d)?)),
                 None => Ok(Value::Nil),
@@ -244,6 +266,8 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
     // crap.collections.create(collection, data, opts?)
     // opts.locale (optional): locale code to write to
     // opts.overrideAccess (optional, default true): bypass access control
+    // opts.hooks (optional, default true): run lifecycle hooks
+    // opts.draft (optional, default false): create as draft
     {
         let reg = registry.clone();
         let lc = locale_config.clone();
@@ -257,6 +281,10 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
 
             let override_access: bool = opts.as_ref()
                 .and_then(|o| o.get::<Option<bool>>("overrideAccess").ok().flatten())
+                .unwrap_or(true);
+
+            let run_hooks: bool = opts.as_ref()
+                .and_then(|o| o.get::<Option<bool>>("hooks").ok().flatten())
                 .unwrap_or(true);
 
             let def = {
@@ -273,7 +301,7 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
             let mut data = lua_table_to_hashmap(&data_table)?;
             flatten_lua_groups(&data_table, &def.fields, &mut data)?;
 
-            // Enforce access control when overrideAccess = false
+            // Enforce collection-level access control when overrideAccess = false
             if !override_access {
                 let user_doc = lua.app_data_ref::<UserContext>()
                     .and_then(|uc| uc.0.clone());
@@ -281,10 +309,6 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                     .map_err(|e| mlua::Error::RuntimeError(format!("access check error: {}", e)))?;
                 if matches!(result, AccessResult::Denied) {
                     return Err(mlua::Error::RuntimeError("Create access denied".into()));
-                }
-                let denied = check_field_write_access_with_lua(lua, &def.fields, user_doc.as_ref(), "create");
-                for name in &denied {
-                    data.remove(name);
                 }
             }
 
@@ -294,27 +318,108 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
             let is_draft = draft && def.has_drafts();
             let status = if is_draft { "draft" } else { "published" };
 
-            // Validate required fields when not a draft (draft-enabled collections
-            // don't have NOT NULL constraints, so we must check at the app level)
-            if !is_draft && def.has_drafts() {
-                for field in &def.fields {
-                    if field.required && field.field_type != crate::core::field::FieldType::Checkbox {
-                        let val = data.get(&field.name);
-                        if val.is_none() || val == Some(&String::new()) {
-                            return Err(mlua::Error::RuntimeError(
-                                format!("Field '{}' is required", field.name)
-                            ));
-                        }
-                    }
+            // Check hook depth for recursion protection
+            let current_depth = lua.app_data_ref::<HookDepth>().map(|d| d.0).unwrap_or(0);
+            let max_depth = lua.app_data_ref::<MaxHookDepth>().map(|d| d.0).unwrap_or(3);
+            let hooks_enabled = run_hooks && current_depth < max_depth;
+
+            if run_hooks && current_depth >= max_depth {
+                tracing::warn!(
+                    "Hook depth {} reached max {}, skipping hooks for create on {}",
+                    current_depth, max_depth, collection
+                );
+            }
+
+            // Build hook data (JSON values for hooks to see)
+            let mut hook_data: HashMap<String, serde_json::Value> = data.iter()
+                .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
+                .collect();
+            let join_data = lua_table_to_json_map(lua, &data_table)?;
+            for (k, v) in &join_data {
+                hook_data.insert(k.clone(), v.clone());
+            }
+
+            // Strip field-level write-denied fields AFTER hook_data is built
+            // (must come after join_data merge to avoid re-adding stripped fields)
+            if !override_access {
+                let user_doc = lua.app_data_ref::<UserContext>()
+                    .and_then(|uc| uc.0.clone());
+                let denied = check_field_write_access_with_lua(lua, &def.fields, user_doc.as_ref(), "create");
+                for name in &denied {
+                    data.remove(name);
+                    hook_data.remove(name);
                 }
             }
 
-            let doc = query::create(conn, &collection, &def, &data, locale_ctx.as_ref())
+            if hooks_enabled {
+                // Increment depth
+                lua.set_app_data(HookDepth(current_depth + 1));
+
+                // Field-level before_validate
+                run_field_hooks_inner(
+                    lua, &def.fields, &FieldHookEvent::BeforeValidate,
+                    &mut hook_data, &collection, "create",
+                ).map_err(|e| mlua::Error::RuntimeError(format!("before_validate field hook error: {}", e)))?;
+
+                // Collection-level before_validate
+                let hook_ctx = HookContext {
+                    collection: collection.clone(),
+                    operation: "create".to_string(),
+                    data: hook_data.clone(),
+                    locale: locale_str.clone(),
+                    draft: Some(is_draft),
+                    context: HashMap::new(),
+                };
+                let ctx = run_hooks_inner(lua, &def.hooks, HookEvent::BeforeValidate, hook_ctx)
+                    .map_err(|e| mlua::Error::RuntimeError(format!("before_validate hook error: {}", e)))?;
+                hook_data = ctx.data;
+            }
+
+            // Validation (always runs unless hooks=false)
+            if run_hooks {
+                validate_fields_inner(lua, &def.fields, &hook_data, conn, &collection, None, is_draft)
+                    .map_err(|e| mlua::Error::RuntimeError(format!("validation error: {}", e)))?;
+            }
+
+            if hooks_enabled {
+                // Field-level before_change
+                run_field_hooks_inner(
+                    lua, &def.fields, &FieldHookEvent::BeforeChange,
+                    &mut hook_data, &collection, "create",
+                ).map_err(|e| mlua::Error::RuntimeError(format!("before_change field hook error: {}", e)))?;
+
+                // Collection-level before_change
+                let hook_ctx = HookContext {
+                    collection: collection.clone(),
+                    operation: "create".to_string(),
+                    data: hook_data.clone(),
+                    locale: locale_str.clone(),
+                    draft: Some(is_draft),
+                    context: HashMap::new(),
+                };
+                let ctx = run_hooks_inner(lua, &def.hooks, HookEvent::BeforeChange, hook_ctx)
+                    .map_err(|e| mlua::Error::RuntimeError(format!("before_change hook error: {}", e)))?;
+                hook_data = ctx.data;
+            }
+
+            // Convert hook-processed data back to string map for query
+            let final_data = hook_ctx_to_string_map(
+                &HookContext {
+                    collection: collection.clone(),
+                    operation: "create".to_string(),
+                    data: hook_data.clone(),
+                    locale: None,
+                    draft: None,
+                    context: HashMap::new(),
+                },
+                &def.fields,
+            );
+
+            let doc = query::create(conn, &collection, &def, &final_data, locale_ctx.as_ref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("create error: {}", e)))?;
 
-            // Save has-many, array, and blocks join-table data
-            let join_data = lua_table_to_json_map(lua, &data_table)?;
-            query::save_join_table_data(conn, &collection, &def.fields, &doc.id, &join_data, locale_ctx.as_ref())
+            // Save has-many, array, and blocks join-table data (using hook-modified data)
+            query::save_join_table_data(conn, &collection, &def.fields, &doc.id, &hook_data, locale_ctx.as_ref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("join data error: {}", e)))?;
 
             // Versioning: set status (only if drafts enabled) and create initial version snapshot
@@ -335,6 +440,31 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                 }
             }
 
+            // After-change hooks
+            if hooks_enabled {
+                // Field-level after_change
+                let mut after_data = doc.fields.clone();
+                run_field_hooks_inner(
+                    lua, &def.fields, &FieldHookEvent::AfterChange,
+                    &mut after_data, &collection, "create",
+                ).map_err(|e| mlua::Error::RuntimeError(format!("after_change field hook error: {}", e)))?;
+
+                // Collection-level after_change
+                let after_ctx = HookContext {
+                    collection: collection.clone(),
+                    operation: "create".to_string(),
+                    data: doc.fields.clone(),
+                    locale: locale_str.clone(),
+                    draft: Some(is_draft),
+                    context: HashMap::new(),
+                };
+                run_hooks_inner(lua, &def.hooks, HookEvent::AfterChange, after_ctx)
+                    .map_err(|e| mlua::Error::RuntimeError(format!("after_change hook error: {}", e)))?;
+
+                // Restore depth
+                lua.set_app_data(HookDepth(current_depth));
+            }
+
             // Hydrate join-table fields before returning
             let mut doc = doc;
             query::hydrate_document(conn, &collection, &def.fields, &mut doc, None, locale_ctx.as_ref())
@@ -348,6 +478,8 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
     // crap.collections.update(collection, id, data, opts?)
     // opts.locale (optional): locale code to write to
     // opts.overrideAccess (optional, default true): bypass access control
+    // opts.hooks (optional, default true): run lifecycle hooks
+    // opts.draft (optional, default false): draft-only version save
     {
         let reg = registry.clone();
         let lc = locale_config.clone();
@@ -361,6 +493,10 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
 
             let override_access: bool = opts.as_ref()
                 .and_then(|o| o.get::<Option<bool>>("overrideAccess").ok().flatten())
+                .unwrap_or(true);
+
+            let run_hooks: bool = opts.as_ref()
+                .and_then(|o| o.get::<Option<bool>>("hooks").ok().flatten())
                 .unwrap_or(true);
 
             let def = {
@@ -377,7 +513,7 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
             let mut data = lua_table_to_hashmap(&data_table)?;
             flatten_lua_groups(&data_table, &def.fields, &mut data)?;
 
-            // Enforce access control when overrideAccess = false
+            // Enforce collection-level access control when overrideAccess = false
             if !override_access {
                 let user_doc = lua.app_data_ref::<UserContext>()
                     .and_then(|uc| uc.0.clone());
@@ -386,16 +522,109 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                 if matches!(result, AccessResult::Denied) {
                     return Err(mlua::Error::RuntimeError("Update access denied".into()));
                 }
-                let denied = check_field_write_access_with_lua(lua, &def.fields, user_doc.as_ref(), "update");
-                for name in &denied {
-                    data.remove(name);
-                }
             }
 
             let draft: bool = opts.as_ref()
                 .and_then(|o| o.get::<Option<bool>>("draft").ok().flatten())
                 .unwrap_or(false);
             let is_draft = draft && def.has_drafts();
+
+            // Check hook depth for recursion protection
+            let current_depth = lua.app_data_ref::<HookDepth>().map(|d| d.0).unwrap_or(0);
+            let max_depth = lua.app_data_ref::<MaxHookDepth>().map(|d| d.0).unwrap_or(3);
+            let hooks_enabled = run_hooks && current_depth < max_depth;
+
+            if run_hooks && current_depth >= max_depth {
+                tracing::warn!(
+                    "Hook depth {} reached max {}, skipping hooks for update on {}",
+                    current_depth, max_depth, collection
+                );
+            }
+
+            // Build hook data (JSON values for hooks to see)
+            let mut hook_data: HashMap<String, serde_json::Value> = data.iter()
+                .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
+                .collect();
+            let join_data = lua_table_to_json_map(lua, &data_table)?;
+            for (k, v) in &join_data {
+                hook_data.insert(k.clone(), v.clone());
+            }
+
+            // Strip field-level write-denied fields AFTER hook_data is built
+            // (must come after join_data merge to avoid re-adding stripped fields)
+            if !override_access {
+                let user_doc = lua.app_data_ref::<UserContext>()
+                    .and_then(|uc| uc.0.clone());
+                let denied = check_field_write_access_with_lua(lua, &def.fields, user_doc.as_ref(), "update");
+                for name in &denied {
+                    data.remove(name);
+                    hook_data.remove(name);
+                }
+            }
+
+            if hooks_enabled {
+                // Increment depth
+                lua.set_app_data(HookDepth(current_depth + 1));
+
+                // Field-level before_validate
+                run_field_hooks_inner(
+                    lua, &def.fields, &FieldHookEvent::BeforeValidate,
+                    &mut hook_data, &collection, "update",
+                ).map_err(|e| mlua::Error::RuntimeError(format!("before_validate field hook error: {}", e)))?;
+
+                // Collection-level before_validate
+                let hook_ctx = HookContext {
+                    collection: collection.clone(),
+                    operation: "update".to_string(),
+                    data: hook_data.clone(),
+                    locale: locale_str.clone(),
+                    draft: Some(is_draft),
+                    context: HashMap::new(),
+                };
+                let ctx = run_hooks_inner(lua, &def.hooks, HookEvent::BeforeValidate, hook_ctx)
+                    .map_err(|e| mlua::Error::RuntimeError(format!("before_validate hook error: {}", e)))?;
+                hook_data = ctx.data;
+            }
+
+            // Validation (always runs unless hooks=false)
+            if run_hooks {
+                validate_fields_inner(lua, &def.fields, &hook_data, conn, &collection, Some(&id), is_draft)
+                    .map_err(|e| mlua::Error::RuntimeError(format!("validation error: {}", e)))?;
+            }
+
+            if hooks_enabled {
+                // Field-level before_change
+                run_field_hooks_inner(
+                    lua, &def.fields, &FieldHookEvent::BeforeChange,
+                    &mut hook_data, &collection, "update",
+                ).map_err(|e| mlua::Error::RuntimeError(format!("before_change field hook error: {}", e)))?;
+
+                // Collection-level before_change
+                let hook_ctx = HookContext {
+                    collection: collection.clone(),
+                    operation: "update".to_string(),
+                    data: hook_data.clone(),
+                    locale: locale_str.clone(),
+                    draft: Some(is_draft),
+                    context: HashMap::new(),
+                };
+                let ctx = run_hooks_inner(lua, &def.hooks, HookEvent::BeforeChange, hook_ctx)
+                    .map_err(|e| mlua::Error::RuntimeError(format!("before_change hook error: {}", e)))?;
+                hook_data = ctx.data;
+            }
+
+            // Convert hook-processed data back to string map for query
+            let final_data = hook_ctx_to_string_map(
+                &HookContext {
+                    collection: collection.clone(),
+                    operation: "update".to_string(),
+                    data: hook_data.clone(),
+                    locale: None,
+                    draft: None,
+                    context: HashMap::new(),
+                },
+                &def.fields,
+            );
 
             if is_draft && def.has_versions() {
                 // Version-only save: do NOT update the main table.
@@ -405,10 +634,10 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                         format!("Document {} not found in {}", id, collection)
                     ))?;
 
-                // Merge incoming data onto existing doc fields
+                // Merge incoming hook-modified data onto existing doc fields
                 let mut snapshot_fields = existing_doc.fields.clone();
-                for (k, v) in &data {
-                    snapshot_fields.insert(k.clone(), serde_json::Value::String(v.clone()));
+                for (k, v) in &hook_data {
+                    snapshot_fields.insert(k.clone(), v.clone());
                 }
                 let snapshot_doc = crate::core::document::Document {
                     id: id.clone(),
@@ -428,15 +657,29 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                     }
                 }
 
+                // After-change hooks (draft path)
+                if hooks_enabled {
+                    let after_ctx = HookContext {
+                        collection: collection.clone(),
+                        operation: "update".to_string(),
+                        data: existing_doc.fields.clone(),
+                        locale: locale_str.clone(),
+                        draft: Some(is_draft),
+                        context: HashMap::new(),
+                    };
+                    run_hooks_inner(lua, &def.hooks, HookEvent::AfterChange, after_ctx)
+                        .map_err(|e| mlua::Error::RuntimeError(format!("after_change hook error: {}", e)))?;
+                    lua.set_app_data(HookDepth(current_depth));
+                }
+
                 document_to_lua_table(lua, &existing_doc)
             } else {
                 // Normal update: write to main table
-                let doc = query::update(conn, &collection, &def, &id, &data, locale_ctx.as_ref())
+                let doc = query::update(conn, &collection, &def, &id, &final_data, locale_ctx.as_ref())
                     .map_err(|e| mlua::Error::RuntimeError(format!("update error: {}", e)))?;
 
-                // Save has-many, array, and blocks join-table data
-                let join_data = lua_table_to_json_map(lua, &data_table)?;
-                query::save_join_table_data(conn, &collection, &def.fields, &doc.id, &join_data, locale_ctx.as_ref())
+                // Save has-many, array, and blocks join-table data (using hook-modified data)
+                query::save_join_table_data(conn, &collection, &def.fields, &doc.id, &hook_data, locale_ctx.as_ref())
                     .map_err(|e| mlua::Error::RuntimeError(format!("join data error: {}", e)))?;
 
                 // Versioning: set status to published (only if drafts enabled) and create version
@@ -457,6 +700,27 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                     }
                 }
 
+                // After-change hooks
+                if hooks_enabled {
+                    let mut after_data = doc.fields.clone();
+                    run_field_hooks_inner(
+                        lua, &def.fields, &FieldHookEvent::AfterChange,
+                        &mut after_data, &collection, "update",
+                    ).map_err(|e| mlua::Error::RuntimeError(format!("after_change field hook error: {}", e)))?;
+
+                    let after_ctx = HookContext {
+                        collection: collection.clone(),
+                        operation: "update".to_string(),
+                        data: doc.fields.clone(),
+                        locale: locale_str.clone(),
+                        draft: Some(is_draft),
+                        context: HashMap::new(),
+                    };
+                    run_hooks_inner(lua, &def.hooks, HookEvent::AfterChange, after_ctx)
+                        .map_err(|e| mlua::Error::RuntimeError(format!("after_change hook error: {}", e)))?;
+                    lua.set_app_data(HookDepth(current_depth));
+                }
+
                 // Hydrate join-table fields before returning
                 let mut doc = doc;
                 query::hydrate_document(conn, &collection, &def.fields, &mut doc, None, locale_ctx.as_ref())
@@ -470,6 +734,7 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
 
     // crap.collections.delete(collection, id, opts?)
     // opts.overrideAccess (optional, default true): bypass access control
+    // opts.hooks (optional, default true): run lifecycle hooks
     {
         let reg = registry.clone();
         let delete_fn = lua.create_function(move |lua, (collection, id, opts): (String, String, Option<mlua::Table>)| {
@@ -480,18 +745,23 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                 .and_then(|o| o.get::<Option<bool>>("overrideAccess").ok().flatten())
                 .unwrap_or(true);
 
+            let run_hooks: bool = opts.as_ref()
+                .and_then(|o| o.get::<Option<bool>>("hooks").ok().flatten())
+                .unwrap_or(true);
+
+            let def = {
+                let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
+                    format!("Registry lock: {}", e)
+                ))?;
+                r.get_collection(&collection)
+                    .cloned()
+                    .ok_or_else(|| mlua::Error::RuntimeError(
+                        format!("Collection '{}' not found", collection)
+                    ))?
+            };
+
             // Enforce access control when overrideAccess = false
             if !override_access {
-                let def = {
-                    let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
-                        format!("Registry lock: {}", e)
-                    ))?;
-                    r.get_collection(&collection)
-                        .cloned()
-                        .ok_or_else(|| mlua::Error::RuntimeError(
-                            format!("Collection '{}' not found", collection)
-                        ))?
-                };
                 let user_doc = lua.app_data_ref::<UserContext>()
                     .and_then(|uc| uc.0.clone());
                 let result = check_access_with_lua(lua, def.access.delete.as_deref(), user_doc.as_ref(), Some(&id), None)
@@ -501,8 +771,50 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                 }
             }
 
+            // Check hook depth for recursion protection
+            let current_depth = lua.app_data_ref::<HookDepth>().map(|d| d.0).unwrap_or(0);
+            let max_depth = lua.app_data_ref::<MaxHookDepth>().map(|d| d.0).unwrap_or(3);
+            let hooks_enabled = run_hooks && current_depth < max_depth;
+
+            if run_hooks && current_depth >= max_depth {
+                tracing::warn!(
+                    "Hook depth {} reached max {}, skipping hooks for delete on {}",
+                    current_depth, max_depth, collection
+                );
+            }
+
+            if hooks_enabled {
+                lua.set_app_data(HookDepth(current_depth + 1));
+
+                let hook_ctx = HookContext {
+                    collection: collection.clone(),
+                    operation: "delete".to_string(),
+                    data: [("id".to_string(), serde_json::Value::String(id.clone()))].into(),
+                    locale: None,
+                    draft: None,
+                    context: HashMap::new(),
+                };
+                run_hooks_inner(lua, &def.hooks, HookEvent::BeforeDelete, hook_ctx)
+                    .map_err(|e| mlua::Error::RuntimeError(format!("before_delete hook error: {}", e)))?;
+            }
+
             query::delete(conn, &collection, &id)
                 .map_err(|e| mlua::Error::RuntimeError(format!("delete error: {}", e)))?;
+
+            if hooks_enabled {
+                let after_ctx = HookContext {
+                    collection: collection.clone(),
+                    operation: "delete".to_string(),
+                    data: [("id".to_string(), serde_json::Value::String(id.clone()))].into(),
+                    locale: None,
+                    draft: None,
+                    context: HashMap::new(),
+                };
+                run_hooks_inner(lua, &def.hooks, HookEvent::AfterDelete, after_ctx)
+                    .map_err(|e| mlua::Error::RuntimeError(format!("after_delete hook error: {}", e)))?;
+
+                lua.set_app_data(HookDepth(current_depth));
+            }
 
             Ok(true)
         })?;
@@ -538,12 +850,24 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                     ))?
             };
 
+            let draft: bool = query_table.as_ref()
+                .and_then(|qt| qt.get::<Option<bool>>("draft").ok().flatten())
+                .unwrap_or(false);
+
             let mut filters = match query_table {
                 Some(ref qt) => lua_table_to_find_query(qt)?.filters,
                 None => Vec::new(),
             };
 
             normalize_filter_fields(&mut filters, &def.fields);
+
+            // Draft-aware filtering (matches gRPC behavior)
+            if def.has_drafts() && !draft {
+                filters.push(FilterClause::Single(Filter {
+                    field: "_status".to_string(),
+                    op: FilterOp::Equals("published".to_string()),
+                }));
+            }
 
             // Enforce access control when overrideAccess = false
             if !override_access {
@@ -595,8 +919,20 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                     ))?
             };
 
+            let draft: bool = opts.as_ref()
+                .and_then(|o| o.get::<Option<bool>>("draft").ok().flatten())
+                .unwrap_or(false);
+
             let mut find_query = lua_table_to_find_query(&query_table)?;
             normalize_filter_fields(&mut find_query.filters, &def.fields);
+
+            // Draft-aware filtering (matches gRPC behavior)
+            if def.has_drafts() && !draft {
+                find_query.filters.push(FilterClause::Single(Filter {
+                    field: "_status".to_string(),
+                    op: FilterOp::Equals("published".to_string()),
+                }));
+            }
 
             // Find all matching docs first
             if !override_access {
@@ -679,8 +1015,20 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                     ))?
             };
 
+            let draft: bool = opts.as_ref()
+                .and_then(|o| o.get::<Option<bool>>("draft").ok().flatten())
+                .unwrap_or(false);
+
             let mut find_query = lua_table_to_find_query(&query_table)?;
             normalize_filter_fields(&mut find_query.filters, &def.fields);
+
+            // Draft-aware filtering (matches gRPC behavior)
+            if def.has_drafts() && !draft {
+                find_query.filters.push(FilterClause::Single(Filter {
+                    field: "_status".to_string(),
+                    op: FilterOp::Equals("published".to_string()),
+                }));
+            }
 
             if !override_access {
                 let user_doc = lua.app_data_ref::<UserContext>()

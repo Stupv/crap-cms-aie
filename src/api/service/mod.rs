@@ -43,6 +43,7 @@ pub struct ContentService {
     server_config: ServerConfig,
     event_bus: Option<EventBus>,
     locale_config: LocaleConfig,
+    config_dir: std::path::PathBuf,
 }
 
 impl ContentService {
@@ -59,6 +60,7 @@ impl ContentService {
         server_config: ServerConfig,
         event_bus: Option<EventBus>,
         locale_config: LocaleConfig,
+        config_dir: std::path::PathBuf,
     ) -> Self {
         Self {
             pool,
@@ -72,6 +74,7 @@ impl ContentService {
             server_config,
             event_bus,
             locale_config,
+            config_dir,
         }
     }
 
@@ -698,18 +701,20 @@ impl ContentApi for ContentService {
 
         let pool = self.pool.clone();
         let runner = self.hook_runner.clone();
-        let hooks = def.hooks.clone();
+        let def_clone = def.clone();
         let collection = req.collection.clone();
         let id = req.id.clone();
         let user_doc = auth_user.as_ref().map(|au| au.user_doc.clone());
+        let config_dir = self.config_dir.clone();
         let _req_context = tokio::task::spawn_blocking(move || {
             crate::service::delete_document(
                 &pool,
                 &runner,
                 &collection,
                 &id,
-                &hooks,
+                &def_clone,
                 user_doc.as_ref(),
+                Some(&config_dir),
             )
         })
         .await

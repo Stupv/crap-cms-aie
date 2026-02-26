@@ -140,6 +140,7 @@ local draft = crap.collections.create("articles", {
 | `locale` | string | `nil` | Locale code for localized fields. |
 | `draft` | boolean | `false` | Create as draft. Skips required field validation. Only affects versioned collections with `drafts = true`. |
 | `overrideAccess` | boolean | `true` | Skip access control checks. Set to `false` to enforce collection-level and field-level access for the current user. |
+| `hooks` | boolean | `true` | Run lifecycle hooks. Set to `false` to skip all hooks (before_validate, before_change, after_change) and validation. The DB operation still executes. |
 
 ## crap.collections.update(collection, id, data, opts?)
 
@@ -165,6 +166,7 @@ crap.collections.update("articles", "abc123", {
 | `locale` | string | `nil` | Locale code for localized fields. |
 | `draft` | boolean | `false` | Version-only save. Creates a draft version snapshot without modifying the main table. Only affects versioned collections with `drafts = true`. |
 | `overrideAccess` | boolean | `true` | Skip access control checks. Set to `false` to enforce collection-level and field-level access for the current user. |
+| `hooks` | boolean | `true` | Run lifecycle hooks. Set to `false` to skip all hooks (before_validate, before_change, after_change) and validation. The DB operation still executes. |
 
 ## crap.collections.delete(collection, id, opts?)
 
@@ -184,6 +186,53 @@ crap.collections.delete("posts", "abc123", { overrideAccess = false })
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `overrideAccess` | boolean | `true` | Skip access control checks. Set to `false` to enforce collection-level access for the current user. |
+| `hooks` | boolean | `true` | Run lifecycle hooks. Set to `false` to skip before_delete and after_delete hooks. The DB operation still executes. |
+
+## Lifecycle Hooks in Lua CRUD
+
+Lua CRUD operations run the **same lifecycle hooks** as the gRPC API and admin UI:
+
+- **`create`**: before_validate → validate → before_change → DB insert → after_change
+- **`update`**: before_validate → validate → before_change → DB update → after_change
+- **`delete`**: before_delete → DB delete → after_delete
+- **`find` / `find_by_id`**: DB query → after_read
+
+All hooks have full CRUD access within the same transaction.
+
+### Hook Depth & Recursion Protection
+
+When hooks call CRUD functions that trigger more hooks, the system tracks recursion depth
+via `ctx.hook_depth`. This prevents infinite loops:
+
+- Depth starts at 0 for gRPC/admin operations, 1 for Lua CRUD within hooks
+- When depth reaches `hooks.max_depth` (default: 3, configurable in `crap.toml`), hooks
+  are automatically skipped but the DB operation still executes
+- Use `ctx.hook_depth` in hooks for manual recursion decisions
+
+```toml
+# crap.toml
+[hooks]
+max_depth = 3   # 0 = never run hooks from Lua CRUD
+```
+
+```lua
+function M.my_hook(ctx)
+    if ctx.hook_depth >= 2 then
+        return ctx  -- bail early to avoid deep recursion
+    end
+    crap.collections.create("audit", { action = ctx.operation })
+    return ctx
+end
+```
+
+### Skipping Hooks
+
+Pass `hooks = false` to any write CRUD call to skip all lifecycle hooks:
+
+```lua
+-- Create without triggering any hooks
+crap.collections.create("logs", { message = "raw insert" }, { hooks = false })
+```
 
 ## Access Control in Hooks
 

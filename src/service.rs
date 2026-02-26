@@ -10,7 +10,7 @@ use std::sync::Arc;
 use anyhow::{Context as _, Result};
 
 use crate::config::{EmailConfig, ServerConfig};
-use crate::core::collection::{CollectionHooks, GlobalDefinition, VersionsConfig};
+use crate::core::collection::{GlobalDefinition, VersionsConfig};
 use crate::core::document::Document;
 use crate::core::email::EmailRenderer;
 use crate::core::field::FieldDefinition;
@@ -297,17 +297,33 @@ pub fn update_document(
     }
 }
 
-/// Delete a document within a single transaction: before-hooks → delete.
+/// Delete a document within a single transaction: before-hooks → delete → upload cleanup.
 /// Returns the request-scoped context from before-hooks.
+/// If `config_dir` is provided and the collection is an upload collection,
+/// upload files are cleaned up after successful deletion.
+#[allow(clippy::too_many_arguments)]
 pub fn delete_document(
     pool: &DbPool,
     runner: &HookRunner,
     slug: &str,
     id: &str,
-    hooks: &CollectionHooks,
+    def: &CollectionDefinition,
     user: Option<&Document>,
+    config_dir: Option<&std::path::Path>,
 ) -> Result<HashMap<String, serde_json::Value>> {
     let mut conn = pool.get().context("DB connection")?;
+
+    // For upload collections, load the document before deleting to get file paths
+    let upload_doc_fields = if def.is_upload_collection() {
+        let locale_ctx = query::LocaleContext::from_locale_string(None, &crate::config::LocaleConfig::default());
+        query::find_by_id(&conn, slug, def, id, locale_ctx.as_ref())
+            .ok()
+            .flatten()
+            .map(|doc| doc.fields.clone())
+    } else {
+        None
+    };
+
     let tx = conn.transaction().context("Start transaction")?;
 
     let hook_ctx = HookContext {
@@ -318,7 +334,7 @@ pub fn delete_document(
         draft: None,
         context: HashMap::new(),
     };
-    let final_ctx = runner.run_hooks_with_conn(hooks, HookEvent::BeforeDelete, hook_ctx, &tx, user)?;
+    let final_ctx = runner.run_hooks_with_conn(&def.hooks, HookEvent::BeforeDelete, hook_ctx, &tx, user)?;
     query::delete(&tx, slug, id)?;
 
     // After-hooks: run inside the same transaction, with CRUD access
@@ -330,9 +346,15 @@ pub fn delete_document(
         draft: None,
         context: final_ctx.context,
     };
-    let after_result = runner.run_hooks_with_conn(hooks, HookEvent::AfterDelete, after_ctx, &tx, user)?;
+    let after_result = runner.run_hooks_with_conn(&def.hooks, HookEvent::AfterDelete, after_ctx, &tx, user)?;
 
     tx.commit().context("Commit transaction")?;
+
+    // Clean up upload files after successful commit
+    if let (Some(dir), Some(fields)) = (config_dir, upload_doc_fields) {
+        crate::core::upload::delete_upload_files(dir, &fields);
+    }
+
     Ok(after_result.context)
 }
 

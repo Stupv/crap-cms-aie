@@ -104,6 +104,13 @@ pub(super) struct UserContext(pub(super) Option<Document>);
 unsafe impl Send for UserContext {}
 unsafe impl Sync for UserContext {}
 
+/// Tracks hook recursion depth for Lua CRUD → hook → CRUD chains.
+/// Stored in Lua `app_data` alongside `TxContext`.
+pub(super) struct HookDepth(pub(super) u32);
+
+/// Max allowed hook depth, read from config and stored in Lua `app_data`.
+pub(super) struct MaxHookDepth(pub(super) u32);
+
 /// Thread-safe hook runner wrapping a Lua VM.
 #[derive(Clone)]
 pub struct HookRunner {
@@ -131,7 +138,11 @@ impl HookRunner {
 
         // Register CRUD functions on crap.collections (find, find_by_id, create, update, delete).
         // These read the active transaction from Lua app_data when called inside hooks.
-        register_crud_functions(&lua, registry, &config.locale)?;
+        register_crud_functions(&lua, registry, &config.locale, config.hooks.max_depth)?;
+
+        // Initialize hook depth tracking
+        lua.set_app_data(HookDepth(0));
+        lua.set_app_data(MaxHookDepth(config.hooks.max_depth));
 
         // Auto-load collections/*.lua, globals/*.lua, and jobs/*.lua
         let collections_dir = config_dir.join("collections");
@@ -350,63 +361,14 @@ impl HookRunner {
         operation: &str,
         doc: Document,
     ) -> Document {
-        let has_field_hooks = fields.iter()
-            .any(|f| !f.hooks.after_read.is_empty());
-
-        let mut data: HashMap<String, serde_json::Value> = doc.fields.clone();
-        data.insert("id".to_string(), serde_json::Value::String(doc.id.clone()));
-        if let Some(ref ts) = doc.created_at {
-            data.insert("created_at".to_string(), serde_json::Value::String(ts.clone()));
-        }
-        if let Some(ref ts) = doc.updated_at {
-            data.insert("updated_at".to_string(), serde_json::Value::String(ts.clone()));
-        }
-
-        // Run field-level after_read hooks first
-        if has_field_hooks {
-            if let Err(e) = self.run_field_hooks(
-                fields, FieldHookEvent::AfterRead,
-                &mut data, collection, operation,
-            ) {
-                tracing::warn!("field after_read hook error for {}: {}", collection, e);
+        let lua = match self.lua.lock() {
+            Ok(l) => l,
+            Err(e) => {
+                tracing::warn!("Lua VM lock poisoned in apply_after_read: {}", e);
                 return doc;
             }
-        }
-
-        let ctx = HookContext {
-            collection: collection.to_string(),
-            operation: operation.to_string(),
-            data,
-            locale: None,
-            draft: None,
-            context: HashMap::new(),
         };
-
-        // run_hooks handles both collection-level hook refs and global registered hooks
-        match self.run_hooks(hooks, HookEvent::AfterRead, ctx) {
-            Ok(result_ctx) => {
-                let mut fields = result_ctx.data;
-                // Extract system fields back out
-                fields.remove("id");
-                let created_at = fields.remove("created_at")
-                    .and_then(|v| v.as_str().map(|s| s.to_string()))
-                    .or(doc.created_at.clone());
-                let updated_at = fields.remove("updated_at")
-                    .and_then(|v| v.as_str().map(|s| s.to_string()))
-                    .or(doc.updated_at.clone());
-
-                Document {
-                    id: doc.id,
-                    fields,
-                    created_at,
-                    updated_at,
-                }
-            }
-            Err(e) => {
-                tracing::warn!("after_read hook error for {}: {}", collection, e);
-                doc
-            }
-        }
+        apply_after_read_inner(&lua, hooks, fields, collection, operation, doc)
     }
 
     /// Fire after_read hooks on a list of documents.
@@ -1026,309 +988,323 @@ impl HookRunner {
         exclude_id: Option<&str>,
         is_draft: bool,
     ) -> Result<(), ValidationError> {
-        let mut errors = Vec::new();
+        let lua = self.lua.lock()
+            .map_err(|_| ValidationError { errors: vec![FieldError {
+                field: "_system".into(),
+                message: "Lua VM lock poisoned".into(),
+            }] })?;
+        validate_fields_inner(&lua, fields, data, conn, table, exclude_id, is_draft)
+    }
+}
 
-        for field in fields {
-            let value = data.get(&field.name);
-            let is_empty = match value {
-                None => true,
-                Some(serde_json::Value::Null) => true,
-                Some(serde_json::Value::String(s)) => s.is_empty(),
-                _ => false,
-            };
+// ── Extracted inner functions (callable from both HookRunner and CRUD closures) ──
 
-            // Required check (skip for checkboxes — absent = false is valid)
-            // For Array and has-many Relationship, "required" means at least one item
-            // Skip required checks entirely for draft saves
-            if field.required && !is_draft && field.field_type != FieldType::Checkbox {
-                if !field.has_parent_column() {
-                    // Join-table fields: check for non-empty array in data
-                    let has_items = match value {
-                        Some(serde_json::Value::Array(arr)) => !arr.is_empty(),
-                        Some(serde_json::Value::String(s)) => !s.is_empty(),
-                        _ => false,
-                    };
-                    if !has_items {
-                        errors.push(FieldError {
-                            field: field.name.clone(),
-                            message: format!("{} is required", field.name),
-                        });
-                    }
-                } else if is_empty {
+/// Inner implementation of `validate_fields` — operates on a locked `&Lua`.
+/// Used by both `HookRunner::validate_fields` and Lua CRUD closures.
+pub(super) fn validate_fields_inner(
+    lua: &Lua,
+    fields: &[FieldDefinition],
+    data: &HashMap<String, serde_json::Value>,
+    conn: &rusqlite::Connection,
+    table: &str,
+    exclude_id: Option<&str>,
+    is_draft: bool,
+) -> Result<(), ValidationError> {
+    let mut errors = Vec::new();
+
+    for field in fields {
+        let value = data.get(&field.name);
+        let is_empty = match value {
+            None => true,
+            Some(serde_json::Value::Null) => true,
+            Some(serde_json::Value::String(s)) => s.is_empty(),
+            _ => false,
+        };
+
+        // Required check (skip for checkboxes — absent = false is valid)
+        // For Array and has-many Relationship, "required" means at least one item
+        // Skip required checks entirely for draft saves
+        // On update (exclude_id set): skip if field not in data (partial update, keep existing)
+        let is_update = exclude_id.is_some();
+        if field.required && !is_draft && field.field_type != FieldType::Checkbox
+            && !(is_update && value.is_none())
+        {
+            if !field.has_parent_column() {
+                let has_items = match value {
+                    Some(serde_json::Value::Array(arr)) => !arr.is_empty(),
+                    Some(serde_json::Value::String(s)) => !s.is_empty(),
+                    _ => false,
+                };
+                if !has_items {
                     errors.push(FieldError {
                         field: field.name.clone(),
                         message: format!("{} is required", field.name),
                     });
                 }
+            } else if is_empty {
+                errors.push(FieldError {
+                    field: field.name.clone(),
+                    message: format!("{} is required", field.name),
+                });
             }
+        }
 
-            // Validate Group sub-fields (stored as group__subfield keys at top level)
-            if field.field_type == FieldType::Group && !is_draft {
-                for gsf in &field.fields {
-                    let key = format!("{}__{}", field.name, gsf.name);
-                    let gv = data.get(&key);
-                    let g_empty = match gv {
-                        None => true,
-                        Some(serde_json::Value::Null) => true,
-                        Some(serde_json::Value::String(s)) => s.is_empty(),
-                        _ => false,
-                    };
-                    if gsf.required && g_empty && gsf.field_type != FieldType::Checkbox {
-                        errors.push(FieldError {
-                            field: key,
-                            message: format!("{} is required", gsf.name),
-                        });
-                    }
-                }
-            }
-
-            // min_rows / max_rows validation for Array, Blocks, and has-many Relationship
-            if !is_draft && (field.min_rows.is_some() || field.max_rows.is_some()) {
-                let row_count = match value {
-                    Some(serde_json::Value::Array(arr)) => arr.len(),
-                    _ => 0,
+        // Validate Group sub-fields (stored as group__subfield keys at top level)
+        if field.field_type == FieldType::Group && !is_draft {
+            for gsf in &field.fields {
+                let key = format!("{}__{}", field.name, gsf.name);
+                let gv = data.get(&key);
+                let g_empty = match gv {
+                    None => true,
+                    Some(serde_json::Value::Null) => true,
+                    Some(serde_json::Value::String(s)) => s.is_empty(),
+                    _ => false,
                 };
-                if let Some(min) = field.min_rows {
-                    if row_count < min {
+                if gsf.required && g_empty && gsf.field_type != FieldType::Checkbox {
+                    errors.push(FieldError {
+                        field: key,
+                        message: format!("{} is required", gsf.name),
+                    });
+                }
+            }
+        }
+
+        // min_rows / max_rows validation for Array, Blocks, and has-many Relationship
+        if !is_draft && (field.min_rows.is_some() || field.max_rows.is_some()) {
+            let row_count = match value {
+                Some(serde_json::Value::Array(arr)) => arr.len(),
+                _ => 0,
+            };
+            if let Some(min) = field.min_rows {
+                if row_count < min {
+                    errors.push(FieldError {
+                        field: field.name.clone(),
+                        message: format!("{} requires at least {} item(s)", field.name, min),
+                    });
+                }
+            }
+            if let Some(max) = field.max_rows {
+                if row_count > max {
+                    errors.push(FieldError {
+                        field: field.name.clone(),
+                        message: format!("{} allows at most {} item(s)", field.name, max),
+                    });
+                }
+            }
+        }
+
+        // Validate sub-fields within Array/Blocks rows
+        if !is_draft && matches!(field.field_type, FieldType::Array | FieldType::Blocks) {
+            if let Some(serde_json::Value::Array(rows)) = value {
+                for (idx, row) in rows.iter().enumerate() {
+                    let row_obj = match row.as_object() {
+                        Some(obj) => obj,
+                        None => continue,
+                    };
+
+                    let sub_fields: &[FieldDefinition] = if field.field_type == FieldType::Blocks {
+                        let block_type = row_obj.get("_block_type")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        match field.blocks.iter().find(|b| b.block_type == block_type) {
+                            Some(bd) => &bd.fields,
+                            None => continue,
+                        }
+                    } else {
+                        &field.fields
+                    };
+
+                    validate_sub_fields_inner(
+                        lua, sub_fields, row_obj, &field.name, idx, table, &mut errors,
+                    );
+                }
+            }
+        }
+
+        // Unique check (only if value is non-empty, skip for join-table fields)
+        if field.unique && !is_empty && field.has_parent_column() {
+            let value_str = match value {
+                Some(serde_json::Value::String(s)) => s.clone(),
+                Some(other) => other.to_string(),
+                None => String::new(),
+            };
+            match query::count_where_field_eq(conn, table, &field.name, &value_str, exclude_id) {
+                Ok(count) if count > 0 => {
+                    errors.push(FieldError {
+                        field: field.name.clone(),
+                        message: format!("{} must be unique", field.name),
+                    });
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!("Unique check failed for {}.{}: {}", table, field.name, e);
+                }
+            }
+        }
+
+        // Date format validation (only if non-empty)
+        if field.field_type == FieldType::Date && !is_empty {
+            if let Some(serde_json::Value::String(s)) = value {
+                if !is_valid_date_format(s) {
+                    errors.push(FieldError {
+                        field: field.name.clone(),
+                        message: format!("{} is not a valid date format", field.name),
+                    });
+                }
+            }
+        }
+
+        // Custom validate function (Lua)
+        if let Some(ref validate_ref) = field.validate {
+            if let Some(val) = value {
+                match run_validate_function_inner(lua, validate_ref, val, data, table, &field.name) {
+                    Ok(Some(err_msg)) => {
                         errors.push(FieldError {
                             field: field.name.clone(),
-                            message: format!("{} requires at least {} item(s)", field.name, min),
+                            message: err_msg,
                         });
                     }
-                }
-                if let Some(max) = field.max_rows {
-                    if row_count > max {
-                        errors.push(FieldError {
-                            field: field.name.clone(),
-                            message: format!("{} allows at most {} item(s)", field.name, max),
-                        });
+                    Ok(None) => {} // valid
+                    Err(e) => {
+                        tracing::warn!("Validate function '{}' error: {}", validate_ref, e);
                     }
                 }
             }
+        }
+    }
 
-            // Validate sub-fields within Array/Blocks rows
-            if !is_draft && matches!(field.field_type, FieldType::Array | FieldType::Blocks) {
-                if let Some(serde_json::Value::Array(rows)) = value {
-                    for (idx, row) in rows.iter().enumerate() {
-                        let row_obj = match row.as_object() {
-                            Some(obj) => obj,
-                            None => continue,
-                        };
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(ValidationError { errors })
+    }
+}
 
-                        let sub_fields: &[FieldDefinition] = if field.field_type == FieldType::Blocks {
-                            let block_type = row_obj.get("_block_type")
+/// Validate sub-fields within a single array/blocks row (inner, no mutex).
+fn validate_sub_fields_inner(
+    lua: &Lua,
+    sub_fields: &[FieldDefinition],
+    row_obj: &serde_json::Map<String, serde_json::Value>,
+    parent_name: &str,
+    idx: usize,
+    table: &str,
+    errors: &mut Vec<FieldError>,
+) {
+    let row_data: HashMap<String, serde_json::Value> = row_obj.iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+
+    for sf in sub_fields {
+        let sf_value = row_obj.get(&sf.name);
+        let sf_empty = match sf_value {
+            None => true,
+            Some(serde_json::Value::Null) => true,
+            Some(serde_json::Value::String(s)) => s.is_empty(),
+            _ => false,
+        };
+        let qualified_name = format!("{}[{}][{}]", parent_name, idx, sf.name);
+
+        if sf.required && sf_empty && sf.field_type != FieldType::Checkbox {
+            errors.push(FieldError {
+                field: qualified_name.clone(),
+                message: format!("{} is required", sf.name),
+            });
+        }
+
+        if sf.field_type == FieldType::Date && !sf_empty {
+            if let Some(serde_json::Value::String(s)) = sf_value {
+                if !is_valid_date_format(s) {
+                    errors.push(FieldError {
+                        field: qualified_name.clone(),
+                        message: format!("{} is not a valid date format", sf.name),
+                    });
+                }
+            }
+        }
+
+        if let Some(ref validate_ref) = sf.validate {
+            if let Some(val) = sf_value {
+                match run_validate_function_inner(lua, validate_ref, val, &row_data, table, &sf.name) {
+                    Ok(Some(err_msg)) => {
+                        errors.push(FieldError {
+                            field: qualified_name.clone(),
+                            message: err_msg,
+                        });
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        tracing::warn!("Validate function '{}' error: {}", validate_ref, e);
+                    }
+                }
+            }
+        }
+
+        if matches!(sf.field_type, FieldType::Array | FieldType::Blocks) {
+            if let Some(serde_json::Value::Array(nested_rows)) = sf_value {
+                let nested_parent = format!("{}[{}][{}]", parent_name, idx, sf.name);
+                for (nested_idx, nested_row) in nested_rows.iter().enumerate() {
+                    if let Some(nested_obj) = nested_row.as_object() {
+                        let nested_sub_fields: &[FieldDefinition] = if sf.field_type == FieldType::Blocks {
+                            let bt = nested_obj.get("_block_type")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("");
-                            match field.blocks.iter().find(|b| b.block_type == block_type) {
+                            match sf.blocks.iter().find(|b| b.block_type == bt) {
                                 Some(bd) => &bd.fields,
                                 None => continue,
                             }
                         } else {
-                            &field.fields
+                            &sf.fields
                         };
-
-                        self.validate_sub_fields(
-                            sub_fields, row_obj, &field.name, idx, table, &mut errors,
+                        validate_sub_fields_inner(
+                            lua, nested_sub_fields, nested_obj, &nested_parent, nested_idx, table, errors,
                         );
                     }
                 }
             }
+        }
 
-            // Unique check (only if value is non-empty, skip for join-table fields)
-            if field.unique && !is_empty && field.has_parent_column() {
-                let value_str = match value {
-                    Some(serde_json::Value::String(s)) => s.clone(),
-                    Some(other) => other.to_string(),
-                    None => String::new(),
+        if sf.field_type == FieldType::Group {
+            for gsf in &sf.fields {
+                let group_key = format!("{}__{}", sf.name, gsf.name);
+                let gv = row_obj.get(&group_key);
+                let g_empty = match gv {
+                    None => true,
+                    Some(serde_json::Value::Null) => true,
+                    Some(serde_json::Value::String(s)) => s.is_empty(),
+                    _ => false,
                 };
-                match query::count_where_field_eq(conn, table, &field.name, &value_str, exclude_id) {
-                    Ok(count) if count > 0 => {
-                        errors.push(FieldError {
-                            field: field.name.clone(),
-                            message: format!("{} must be unique", field.name),
-                        });
-                    }
-                    Ok(_) => {}
-                    Err(e) => {
-                        tracing::warn!("Unique check failed for {}.{}: {}", table, field.name, e);
-                    }
-                }
-            }
+                let g_qualified = format!("{}[{}][{}]", parent_name, idx, group_key);
 
-            // Date format validation (only if non-empty)
-            if field.field_type == FieldType::Date && !is_empty {
-                if let Some(serde_json::Value::String(s)) = value {
-                    if !is_valid_date_format(s) {
-                        errors.push(FieldError {
-                            field: field.name.clone(),
-                            message: format!("{} is not a valid date format", field.name),
-                        });
-                    }
+                if gsf.required && g_empty && gsf.field_type != FieldType::Checkbox {
+                    errors.push(FieldError {
+                        field: g_qualified.clone(),
+                        message: format!("{} is required", gsf.name),
+                    });
                 }
-            }
 
-            // Custom validate function (Lua)
-            if let Some(ref validate_ref) = field.validate {
-                if let Some(val) = value {
-                    match self.run_validate_function(validate_ref, val, data, table, &field.name) {
-                        Ok(Some(err_msg)) => {
+                if gsf.field_type == FieldType::Date && !g_empty {
+                    if let Some(serde_json::Value::String(s)) = gv {
+                        if !is_valid_date_format(s) {
                             errors.push(FieldError {
-                                field: field.name.clone(),
-                                message: err_msg,
+                                field: g_qualified.clone(),
+                                message: format!("{} is not a valid date format", gsf.name),
                             });
                         }
-                        Ok(None) => {} // valid
-                        Err(e) => {
-                            tracing::warn!("Validate function '{}' error: {}", validate_ref, e);
-                        }
                     }
                 }
-            }
-        }
 
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(ValidationError { errors })
-        }
-    }
-
-    /// Validate sub-fields within a single array/blocks row.
-    /// Checks required, date format, and custom Lua validate functions.
-    /// Recurses into nested arrays/blocks and groups.
-    fn validate_sub_fields(
-        &self,
-        sub_fields: &[FieldDefinition],
-        row_obj: &serde_json::Map<String, serde_json::Value>,
-        parent_name: &str,
-        idx: usize,
-        table: &str,
-        errors: &mut Vec<FieldError>,
-    ) {
-        // Build a row-level data HashMap for Lua validate context
-        let row_data: HashMap<String, serde_json::Value> = row_obj.iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-
-        for sf in sub_fields {
-            let sf_value = row_obj.get(&sf.name);
-            let sf_empty = match sf_value {
-                None => true,
-                Some(serde_json::Value::Null) => true,
-                Some(serde_json::Value::String(s)) => s.is_empty(),
-                _ => false,
-            };
-            let qualified_name = format!("{}[{}][{}]", parent_name, idx, sf.name);
-
-            // Required check (skip checkboxes)
-            if sf.required && sf_empty && sf.field_type != FieldType::Checkbox {
-                errors.push(FieldError {
-                    field: qualified_name.clone(),
-                    message: format!("{} is required", sf.name),
-                });
-            }
-
-            // Date format validation
-            if sf.field_type == FieldType::Date && !sf_empty {
-                if let Some(serde_json::Value::String(s)) = sf_value {
-                    if !is_valid_date_format(s) {
-                        errors.push(FieldError {
-                            field: qualified_name.clone(),
-                            message: format!("{} is not a valid date format", sf.name),
-                        });
-                    }
-                }
-            }
-
-            // Custom Lua validate function
-            if let Some(ref validate_ref) = sf.validate {
-                if let Some(val) = sf_value {
-                    match self.run_validate_function(validate_ref, val, &row_data, table, &sf.name) {
-                        Ok(Some(err_msg)) => {
-                            errors.push(FieldError {
-                                field: qualified_name.clone(),
-                                message: err_msg,
-                            });
-                        }
-                        Ok(None) => {}
-                        Err(e) => {
-                            tracing::warn!("Validate function '{}' error: {}", validate_ref, e);
-                        }
-                    }
-                }
-            }
-
-            // Recurse into nested Array/Blocks sub-fields
-            if matches!(sf.field_type, FieldType::Array | FieldType::Blocks) {
-                if let Some(serde_json::Value::Array(nested_rows)) = sf_value {
-                    let nested_parent = format!("{}[{}][{}]", parent_name, idx, sf.name);
-                    for (nested_idx, nested_row) in nested_rows.iter().enumerate() {
-                        if let Some(nested_obj) = nested_row.as_object() {
-                            let nested_sub_fields: &[FieldDefinition] = if sf.field_type == FieldType::Blocks {
-                                let bt = nested_obj.get("_block_type")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("");
-                                match sf.blocks.iter().find(|b| b.block_type == bt) {
-                                    Some(bd) => &bd.fields,
-                                    None => continue,
-                                }
-                            } else {
-                                &sf.fields
-                            };
-                            self.validate_sub_fields(
-                                nested_sub_fields, nested_obj, &nested_parent, nested_idx, table, errors,
-                            );
-                        }
-                    }
-                }
-            }
-
-            // Group sub-fields within rows
-            if sf.field_type == FieldType::Group {
-                for gsf in &sf.fields {
-                    let group_key = format!("{}__{}", sf.name, gsf.name);
-                    let gv = row_obj.get(&group_key);
-                    let g_empty = match gv {
-                        None => true,
-                        Some(serde_json::Value::Null) => true,
-                        Some(serde_json::Value::String(s)) => s.is_empty(),
-                        _ => false,
-                    };
-                    let g_qualified = format!("{}[{}][{}]", parent_name, idx, group_key);
-
-                    if gsf.required && g_empty && gsf.field_type != FieldType::Checkbox {
-                        errors.push(FieldError {
-                            field: g_qualified.clone(),
-                            message: format!("{} is required", gsf.name),
-                        });
-                    }
-
-                    // Date format for group sub-fields
-                    if gsf.field_type == FieldType::Date && !g_empty {
-                        if let Some(serde_json::Value::String(s)) = gv {
-                            if !is_valid_date_format(s) {
+                if let Some(ref validate_ref) = gsf.validate {
+                    if let Some(val) = gv {
+                        match run_validate_function_inner(lua, validate_ref, val, &row_data, table, &gsf.name) {
+                            Ok(Some(err_msg)) => {
                                 errors.push(FieldError {
-                                    field: g_qualified.clone(),
-                                    message: format!("{} is not a valid date format", gsf.name),
+                                    field: g_qualified,
+                                    message: err_msg,
                                 });
                             }
-                        }
-                    }
-
-                    // Custom Lua validate for group sub-fields
-                    if let Some(ref validate_ref) = gsf.validate {
-                        if let Some(val) = gv {
-                            match self.run_validate_function(validate_ref, val, &row_data, table, &gsf.name) {
-                                Ok(Some(err_msg)) => {
-                                    errors.push(FieldError {
-                                        field: g_qualified,
-                                        message: err_msg,
-                                    });
-                                }
-                                Ok(None) => {}
-                                Err(e) => {
-                                    tracing::warn!("Validate function '{}' error: {}", validate_ref, e);
-                                }
+                            Ok(None) => {}
+                            Err(e) => {
+                                tracing::warn!("Validate function '{}' error: {}", validate_ref, e);
                             }
                         }
                     }
@@ -1336,45 +1312,144 @@ impl HookRunner {
             }
         }
     }
+}
 
-    /// Call a Lua validation function. Returns Ok(None) if valid,
-    /// Ok(Some(message)) if invalid, Err on Lua error.
-    fn run_validate_function(
-        &self,
-        func_ref: &str,
-        value: &serde_json::Value,
-        data: &HashMap<String, serde_json::Value>,
-        collection: &str,
-        field_name: &str,
-    ) -> Result<Option<String>> {
-        let lua = self.lua.lock()
-            .map_err(|e| anyhow::anyhow!("Lua VM lock poisoned: {}", e))?;
+/// Inner implementation of `run_validate_function` — operates on a locked `&Lua`.
+pub(super) fn run_validate_function_inner(
+    lua: &Lua,
+    func_ref: &str,
+    value: &serde_json::Value,
+    data: &HashMap<String, serde_json::Value>,
+    collection: &str,
+    field_name: &str,
+) -> Result<Option<String>> {
+    let func = resolve_hook_function(lua, func_ref)?;
+    let lua_value = crate::hooks::api::json_to_lua(lua, value)?;
+    let ctx_table = lua.create_table()?;
+    ctx_table.set("collection", collection)?;
+    ctx_table.set("field_name", field_name)?;
+    let data_table = lua.create_table()?;
+    for (k, v) in data {
+        data_table.set(k.as_str(), crate::hooks::api::json_to_lua(lua, v)?)?;
+    }
+    ctx_table.set("data", data_table)?;
 
-        let func = resolve_hook_function(&lua, func_ref)?;
+    let result: Value = func.call((lua_value, ctx_table))?;
+    match result {
+        Value::Nil => Ok(None),
+        Value::Boolean(true) => Ok(None),
+        Value::Boolean(false) => Ok(Some("validation failed".to_string())),
+        Value::String(s) => Ok(Some(s.to_str()?.to_string())),
+        _ => Ok(None),
+    }
+}
 
-        // Build the Lua value
-        let lua_value = crate::hooks::api::json_to_lua(&lua, value)?;
+/// Inner implementation of `apply_after_read` — operates on a locked `&Lua`.
+/// Runs field-level after_read hooks, then collection-level, then global registered.
+/// On error: logs warning, returns original doc unmodified.
+pub(super) fn apply_after_read_inner(
+    lua: &Lua,
+    hooks: &CollectionHooks,
+    fields: &[FieldDefinition],
+    collection: &str,
+    operation: &str,
+    doc: Document,
+) -> Document {
+    let has_field_hooks = fields.iter()
+        .any(|f| !f.hooks.after_read.is_empty());
 
-        // Build context table
-        let ctx_table = lua.create_table()?;
-        ctx_table.set("collection", collection)?;
-        ctx_table.set("field_name", field_name)?;
-        let data_table = lua.create_table()?;
-        for (k, v) in data {
-            data_table.set(k.as_str(), crate::hooks::api::json_to_lua(&lua, v)?)?;
-        }
-        ctx_table.set("data", data_table)?;
+    let has_collection_hooks = !hooks.after_read.is_empty();
+    let has_registered = has_registered_hooks(lua, "after_read");
 
-        let result: Value = func.call((lua_value, ctx_table))?;
+    if !has_field_hooks && !has_collection_hooks && !has_registered {
+        return doc;
+    }
 
-        match result {
-            Value::Nil => Ok(None),
-            Value::Boolean(true) => Ok(None),
-            Value::Boolean(false) => Ok(Some("validation failed".to_string())),
-            Value::String(s) => Ok(Some(s.to_str()?.to_string())),
-            _ => Ok(None),
+    let mut data: HashMap<String, serde_json::Value> = doc.fields.clone();
+    data.insert("id".to_string(), serde_json::Value::String(doc.id.clone()));
+    if let Some(ref ts) = doc.created_at {
+        data.insert("created_at".to_string(), serde_json::Value::String(ts.clone()));
+    }
+    if let Some(ref ts) = doc.updated_at {
+        data.insert("updated_at".to_string(), serde_json::Value::String(ts.clone()));
+    }
+
+    // Run field-level after_read hooks first
+    if has_field_hooks {
+        if let Err(e) = run_field_hooks_inner(
+            lua, fields, &FieldHookEvent::AfterRead,
+            &mut data, collection, operation,
+        ) {
+            tracing::warn!("field after_read hook error for {}: {}", collection, e);
+            return doc;
         }
     }
+
+    let ctx = HookContext {
+        collection: collection.to_string(),
+        operation: operation.to_string(),
+        data,
+        locale: None,
+        draft: None,
+        context: HashMap::new(),
+    };
+
+    // Run collection-level + global registered hooks
+    let hook_refs = get_hook_refs(hooks, &HookEvent::AfterRead);
+    let result = (|| -> Result<HookContext> {
+        let mut context = ctx;
+        for hook_ref in hook_refs {
+            context = call_hook_ref(lua, hook_ref, context)?;
+        }
+        context = call_registered_hooks(lua, &HookEvent::AfterRead, context)?;
+        Ok(context)
+    })();
+
+    match result {
+        Ok(result_ctx) => {
+            let mut fields = result_ctx.data;
+            fields.remove("id");
+            let created_at = fields.remove("created_at")
+                .and_then(|v| v.as_str().map(|s| s.to_string()))
+                .or(doc.created_at.clone());
+            let updated_at = fields.remove("updated_at")
+                .and_then(|v| v.as_str().map(|s| s.to_string()))
+                .or(doc.updated_at.clone());
+
+            Document {
+                id: doc.id,
+                fields,
+                created_at,
+                updated_at,
+            }
+        }
+        Err(e) => {
+            tracing::warn!("after_read hook error for {}: {}", collection, e);
+            doc
+        }
+    }
+}
+
+/// Inner implementation of `run_hooks` / `run_hooks_with_conn` — operates on a locked `&Lua`.
+/// Runs collection-level hook refs, then global registered hooks.
+/// TxContext must already be set in app_data if CRUD access is needed.
+pub(super) fn run_hooks_inner(
+    lua: &Lua,
+    hooks: &CollectionHooks,
+    event: HookEvent,
+    mut context: HookContext,
+) -> Result<HookContext> {
+    let hook_refs = get_hook_refs(hooks, &event);
+
+    for hook_ref in hook_refs {
+        tracing::debug!("Running hook (inner): {} for {}", hook_ref, context.collection);
+        context = call_hook_ref(lua, hook_ref, context)?;
+    }
+
+    // Run global registered hooks
+    context = call_registered_hooks(lua, &event, context)?;
+
+    Ok(context)
 }
 
 /// Build a Lua table from a HookContext (shared by all context table builders).
@@ -1400,6 +1475,10 @@ fn context_to_lua_table(lua: &Lua, context: &HookContext) -> mlua::Result<mlua::
         context_table.set(k.as_str(), crate::hooks::api::json_to_lua(lua, v)?)?;
     }
     ctx_table.set("context", context_table)?;
+
+    // Expose current hook depth so hooks can make manual decisions
+    let depth = lua.app_data_ref::<HookDepth>().map(|d| d.0).unwrap_or(0);
+    ctx_table.set("hook_depth", depth)?;
 
     Ok(ctx_table)
 }

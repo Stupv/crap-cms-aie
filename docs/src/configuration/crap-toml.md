@@ -110,6 +110,7 @@ When configured, email enables password reset ("Forgot password?" link on login)
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `on_init` | string[] | `[]` | Lua function refs to execute at startup. These run synchronously with CRUD access — failure aborts startup. |
+| `max_depth` | integer | `3` | Maximum hook recursion depth. When Lua CRUD in hooks triggers more hooks, this caps the chain. `0` = never run hooks from Lua CRUD. |
 
 ### `[live]`
 

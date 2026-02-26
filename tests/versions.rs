@@ -132,6 +132,7 @@ fn setup_service(defs: Vec<CollectionDefinition>) -> TestSetup {
         config.server.clone(),
         None,
         config.locale.clone(),
+        tmp.path().to_path_buf(),
     );
 
     TestSetup { _tmp: tmp, service, pool: db_pool, registry, runner: hook_runner }

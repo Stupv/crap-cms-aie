@@ -351,34 +351,32 @@ async fn delete_upload(
         _ => {}
     }
 
-    // Load document before deleting to get file paths
-    let upload_doc_fields = state.pool.get().ok()
+    // Verify document exists before attempting delete
+    let doc_exists = state.pool.get().ok()
         .and_then(|conn| query::find_by_id(&conn, &slug, &def, &id, None).ok().flatten())
-        .map(|doc| doc.fields.clone());
+        .is_some();
 
-    if upload_doc_fields.is_none() {
+    if !doc_exists {
         return json_error(StatusCode::NOT_FOUND, &format!("Document '{}' not found", id));
     }
 
-    // Before hooks + delete in a single transaction
+    // Before hooks + delete + upload cleanup in a single transaction
     let pool = state.pool.clone();
     let runner = state.hook_runner.clone();
-    let hooks = def.hooks.clone();
+    let def_clone = def.clone();
     let slug_owned = slug.clone();
     let id_owned = id.clone();
     let user_doc_owned = auth_user.as_ref().map(|au| au.user_doc.clone());
+    let config_dir = state.config_dir.clone();
     let result = tokio::task::spawn_blocking(move || {
         crate::service::delete_document(
-            &pool, &runner, &slug_owned, &id_owned, &hooks, user_doc_owned.as_ref(),
+            &pool, &runner, &slug_owned, &id_owned, &def_clone, user_doc_owned.as_ref(),
+            Some(&config_dir),
         )
     }).await;
 
     match result {
         Ok(Ok(_req_context)) => {
-            // Clean up upload files
-            if let Some(fields) = upload_doc_fields {
-                upload::delete_upload_files(&state.config_dir, &fields);
-            }
 
             let edited_by = auth_user.as_ref().map(|au| EventUser {
                 id: au.claims.sub.clone(),

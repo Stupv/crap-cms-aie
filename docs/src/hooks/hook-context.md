@@ -17,6 +17,7 @@ Collection-level hooks receive a context table and must return a (potentially mo
         updated_at = "...",
     },
     draft = true,               -- Whether this is a draft save (versioned collections only)
+    hook_depth = 0,             -- Current recursion depth (0 = top-level, 1+ = from Lua CRUD in hooks)
 }
 ```
 
@@ -73,6 +74,34 @@ function M.before_change(ctx)
     end
     -- Publishing: run full processing
     ctx.data.published_at = os.date("!%Y-%m-%d %H:%M:%S")
+    return ctx
+end
+```
+
+## Hook Depth
+
+The `hook_depth` field tracks how deep in the hook→CRUD→hook chain the current execution is:
+
+| Value | Meaning |
+|-------|---------|
+| `0` | Top-level call from gRPC API or admin UI |
+| `1` | Called from Lua CRUD inside a hook |
+| `2+` | Deeper recursion (hook called CRUD which triggered another hook) |
+
+When `hook_depth` reaches `hooks.max_depth` (default: 3, configurable in `crap.toml`),
+hooks are automatically skipped but the DB operation still executes. This prevents infinite
+recursion when hooks create/update documents in the same collection.
+
+```lua
+function M.audit_hook(ctx)
+    -- Only audit at the top level, not from recursive hook calls
+    if ctx.hook_depth >= 1 then
+        return ctx
+    end
+    crap.collections.create("audit_log", {
+        action = ctx.operation,
+        collection = ctx.collection,
+    })
     return ctx
 end
 ```

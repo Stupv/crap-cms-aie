@@ -257,7 +257,7 @@ crap = {}
 --- A single OR group — an object of field filters that are AND-ed together.
 
 --- @class crap.FindQuery
---- @field filters?        table<string, crap.FilterValue>  Field filters. String values = equals, table values = operators. Use `["or"]` key for OR groups.
+--- @field filters?        table<string, crap.FilterValue>  Field filters. String values = equals, table values = operators. Use `["or"]` key for OR groups. Keys support dot notation for nested fields: `"seo.title"` (group), `"variants.color"` (array sub-field), `"content.body"` (block sub-field), `"content._block_type"` (block type), `"tags.id"` (has-many relationship).
 --- @field order_by?       string                 Sort field (prefix with "-" for desc).
 --- @field limit?          integer                Max results to return.
 --- @field offset?         integer                Number of results to skip.
@@ -280,6 +280,7 @@ crap = {}
 --- @field locale?    string                 Current locale code (nil if localization disabled or default locale).
 --- @field original_doc? crap.Document       Original document (on update).
 --- @field req?       crap.RequestContext     Request context (if available).
+--- @field hook_depth  integer               Current hook recursion depth. 0 at gRPC/admin level, 1+ when called from within Lua CRUD inside hooks. Useful for manual recursion decisions.
 --- @field context  table<string, any>     Request-scoped shared table. Persists from before_validate through after_change within one request. Only JSON-compatible values survive (no functions/userdata).
 
 --- @class crap.ReadHookContext
@@ -375,11 +376,13 @@ function crap.collections.find_by_id(collection, id, opts) end
 --- @field locale?         string   Locale code for localized fields. Nil = default locale.
 --- @field overrideAccess? boolean  Skip access control checks (default: true). Set to false to enforce collection-level and field-level access for the current user.
 --- @field draft?          boolean  When true and the collection has `versions.drafts`, creates the document with `_status = 'draft'` and skips required-field validation.
+--- @field hooks?          boolean  Run lifecycle hooks (default: true). Set to false to skip all hooks (before_validate, before_change, after_change, validation). The DB operation still executes.
 
 --- @class crap.UpdateOptions
 --- @field locale?         string   Locale code for localized fields. Nil = default locale.
 --- @field overrideAccess? boolean  Skip access control checks (default: true). Set to false to enforce collection-level and field-level access for the current user.
 --- @field draft?          boolean  When true and the collection has `versions.drafts`, performs a version-only save (main table unchanged, only a draft version snapshot is created).
+--- @field hooks?          boolean  Run lifecycle hooks (default: true). Set to false to skip all hooks (before_validate, before_change, after_change, validation). The DB operation still executes.
 
 --- Create a new document.
 --- Inside hooks, runs within the parent operation's transaction.
@@ -400,6 +403,7 @@ function crap.collections.update(collection, id, data, opts) end
 
 --- @class crap.DeleteOptions
 --- @field overrideAccess? boolean  Skip access control checks (default: true). Set to false to enforce collection-level access for the current user.
+--- @field hooks?          boolean  Run lifecycle hooks (default: true). Set to false to skip before_delete and after_delete hooks. The DB operation still executes.
 
 --- Delete a document.
 --- Inside hooks, runs within the parent operation's transaction.
@@ -410,7 +414,7 @@ function crap.collections.update(collection, id, data, opts) end
 function crap.collections.delete(collection, id, opts) end
 
 --- @class crap.CountQuery
---- @field filters?        table<string, crap.FilterValue>  Field filters.
+--- @field filters?        table<string, crap.FilterValue>  Field filters. Supports dot notation for nested fields (same as FindQuery).
 --- @field locale?         string                 Locale code for localized fields.
 --- @field overrideAccess? boolean                Skip access control checks (default: true).
 --- @field draft?          boolean                Include draft documents (default: false).
@@ -423,7 +427,7 @@ function crap.collections.delete(collection, id, opts) end
 function crap.collections.count(collection, query) end
 
 --- @class crap.UpdateManyQuery
---- @field filters?        table<string, crap.FilterValue>  Field filters to match documents.
+--- @field filters?        table<string, crap.FilterValue>  Field filters to match documents. Supports dot notation for nested fields (same as FindQuery).
 --- @field where?          string                 JSON where clause.
 --- @field locale?         string                 Locale code for localized fields.
 --- @field overrideAccess? boolean                Skip access control checks (default: true).
@@ -441,7 +445,7 @@ function crap.collections.count(collection, query) end
 function crap.collections.update_many(collection, query, data, opts) end
 
 --- @class crap.DeleteManyQuery
---- @field filters?        table<string, crap.FilterValue>  Field filters to match documents.
+--- @field filters?        table<string, crap.FilterValue>  Field filters to match documents. Supports dot notation for nested fields (same as FindQuery).
 --- @field where?          string                 JSON where clause.
 --- @field overrideAccess? boolean                Skip access control checks (default: true).
 
