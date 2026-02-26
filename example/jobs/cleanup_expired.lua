@@ -20,7 +20,7 @@ function M.run(ctx)
 
     local result = crap.collections.find("posts", {
         filters = {
-            status = "archived",
+            _status = "archived",
             updated_at = { less_than = cutoff },
         },
     })
