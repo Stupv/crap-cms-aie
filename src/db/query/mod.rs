@@ -511,25 +511,13 @@ mod tests {
     use crate::core::collection::{
         CollectionDefinition, CollectionLabels, CollectionAdmin, CollectionHooks, CollectionAccess,
     };
-    use crate::core::field::{FieldDefinition, FieldType, FieldAdmin, FieldHooks, FieldAccess};
+    use crate::core::field::{FieldDefinition, FieldType};
 
     fn make_field(name: &str, field_type: FieldType) -> FieldDefinition {
         FieldDefinition {
             name: name.to_string(),
             field_type,
-            required: false,
-            unique: false,
-            validate: None,
-            default_value: None,
-            options: Vec::new(),
-            admin: FieldAdmin::default(),
-            hooks: FieldHooks::default(),
-            access: FieldAccess::default(),
-            relationship: None,
-            fields: Vec::new(),
-            blocks: Vec::new(),
-            localized: false,
-            picker_appearance: None,
+            ..Default::default()
         }
     }
 

@@ -177,6 +177,8 @@
 ---@field featured_image? string
 ---@field excerpt string
 ---@field content? table[]
+---@field post_type "article" | "link" | "video"
+---@field external_url? string
 ---@field category? string
 ---@field tags? string[]
 ---@field published_at? string
@@ -190,6 +192,8 @@
 ---@field featured_image? string
 ---@field excerpt string
 ---@field content? table[]
+---@field post_type "article" | "link" | "video"
+---@field external_url? string
 ---@field category? string
 ---@field tags? string[]
 ---@field published_at? string
@@ -215,6 +219,8 @@
 ---@field author? crap.FilterValue
 ---@field featured_image? crap.FilterValue
 ---@field excerpt? crap.FilterValue
+---@field post_type? crap.FilterValue
+---@field external_url? crap.FilterValue
 ---@field category? crap.FilterValue
 ---@field published_at? crap.FilterValue
 ---@field seo__meta_title? crap.FilterValue
@@ -227,7 +233,7 @@
 
 ---@class crap.query.Posts
 ---@field filters? crap.filters.Posts
----@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"author"|"-author"|"featured_image"|"-featured_image"|"excerpt"|"-excerpt"|"category"|"-category"|"published_at"|"-published_at"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__og_image"|"-seo__og_image"|"seo__no_index"|"-seo__no_index"|"_status"|"-_status"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"author"|"-author"|"featured_image"|"-featured_image"|"excerpt"|"-excerpt"|"post_type"|"-post_type"|"external_url"|"-external_url"|"category"|"-category"|"published_at"|"-published_at"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__og_image"|"-seo__og_image"|"seo__no_index"|"-seo__no_index"|"_status"|"-_status"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
 ---@field locale? string

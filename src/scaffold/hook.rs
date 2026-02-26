@@ -10,6 +10,7 @@ pub enum HookType {
     Collection,
     Field,
     Access,
+    Condition,
 }
 
 impl HookType {
@@ -19,6 +20,7 @@ impl HookType {
             "collection" => Some(Self::Collection),
             "field" => Some(Self::Field),
             "access" => Some(Self::Access),
+            "condition" => Some(Self::Condition),
             _ => None,
         }
     }
@@ -35,6 +37,7 @@ impl HookType {
                 "before_validate", "before_change", "after_change", "after_read",
             ],
             Self::Access => &["read", "create", "update", "delete"],
+            Self::Condition => &["table", "boolean"],
         }
     }
 
@@ -44,6 +47,7 @@ impl HookType {
             Self::Collection => "collection",
             Self::Field => "field",
             Self::Access => "access",
+            Self::Condition => "condition",
         }
     }
 }
@@ -57,6 +61,21 @@ pub struct MakeHookOptions<'a> {
     pub position: &'a str,
     pub field: Option<&'a str>,
     pub force: bool,
+    /// For condition hooks: info about the watched field (used to generate
+    /// a type-appropriate condition template).
+    pub condition_field: Option<ConditionFieldInfo>,
+}
+
+/// Field info used by condition hook scaffolding to generate
+/// type-appropriate condition templates.
+#[derive(Debug, Clone)]
+pub struct ConditionFieldInfo {
+    /// The field name to watch (e.g., "status").
+    pub name: String,
+    /// The field type as a string (e.g., "select", "checkbox", "text").
+    pub field_type: String,
+    /// For select fields: the option values (e.g., ["draft", "published"]).
+    pub select_options: Vec<String>,
 }
 
 /// Generate a hook file at `<config_dir>/hooks/<collection>/<name>.lua`.
@@ -135,6 +154,89 @@ end
             position = opts.position,
             collection = opts.collection,
         ),
+        HookType::Condition if opts.position == "boolean" => {
+            let field_name = opts.condition_field.as_ref()
+                .map(|cf| cf.name.as_str())
+                .unwrap_or("field_name");
+            format!(
+                r#"--- Display condition for {collection} (server-evaluated).
+---
+--- Returns a boolean. Re-evaluated on the server via a debounced
+--- fetch (300ms) whenever the user changes a form field.
+---
+--- PERFORMANCE: This makes a server round-trip on every change.
+--- If your logic can be expressed as a simple comparison, prefer
+--- returning a condition table instead (evaluated client-side, instant):
+---   return {{ field = "{field_name}", equals = "value" }}
+---
+---@param data table Current form field values.
+---@return boolean
+return function(data)
+    -- TODO: implement
+    local val = data.{field_name} or ""
+    return val ~= ""
+end
+"#,
+                collection = opts.collection,
+                field_name = field_name,
+            )
+        }
+        HookType::Condition => {
+            let body = if let Some(ref cf) = opts.condition_field {
+                match cf.field_type.as_str() {
+                    "select" if !cf.select_options.is_empty() => {
+                        format!(
+                            r#"    return {{ field = "{name}", equals = "{val}" }}"#,
+                            name = cf.name,
+                            val = cf.select_options[0],
+                        )
+                    }
+                    "checkbox" => {
+                        format!(
+                            r#"    return {{ field = "{name}", is_truthy = true }}"#,
+                            name = cf.name,
+                        )
+                    }
+                    "number" => {
+                        format!(
+                            r#"    return {{ field = "{name}", not_equals = "0" }}"#,
+                            name = cf.name,
+                        )
+                    }
+                    // text, textarea, email, richtext, relationship, upload, etc.
+                    _ => {
+                        format!(
+                            r#"    return {{ field = "{name}", is_truthy = true }}"#,
+                            name = cf.name,
+                        )
+                    }
+                }
+            } else {
+                // No field info available — generic template
+                r#"    -- TODO: replace "field_name" with the field to watch
+    return { field = "field_name", equals = "value" }"#.to_string()
+            };
+
+            format!(
+                r#"--- Display condition for {collection} (client-evaluated).
+---
+--- Returns a condition table — evaluated instantly in the browser,
+--- no server round-trip. Prefer this over boolean returns when possible.
+---
+--- Condition table operators:
+---   equals, not_equals, in, not_in, is_truthy, is_falsy
+---   Array of conditions = AND (all must be true).
+---
+---@param data table Current form field values.
+---@return table
+return function(data)
+{body}
+end
+"#,
+                collection = opts.collection,
+                body = body,
+            )
+        }
     };
 
     fs::write(&file_path, &lua)
@@ -166,6 +268,12 @@ end
             println!("      {} = \"{}\",", opts.position, hook_ref);
             println!("  }},");
         }
+        HookType::Condition => {
+            println!("Add to your field definition:");
+            println!("  admin = {{");
+            println!("      condition = \"{}\",", hook_ref);
+            println!("  }},");
+        }
     }
 
     Ok(())
@@ -186,7 +294,7 @@ mod tests {
         field: Option<&'a str>,
         force: bool,
     ) -> MakeHookOptions<'a> {
-        MakeHookOptions { config_dir, name, hook_type, collection, position, field, force }
+        MakeHookOptions { config_dir, name, hook_type, collection, position, field, force, condition_field: None }
     }
 
     #[test]
@@ -288,6 +396,84 @@ mod tests {
             "posts", "before_change", None, false,
         );
         assert!(make_hook(&opts2).is_err());
+    }
+
+    #[test]
+    fn test_make_hook_condition_generic() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let opts = make_hook_opts(
+            tmp.path(), "show_url", HookType::Condition,
+            "posts", "table", None, false,
+        );
+        make_hook(&opts).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("hooks/posts/show_url.lua")).unwrap();
+        assert!(content.contains("Display condition for posts (client-evaluated)"));
+        assert!(content.contains("@return table"));
+        assert!(content.contains("return function(data)"));
+        // Generic template when no field info
+        assert!(content.contains("field_name"));
+    }
+
+    #[test]
+    fn test_make_hook_condition_select() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut opts = make_hook_opts(
+            tmp.path(), "show_if_published", HookType::Condition,
+            "posts", "table", None, false,
+        );
+        opts.condition_field = Some(ConditionFieldInfo {
+            name: "status".to_string(),
+            field_type: "select".to_string(),
+            select_options: vec!["draft".to_string(), "published".to_string()],
+        });
+        make_hook(&opts).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("hooks/posts/show_if_published.lua")).unwrap();
+        assert!(content.contains(r#"field = "status""#));
+        assert!(content.contains(r#"equals = "draft""#));
+    }
+
+    #[test]
+    fn test_make_hook_condition_checkbox() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut opts = make_hook_opts(
+            tmp.path(), "show_if_featured", HookType::Condition,
+            "posts", "table", None, false,
+        );
+        opts.condition_field = Some(ConditionFieldInfo {
+            name: "is_featured".to_string(),
+            field_type: "checkbox".to_string(),
+            select_options: vec![],
+        });
+        make_hook(&opts).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("hooks/posts/show_if_featured.lua")).unwrap();
+        assert!(content.contains(r#"field = "is_featured""#));
+        assert!(content.contains("is_truthy = true"));
+    }
+
+    #[test]
+    fn test_make_hook_condition_boolean() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut opts = make_hook_opts(
+            tmp.path(), "show_premium", HookType::Condition,
+            "posts", "boolean", None, false,
+        );
+        opts.condition_field = Some(ConditionFieldInfo {
+            name: "status".to_string(),
+            field_type: "select".to_string(),
+            select_options: vec!["draft".to_string(), "published".to_string()],
+        });
+        make_hook(&opts).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("hooks/posts/show_premium.lua")).unwrap();
+        assert!(content.contains("Display condition for posts (server-evaluated)"));
+        assert!(content.contains("@return boolean"));
+        assert!(content.contains("PERFORMANCE"));
+        assert!(content.contains("server round-trip"));
+        assert!(content.contains("return function(data)"));
+        assert!(content.contains("data.status"));
     }
 
     #[test]

@@ -96,6 +96,8 @@ pub fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Re
                 blocks: Vec::new(),
                 localized: false,
                 picker_appearance: None,
+                min_rows: None,
+                max_rows: None,
             });
         }
     }
@@ -140,6 +142,7 @@ pub fn parse_global_definition(_lua: &Lua, slug: &str, config: &Table) -> Result
 
     let access = parse_access_config(config);
     let live = parse_live_setting(config);
+    let versions = parse_versions_config(config);
 
     Ok(GlobalDefinition {
         slug: slug.to_string(),
@@ -148,6 +151,7 @@ pub fn parse_global_definition(_lua: &Lua, slug: &str, config: &Table) -> Result
         hooks,
         access,
         live,
+        versions,
     })
 }
 
@@ -361,6 +365,8 @@ fn hidden_text_field(name: &str) -> FieldDefinition {
         blocks: Vec::new(),
         localized: false,
         picker_appearance: None,
+        min_rows: None,
+        max_rows: None,
     }
 }
 
@@ -382,6 +388,8 @@ fn hidden_number_field(name: &str) -> FieldDefinition {
         blocks: Vec::new(),
         localized: false,
         picker_appearance: None,
+        min_rows: None,
+        max_rows: None,
     }
 }
 
@@ -405,6 +413,8 @@ fn inject_upload_fields(fields: &mut Vec<FieldDefinition>, upload: &CollectionUp
             blocks: Vec::new(),
             localized: false,
             picker_appearance: None,
+            min_rows: None,
+            max_rows: None,
         },
         hidden_text_field("mime_type"),
         hidden_number_field("filesize"),
@@ -468,6 +478,11 @@ fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
         };
 
         let admin = if let Ok(admin_tbl) = get_table(&field_tbl, "admin") {
+            let (labels_singular, labels_plural) = if let Ok(labels_tbl) = get_table(&admin_tbl, "labels") {
+                (get_localized_string(&labels_tbl, "singular"), get_localized_string(&labels_tbl, "plural"))
+            } else {
+                (None, None)
+            };
             FieldAdmin {
                 label: get_localized_string(&admin_tbl, "label"),
                 placeholder: get_localized_string(&admin_tbl, "placeholder"),
@@ -476,6 +491,13 @@ fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
                 readonly: get_bool(&admin_tbl, "readonly", false),
                 width: get_string(&admin_tbl, "width"),
                 collapsed: get_bool(&admin_tbl, "collapsed", false),
+                label_field: get_string(&admin_tbl, "label_field"),
+                row_label: get_string(&admin_tbl, "row_label"),
+                init_collapsed: get_bool(&admin_tbl, "init_collapsed", false),
+                labels_singular,
+                labels_plural,
+                position: get_string(&admin_tbl, "position"),
+                condition: get_string(&admin_tbl, "condition"),
             }
         } else {
             FieldAdmin::default()
@@ -553,6 +575,9 @@ fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
             Vec::new()
         };
 
+        let min_rows = field_tbl.get::<Option<usize>>("min_rows").ok().flatten();
+        let max_rows = field_tbl.get::<Option<usize>>("max_rows").ok().flatten();
+
         fields.push(FieldDefinition {
             name,
             field_type,
@@ -569,6 +594,8 @@ fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
             blocks: block_defs,
             localized,
             picker_appearance,
+            min_rows,
+            max_rows,
         });
     }
 
@@ -628,6 +655,7 @@ fn parse_block_definitions(blocks_tbl: &Table) -> Result<Vec<crate::core::field:
         let block_type: String = get_string_val(&block_tbl, "type")
             .map_err(|_| anyhow::anyhow!("Block definition missing 'type'"))?;
         let label = get_localized_string(&block_tbl, "label");
+        let label_field = get_string(&block_tbl, "label_field");
         let fields = if let Ok(fields_tbl) = get_table(&block_tbl, "fields") {
             parse_fields(&fields_tbl)?
         } else {
@@ -637,6 +665,7 @@ fn parse_block_definitions(blocks_tbl: &Table) -> Result<Vec<crate::core::field:
             block_type,
             fields,
             label,
+            label_field,
         });
     }
     Ok(blocks)

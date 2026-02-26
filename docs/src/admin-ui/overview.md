@@ -67,9 +67,12 @@ See [Versions & Drafts](../collections/versions.md) for the full configuration a
 
 ## JavaScript
 
-- No build step, no npm, no bundler
-- Single `components.js` file loaded with `<script defer>`
+- No build step, no npm, no bundler — browser-native ES modules
+- `static/components/index.js` entry point loaded with `<script type="module">`
+- Each feature is a separate module under `static/components/` (individually overridable)
 - JSDoc annotations for all types
-- Web Components:
+- Web Components (Shadow DOM, CSS variables for theming):
   - `<crap-toast>` — toast notifications (listens for `htmx:afterRequest`, reads `X-Crap-Toast` header)
   - `<crap-confirm>` — confirmation dialogs (wraps forms, intercepts submit)
+  - `<crap-confirm-dialog>` — standalone confirm for `hx-confirm` attributes (replaces native `window.confirm`)
+  - `<crap-richtext>` — ProseMirror WYSIWYG editor

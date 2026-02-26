@@ -10,9 +10,10 @@ use std::sync::Arc;
 use anyhow::{Context as _, Result};
 
 use crate::config::{EmailConfig, ServerConfig};
-use crate::core::collection::{CollectionHooks, GlobalDefinition};
+use crate::core::collection::{CollectionHooks, GlobalDefinition, VersionsConfig};
 use crate::core::document::Document;
 use crate::core::email::EmailRenderer;
+use crate::core::field::FieldDefinition;
 use crate::core::CollectionDefinition;
 use crate::db::query::{self, LocaleContext};
 use crate::db::DbPool;
@@ -20,6 +21,72 @@ use crate::hooks::lifecycle::{self, HookContext, HookEvent, HookRunner};
 
 /// Result of a write operation: the document and the request-scoped hook context.
 pub type WriteResult = (Document, HashMap<String, serde_json::Value>);
+
+/// Save a draft-only version: merge incoming hook-processed data onto existing doc,
+/// merge join data, create a draft version snapshot, and prune.
+fn save_draft_version(
+    tx: &rusqlite::Transaction,
+    table: &str,
+    parent_id: &str,
+    fields: &[FieldDefinition],
+    versions: Option<&VersionsConfig>,
+    existing_doc: &Document,
+    final_ctx_data: &HashMap<String, serde_json::Value>,
+    join_data: &HashMap<String, serde_json::Value>,
+) -> Result<()> {
+    let mut snapshot_fields = existing_doc.fields.clone();
+    for (k, v) in final_ctx_data {
+        snapshot_fields.insert(k.clone(), v.clone());
+    }
+    let snapshot_doc = Document {
+        id: parent_id.to_string(),
+        fields: snapshot_fields,
+        created_at: existing_doc.created_at.clone(),
+        updated_at: existing_doc.updated_at.clone(),
+    };
+
+    let mut snapshot = query::build_snapshot(tx, table, fields, &snapshot_doc)?;
+    // Merge incoming join data (blocks/arrays/has-many) into the snapshot.
+    // build_snapshot hydrates from join tables (which have the old/published data),
+    // so we must overwrite with the incoming form data for draft-only saves.
+    if let Some(obj) = snapshot.as_object_mut() {
+        for (k, v) in join_data {
+            obj.insert(k.clone(), v.clone());
+        }
+    }
+    query::create_version(tx, table, parent_id, "draft", &snapshot)?;
+    if let Some(vc) = versions {
+        if vc.max_versions > 0 {
+            query::prune_versions(tx, table, parent_id, vc.max_versions)?;
+        }
+    }
+    Ok(())
+}
+
+/// Set document status, create a version snapshot, and prune.
+/// Used for both initial creates (status may be "draft") and normal updates ("published").
+fn create_version_snapshot(
+    tx: &rusqlite::Transaction,
+    table: &str,
+    parent_id: &str,
+    fields: &[FieldDefinition],
+    versions: Option<&VersionsConfig>,
+    has_drafts: bool,
+    status: &str,
+    doc: &Document,
+) -> Result<()> {
+    if has_drafts {
+        query::set_document_status(tx, table, parent_id, status)?;
+    }
+    let snapshot = query::build_snapshot(tx, table, fields, doc)?;
+    query::create_version(tx, table, parent_id, status, &snapshot)?;
+    if let Some(vc) = versions {
+        if vc.max_versions > 0 {
+            query::prune_versions(tx, table, parent_id, vc.max_versions)?;
+        }
+    }
+    Ok(())
+}
 
 /// Create a document within a single transaction: before-hooks → insert → join data → password.
 /// When `draft` is true and the collection has drafts enabled, the document is created with
@@ -45,12 +112,18 @@ pub fn create_document(
     let mut conn = pool.get().context("DB connection")?;
     let tx = conn.transaction().context("Start transaction")?;
 
+    let mut hook_data: HashMap<String, serde_json::Value> = data.iter()
+        .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
+        .collect();
+    // Merge structured join data (blocks, arrays, has-many) so validation and hooks
+    // see them as proper JSON arrays rather than flat bracket-notation keys.
+    for (k, v) in join_data {
+        hook_data.insert(k.clone(), v.clone());
+    }
     let hook_ctx = HookContext {
         collection: slug.to_string(),
         operation: "create".to_string(),
-        data: data.iter()
-            .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
-            .collect(),
+        data: hook_data,
         locale: locale.clone(),
         draft: Some(is_draft),
         context: HashMap::new(),
@@ -62,7 +135,7 @@ pub fn create_document(
     let final_data = lifecycle::hook_ctx_to_string_map(&final_ctx);
     let doc = query::create(&tx, slug, def, &final_data, locale_ctx)?;
 
-    query::save_join_table_data(&tx, slug, def, &doc.id, join_data, locale_ctx)?;
+    query::save_join_table_data(&tx, slug, &def.fields, &doc.id, join_data, locale_ctx)?;
 
     if let Some(pw) = password {
         if !pw.is_empty() {
@@ -72,17 +145,10 @@ pub fn create_document(
 
     // Versioning: set status (only if drafts enabled) and create initial version snapshot
     if def.has_versions() {
-        if def.has_drafts() {
-            query::set_document_status(&tx, slug, &doc.id, status)?;
-        }
-        let snapshot = query::build_snapshot(&tx, slug, def, &doc)?;
-        let version = query::create_version(&tx, slug, &doc.id, status, &snapshot)?;
-        if let Some(ref vc) = def.versions {
-            if vc.max_versions > 0 {
-                query::prune_versions(&tx, slug, &doc.id, vc.max_versions)?;
-            }
-        }
-        let _ = version; // version created but not returned
+        create_version_snapshot(
+            &tx, slug, &doc.id, &def.fields,
+            def.versions.as_ref(), def.has_drafts(), status, &doc,
+        )?;
     }
 
     // After-hooks: run inside the same transaction, with CRUD access
@@ -128,12 +194,18 @@ pub fn update_document(
     let mut conn = pool.get().context("DB connection")?;
     let tx = conn.transaction().context("Start transaction")?;
 
+    let mut hook_data: HashMap<String, serde_json::Value> = data.iter()
+        .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
+        .collect();
+    // Merge structured join data (blocks, arrays, has-many) so validation and hooks
+    // see them as proper JSON arrays rather than flat bracket-notation keys.
+    for (k, v) in join_data {
+        hook_data.insert(k.clone(), v.clone());
+    }
     let hook_ctx = HookContext {
         collection: slug.to_string(),
         operation: "update".to_string(),
-        data: data.iter()
-            .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
-            .collect(),
+        data: hook_data,
         locale: locale.clone(),
         draft: Some(is_draft),
         context: HashMap::new(),
@@ -146,37 +218,13 @@ pub fn update_document(
 
     if is_draft && def.has_versions() {
         // Version-only save: do NOT update the main table.
-        // Build a snapshot from the hook-processed data and save as a draft version.
-        let existing_doc = query::find_by_id(&tx, slug, def, id, None)?
+        let existing_doc = query::find_by_id_raw(&tx, slug, def, id, None)?
             .ok_or_else(|| anyhow::anyhow!("Document {} not found in {}", id, slug))?;
 
-        // Build a temporary doc from the incoming data merged onto the existing doc
-        let mut snapshot_fields = existing_doc.fields.clone();
-        for (k, v) in &final_ctx.data {
-            snapshot_fields.insert(k.clone(), v.clone());
-        }
-        let snapshot_doc = Document {
-            id: id.to_string(),
-            fields: snapshot_fields,
-            created_at: existing_doc.created_at.clone(),
-            updated_at: existing_doc.updated_at.clone(),
-        };
-
-        let mut snapshot = query::build_snapshot(&tx, slug, def, &snapshot_doc)?;
-        // Merge incoming join data (blocks/arrays/has-many) into the snapshot.
-        // build_snapshot hydrates from join tables (which have the old/published data),
-        // so we must overwrite with the incoming form data for draft-only saves.
-        if let Some(obj) = snapshot.as_object_mut() {
-            for (k, v) in join_data {
-                obj.insert(k.clone(), v.clone());
-            }
-        }
-        query::create_version(&tx, slug, id, "draft", &snapshot)?;
-        if let Some(ref vc) = def.versions {
-            if vc.max_versions > 0 {
-                query::prune_versions(&tx, slug, id, vc.max_versions)?;
-            }
-        }
+        save_draft_version(
+            &tx, slug, id, &def.fields, def.versions.as_ref(),
+            &existing_doc, &final_ctx.data, join_data,
+        )?;
 
         // After-hooks: run inside the same transaction, with CRUD access
         let after_ctx = HookContext {
@@ -199,7 +247,7 @@ pub fn update_document(
         // Normal update: write to main table
         let doc = query::update(&tx, slug, def, id, &final_data, locale_ctx)?;
 
-        query::save_join_table_data(&tx, slug, def, &doc.id, join_data, locale_ctx)?;
+        query::save_join_table_data(&tx, slug, &def.fields, &doc.id, join_data, locale_ctx)?;
 
         if let Some(pw) = password {
             if !pw.is_empty() {
@@ -207,18 +255,12 @@ pub fn update_document(
             }
         }
 
-        // Versioning: set status to published (only if drafts enabled) and create version
+        // Versioning: set status to published and create version
         if def.has_versions() {
-            if def.has_drafts() {
-                query::set_document_status(&tx, slug, &doc.id, "published")?;
-            }
-            let snapshot = query::build_snapshot(&tx, slug, def, &doc)?;
-            query::create_version(&tx, slug, &doc.id, "published", &snapshot)?;
-            if let Some(ref vc) = def.versions {
-                if vc.max_versions > 0 {
-                    query::prune_versions(&tx, slug, &doc.id, vc.max_versions)?;
-                }
-            }
+            create_version_snapshot(
+                &tx, slug, &doc.id, &def.fields,
+                def.versions.as_ref(), def.has_drafts(), "published", &doc,
+            )?;
         }
 
         // After-hooks: run inside the same transaction, with CRUD access
@@ -280,7 +322,9 @@ pub fn delete_document(
     Ok(after_result.context)
 }
 
-/// Update a global document within a single transaction: before-hooks → update.
+/// Update a global document within a single transaction: before-hooks → update → join data.
+/// When `draft` is true and the global has drafts enabled, creates a version-only save
+/// (main table NOT modified). On publish (`draft=false`), the main table is updated.
 #[allow(clippy::too_many_arguments)]
 pub fn update_global_document(
     pool: &DbPool,
@@ -288,48 +332,100 @@ pub fn update_global_document(
     slug: &str,
     def: &GlobalDefinition,
     data: HashMap<String, String>,
+    join_data: &HashMap<String, serde_json::Value>,
     locale_ctx: Option<&LocaleContext>,
     locale: Option<String>,
     user: Option<&Document>,
+    draft: bool,
 ) -> Result<WriteResult> {
+    let is_draft = draft && def.has_drafts();
+
     let mut conn = pool.get().context("DB connection")?;
     let tx = conn.transaction().context("Start transaction")?;
 
+    let global_table = format!("_global_{}", slug);
+
+    let mut hook_data: HashMap<String, serde_json::Value> = data.iter()
+        .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
+        .collect();
+    // Merge structured join data (blocks, arrays, has-many) so validation and hooks
+    // see them as proper JSON arrays rather than flat bracket-notation keys.
+    for (k, v) in join_data {
+        hook_data.insert(k.clone(), v.clone());
+    }
     let hook_ctx = HookContext {
         collection: slug.to_string(),
         operation: "update".to_string(),
-        data: data.iter()
-            .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
-            .collect(),
+        data: hook_data,
         locale: locale.clone(),
-        draft: None,
+        draft: Some(is_draft),
         context: HashMap::new(),
     };
-    let global_table = format!("_global_{}", slug);
     let final_ctx = runner.run_before_write(
-        &def.hooks, &def.fields, hook_ctx, &tx, &global_table, Some("default"), user, false,
+        &def.hooks, &def.fields, hook_ctx, &tx, &global_table, Some("default"), user, is_draft,
     )?;
     let req_context = final_ctx.context.clone();
     let final_data = lifecycle::hook_ctx_to_string_map(&final_ctx);
-    let doc = query::update_global(&tx, slug, def, &final_data, locale_ctx)?;
 
-    // After-hooks: run inside the same transaction, with CRUD access
-    let after_ctx = HookContext {
-        collection: slug.to_string(),
-        operation: "update".to_string(),
-        data: doc.fields.clone(),
-        locale,
-        draft: None,
-        context: req_context,
-    };
-    let after_result = runner.run_after_write(
-        &def.hooks, &def.fields, HookEvent::AfterChange,
-        after_ctx, &tx, user,
-    )?;
-    let req_context = after_result.context;
+    if is_draft && def.has_versions() {
+        // Version-only save: do NOT update the main table.
+        let existing_doc = query::get_global(&tx, slug, def, locale_ctx)?;
 
-    tx.commit().context("Commit transaction")?;
-    Ok((doc, req_context))
+        save_draft_version(
+            &tx, &global_table, "default", &def.fields, def.versions.as_ref(),
+            &existing_doc, &final_ctx.data, join_data,
+        )?;
+
+        // After-hooks
+        let after_ctx = HookContext {
+            collection: slug.to_string(),
+            operation: "update".to_string(),
+            data: existing_doc.fields.clone(),
+            locale: locale.clone(),
+            draft: Some(is_draft),
+            context: req_context,
+        };
+        let after_result = runner.run_after_write(
+            &def.hooks, &def.fields, HookEvent::AfterChange,
+            after_ctx, &tx, user,
+        )?;
+        let req_context = after_result.context;
+
+        tx.commit().context("Commit transaction")?;
+        Ok((existing_doc, req_context))
+    } else {
+        // Normal update: write to main table
+        let doc = query::update_global(&tx, slug, def, &final_data, locale_ctx)?;
+
+        // Save join table data (arrays, blocks, has-many relationships)
+        query::save_join_table_data(&tx, &global_table, &def.fields, "default", join_data, locale_ctx)?;
+
+        // Versioning: set status to published and create version
+        if def.has_versions() {
+            create_version_snapshot(
+                &tx, &global_table, "default", &def.fields,
+                def.versions.as_ref(), def.has_drafts(), "published", &doc,
+            )?;
+        }
+
+        // After-hooks: run inside the same transaction, with CRUD access
+        let after_ctx = HookContext {
+            collection: slug.to_string(),
+            operation: "update".to_string(),
+            data: doc.fields.clone(),
+            locale,
+            draft: Some(is_draft),
+            context: req_context,
+        };
+        let after_result = runner.run_after_write(
+            &def.hooks, &def.fields, HookEvent::AfterChange,
+            after_ctx, &tx, user,
+        )?;
+        let req_context = after_result.context;
+
+        tx.commit().context("Commit transaction")?;
+        Ok((doc, req_context))
+    }
 }
 
 /// Fire-and-forget: generate a verification token and send the verification email.

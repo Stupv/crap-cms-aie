@@ -208,7 +208,7 @@ mod tests {
     use crate::core::collection::{
         CollectionAccess, CollectionAdmin, CollectionDefinition, CollectionHooks, CollectionLabels,
     };
-    use crate::core::field::{FieldAccess, FieldAdmin, FieldDefinition, FieldHooks, FieldType};
+    use crate::core::field::{FieldDefinition, FieldType};
     use crate::db::query::{FilterClause, FilterOp, Filter, LocaleContext, LocaleMode};
 
     // ── Helpers ────────────────────────────────────────────────────────────
@@ -218,19 +218,8 @@ mod tests {
         FieldDefinition {
             name: name.to_string(),
             field_type: ft,
-            required: false,
-            unique: false,
-            validate: None,
-            default_value: None,
-            options: Vec::new(),
-            admin: FieldAdmin::default(),
-            hooks: FieldHooks::default(),
-            access: FieldAccess::default(),
-            relationship: None,
-            fields: Vec::new(),
-            blocks: Vec::new(),
             localized,
-            picker_appearance: None,
+            ..Default::default()
         }
     }
 

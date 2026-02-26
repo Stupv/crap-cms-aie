@@ -233,6 +233,8 @@ pub struct GlobalDefinition {
     pub access: CollectionAccess,
     #[serde(default)]
     pub live: Option<LiveSetting>,
+    #[serde(default)]
+    pub versions: Option<VersionsConfig>,
 }
 
 impl GlobalDefinition {
@@ -251,6 +253,16 @@ impl GlobalDefinition {
             .map(|ls| ls.resolve(locale, default_locale))
             .filter(|s| !s.is_empty())
             .unwrap_or(&self.slug)
+    }
+
+    /// Check if this global has versioning enabled.
+    pub fn has_versions(&self) -> bool {
+        self.versions.is_some()
+    }
+
+    /// Check if this global has drafts enabled (versioning + drafts flag).
+    pub fn has_drafts(&self) -> bool {
+        self.versions.as_ref().is_some_and(|v| v.drafts)
     }
 }
 

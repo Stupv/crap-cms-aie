@@ -5,14 +5,15 @@ use rusqlite::params_from_iter;
 use std::collections::HashMap;
 
 use crate::config::LocaleConfig;
-use crate::core::collection::CollectionDefinition;
+use crate::core::collection::{CollectionDefinition, GlobalDefinition};
 use crate::core::document::VersionSnapshot;
+use crate::core::field::FieldDefinition;
 
 /// Build a JSON snapshot of a document's current state (fields + join data).
 pub fn build_snapshot(
     conn: &rusqlite::Connection,
     slug: &str,
-    def: &CollectionDefinition,
+    fields: &[FieldDefinition],
     doc: &crate::core::Document,
 ) -> Result<serde_json::Value> {
     let mut data = serde_json::Map::new();
@@ -21,7 +22,7 @@ pub fn build_snapshot(
     }
     // Hydrate join table data into the snapshot
     let mut doc_clone = doc.clone();
-    super::hydrate_document(conn, slug, def, &mut doc_clone, None, None)?;
+    super::hydrate_document(conn, slug, fields, &mut doc_clone, None, None)?;
     for (k, v) in &doc_clone.fields {
         data.insert(k.clone(), v.clone());
     }
@@ -204,6 +205,128 @@ pub fn find_version_by_id(
     }
 }
 
+/// Convert a JSON value to a string for the data HashMap.
+/// Returns None for complex types (arrays/objects) that are handled via join tables.
+fn snapshot_val_to_string(val: Option<&serde_json::Value>) -> Option<String> {
+    match val {
+        Some(serde_json::Value::String(s)) => Some(s.clone()),
+        Some(serde_json::Value::Number(n)) => Some(n.to_string()),
+        Some(serde_json::Value::Bool(b)) => Some(b.to_string()),
+        Some(serde_json::Value::Null) | None => Some(String::new()),
+        _ => None, // complex types (arrays/objects) handled via join tables
+    }
+}
+
+/// Extract flat field data from a snapshot for the UPDATE statement.
+/// Group fields are always expanded to `field__subfield` sub-columns.
+/// Handles both flat (`seo__meta_title`) and nested (`seo: { meta_title: ... }`) snapshot formats.
+fn extract_snapshot_data(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    fields: &[FieldDefinition],
+    locales_enabled: bool,
+) -> HashMap<String, String> {
+    let mut data: HashMap<String, String> = HashMap::new();
+    for field in fields {
+        if field.field_type == crate::core::field::FieldType::Group {
+            let nested_obj = obj.get(&field.name).and_then(|v| v.as_object());
+            for sub in &field.fields {
+                let is_localized = (field.localized || sub.localized) && locales_enabled;
+                if is_localized {
+                    continue;
+                }
+                let key = format!("{}__{}", field.name, sub.name);
+                // Try flat key first, then nested path
+                let val = obj.get(&key)
+                    .or_else(|| nested_obj.and_then(|n| n.get(&sub.name)));
+                if let Some(s) = snapshot_val_to_string(val) {
+                    data.insert(key, s);
+                }
+            }
+            continue;
+        }
+        if !field.has_parent_column() {
+            continue;
+        }
+        if field.localized && locales_enabled {
+            continue;
+        }
+        if let Some(s) = snapshot_val_to_string(obj.get(&field.name)) {
+            data.insert(field.name.clone(), s);
+        }
+    }
+    data
+}
+
+/// Restore locale columns and join table data from a snapshot.
+/// Group fields are always expanded to `field__subfield` sub-columns.
+fn restore_locale_and_join_data(
+    conn: &rusqlite::Connection,
+    table: &str,
+    parent_id: &str,
+    fields: &[FieldDefinition],
+    obj: &serde_json::Map<String, serde_json::Value>,
+    locale_config: &LocaleConfig,
+) -> Result<()> {
+    let locales_enabled = locale_config.is_enabled();
+
+    // Restore localized main-table columns: clear ALL locale columns, set default from snapshot.
+    if locales_enabled {
+        let mut set_clauses = Vec::new();
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        let mut idx = 1;
+
+        for field in fields {
+            if field.field_type == crate::core::field::FieldType::Group {
+                let nested_obj = obj.get(&field.name).and_then(|v| v.as_object());
+                for sub in &field.fields {
+                    let is_localized = field.localized || sub.localized;
+                    if !is_localized { continue; }
+                    let base = format!("{}__{}", field.name, sub.name);
+                    // Resolve value from flat key or nested path
+                    let val = obj.get(&base)
+                        .or_else(|| nested_obj.and_then(|n| n.get(&sub.name)));
+                    restore_locale_columns(
+                        val, &base, locale_config,
+                        &mut set_clauses, &mut params, &mut idx,
+                    );
+                }
+                continue;
+            }
+            if !field.localized || !field.has_parent_column() { continue; }
+            restore_locale_columns(
+                obj.get(&field.name), &field.name, locale_config,
+                &mut set_clauses, &mut params, &mut idx,
+            );
+        }
+
+        if !set_clauses.is_empty() {
+            let sql = format!(
+                "UPDATE {} SET {} WHERE id = ?{}",
+                table, set_clauses.join(", "), idx
+            );
+            params.push(Box::new(parent_id.to_string()));
+            let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+            conn.execute(&sql, params_from_iter(param_refs.iter()))
+                .context("Failed to restore locale columns")?;
+        }
+    }
+
+    // Restore join table data from snapshot
+    let mut join_data: HashMap<String, serde_json::Value> = HashMap::new();
+    for field in fields {
+        if !field.has_parent_column() {
+            if let Some(v) = obj.get(&field.name) {
+                join_data.insert(field.name.clone(), v.clone());
+            }
+        }
+    }
+    if !join_data.is_empty() {
+        super::save_join_table_data(conn, table, fields, parent_id, &join_data, None)?;
+    }
+
+    Ok(())
+}
+
 /// Restore a version snapshot back to the main table. Updates all regular columns
 /// and join tables from the snapshot data. Creates a new version recording the restore.
 ///
@@ -220,45 +343,11 @@ pub fn restore_version(
     status: &str,
     locale_config: &LocaleConfig,
 ) -> Result<crate::core::Document> {
-    // Extract flat field data from snapshot for the UPDATE
     let obj = snapshot.as_object()
         .ok_or_else(|| anyhow::anyhow!("Snapshot is not a JSON object"))?;
 
     let locales_enabled = locale_config.is_enabled();
-
-    let mut data: HashMap<String, String> = HashMap::new();
-    let insert_from_snapshot = |data: &mut HashMap<String, String>, key: &str| {
-        match obj.get(key) {
-            Some(serde_json::Value::String(s)) => { data.insert(key.to_string(), s.clone()); }
-            Some(serde_json::Value::Number(n)) => { data.insert(key.to_string(), n.to_string()); }
-            Some(serde_json::Value::Bool(b)) => { data.insert(key.to_string(), b.to_string()); }
-            Some(serde_json::Value::Null) | None => {
-                // Field was empty/null in the snapshot — clear it in the main table
-                data.insert(key.to_string(), String::new());
-            }
-            _ => {} // complex types (arrays/objects) handled via join tables
-        }
-    };
-    for field in &def.fields {
-        if field.field_type == crate::core::field::FieldType::Group {
-            for sub in &field.fields {
-                let is_localized = (field.localized || sub.localized) && locales_enabled;
-                if is_localized {
-                    continue; // handled in locale column pass below
-                }
-                let key = format!("{}__{}", field.name, sub.name);
-                insert_from_snapshot(&mut data, &key);
-            }
-            continue;
-        }
-        if !field.has_parent_column() {
-            continue; // join-table fields handled separately below
-        }
-        if field.localized && locales_enabled {
-            continue; // handled in locale column pass below
-        }
-        insert_from_snapshot(&mut data, &field.name);
-    }
+    let data = extract_snapshot_data(obj, &def.fields, locales_enabled);
 
     // When locales are enabled, use a default locale context so that update()'s
     // internal find_by_id can read back columns with locale suffixes.
@@ -272,61 +361,10 @@ pub fn restore_version(
     };
     let doc = super::update(conn, slug, def, parent_id, &data, locale_ctx.as_ref())?;
 
-    // Restore localized main-table columns: clear ALL locale columns, set default from snapshot.
-    if locales_enabled {
-        let mut set_clauses = Vec::new();
-        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-        let mut idx = 1;
+    restore_locale_and_join_data(conn, slug, parent_id, &def.fields, obj, locale_config)?;
 
-        for field in &def.fields {
-            if field.field_type == crate::core::field::FieldType::Group {
-                for sub in &field.fields {
-                    let is_localized = field.localized || sub.localized;
-                    if !is_localized { continue; }
-                    let base = format!("{}__{}", field.name, sub.name);
-                    restore_locale_columns(
-                        obj, &base, locale_config,
-                        &mut set_clauses, &mut params, &mut idx,
-                    );
-                }
-                continue;
-            }
-            if !field.localized || !field.has_parent_column() { continue; }
-            restore_locale_columns(
-                obj, &field.name, locale_config,
-                &mut set_clauses, &mut params, &mut idx,
-            );
-        }
-
-        if !set_clauses.is_empty() {
-            let sql = format!(
-                "UPDATE {} SET {} WHERE id = ?{}",
-                slug, set_clauses.join(", "), idx
-            );
-            params.push(Box::new(parent_id.to_string()));
-            let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-            conn.execute(&sql, params_from_iter(param_refs.iter()))
-                .context("Failed to restore locale columns")?;
-        }
-    }
-
-    // Restore join table data from snapshot
-    let mut join_data: HashMap<String, serde_json::Value> = HashMap::new();
-    for field in &def.fields {
-        if !field.has_parent_column() {
-            if let Some(v) = obj.get(&field.name) {
-                join_data.insert(field.name.clone(), v.clone());
-            }
-        }
-    }
-    if !join_data.is_empty() {
-        super::save_join_table_data(conn, slug, def, parent_id, &join_data, None)?;
-    }
-
-    // Update status
+    // Update status and create a new version for the restore
     set_document_status(conn, slug, parent_id, status)?;
-
-    // Create a new version for the restore
     create_version(conn, slug, parent_id, status, snapshot)?;
 
     Ok(doc)
@@ -335,14 +373,13 @@ pub fn restore_version(
 /// Helper: emit SET clauses that NULL all locale columns for a field, then set the
 /// default locale column to the snapshot value.
 fn restore_locale_columns(
-    snapshot: &serde_json::Map<String, serde_json::Value>,
+    snapshot_val: Option<&serde_json::Value>,
     field_name: &str,
     locale_config: &LocaleConfig,
     set_clauses: &mut Vec<String>,
     params: &mut Vec<Box<dyn rusqlite::types::ToSql>>,
     idx: &mut usize,
 ) {
-    let snapshot_val = snapshot.get(field_name);
     for locale in &locale_config.locales {
         let col = format!("{}__{}", field_name, locale);
         if *locale == locale_config.default_locale {
@@ -428,4 +465,40 @@ pub fn prune_versions(
         rusqlite::params![parent_id, max_versions],
     ).context("Failed to prune versions")?;
     Ok(())
+}
+
+/// Restore a version snapshot back to a global's main table.
+/// Group fields use expanded `field__subfield` sub-columns (same as collections).
+pub fn restore_global_version(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    def: &GlobalDefinition,
+    snapshot: &serde_json::Value,
+    status: &str,
+    locale_config: &LocaleConfig,
+) -> Result<crate::core::Document> {
+    let obj = snapshot.as_object()
+        .ok_or_else(|| anyhow::anyhow!("Snapshot is not a JSON object"))?;
+
+    let global_table = format!("_global_{}", slug);
+    let locales_enabled = locale_config.is_enabled();
+    let data = extract_snapshot_data(obj, &def.fields, locales_enabled);
+
+    let locale_ctx = if locales_enabled {
+        Some(super::LocaleContext {
+            mode: super::LocaleMode::Default,
+            config: locale_config.clone(),
+        })
+    } else {
+        None
+    };
+    let doc = super::update_global(conn, slug, def, &data, locale_ctx.as_ref())?;
+
+    restore_locale_and_join_data(conn, &global_table, "default", &def.fields, obj, locale_config)?;
+
+    // Update status and create a new version for the restore
+    set_document_status(conn, &global_table, "default", status)?;
+    create_version(conn, &global_table, "default", status, snapshot)?;
+
+    Ok(doc)
 }

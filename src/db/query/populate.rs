@@ -6,7 +6,6 @@ use std::collections::HashSet;
 use crate::core::{CollectionDefinition, Document};
 use crate::core::field::FieldType;
 use super::read::find_by_id;
-use super::join::hydrate_document;
 
 /// Convert a Document into a serde_json::Value for embedding in a parent's fields.
 fn document_to_json(doc: &Document, collection: &str) -> serde_json::Value {
@@ -97,7 +96,6 @@ pub fn populate_relationships(
                 }
                 match find_by_id(conn, &rel.collection, &rel_def, id, None)? {
                     Some(mut related_doc) => {
-                        hydrate_document(conn, &rel.collection, &rel_def, &mut related_doc, None, None)?;
                         if let Some(ref uc) = rel_def.upload {
                             if uc.enabled {
                                 crate::core::upload::assemble_sizes_object(&mut related_doc, uc);
@@ -127,7 +125,6 @@ pub fn populate_relationships(
             }
 
             if let Some(mut related_doc) = find_by_id(conn, &rel.collection, &rel_def, &id, None)? {
-                hydrate_document(conn, &rel.collection, &rel_def, &mut related_doc, None, None)?;
                 if let Some(ref uc) = rel_def.upload {
                     if uc.enabled {
                         crate::core::upload::assemble_sizes_object(&mut related_doc, uc);
@@ -157,19 +154,7 @@ mod tests {
         FieldDefinition {
             name: name.to_string(),
             field_type: ft,
-            required: false,
-            unique: false,
-            validate: None,
-            default_value: None,
-            options: vec![],
-            admin: FieldAdmin::default(),
-            hooks: FieldHooks::default(),
-            access: FieldAccess::default(),
-            relationship: None,
-            fields: vec![],
-            blocks: vec![],
-            localized: false,
-            picker_appearance: None,
+            ..Default::default()
         }
     }
 

@@ -14,8 +14,8 @@ If a file exists in both locations, the config directory version wins.
 All static files are served under `/static/`:
 
 ```html
-<link rel="stylesheet" href="/static/css/styles.css">
-<script src="/static/js/components.js" defer></script>
+<link rel="stylesheet" href="/static/styles.css">
+<script type="module" src="/static/components/index.js"></script>
 ```
 
 ## Overriding Static Files
@@ -29,13 +29,14 @@ my-project/
         └── custom.css    # served at /static/css/custom.css
 ```
 
-To override a built-in file (e.g., the main stylesheet), use the same path:
+To override a built-in file (e.g., the main stylesheet or a JS component), use the same path:
 
 ```
 my-project/
 └── static/
-    └── css/
-        └── styles.css    # overrides the compiled-in styles.css
+    ├── styles.css                  # overrides the compiled-in stylesheet
+    └── components/
+        └── toast.js                # overrides just the toast component
 ```
 
 ## Compiled-In Files

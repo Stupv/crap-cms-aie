@@ -246,7 +246,7 @@ mod tests {
     use serde_json::json;
     use crate::core::Document;
     use crate::core::field::{
-        FieldDefinition, FieldType, FieldAdmin, FieldHooks, FieldAccess,
+        FieldDefinition, FieldType,
         SelectOption, LocalizedString, RelationshipConfig, BlockDefinition,
     };
     use crate::db::query::{FilterOp, FilterClause};
@@ -430,19 +430,7 @@ mod tests {
         FieldDefinition {
             name: name.to_string(),
             field_type,
-            required: false,
-            unique: false,
-            validate: None,
-            default_value: None,
-            options: vec![],
-            admin: FieldAdmin::default(),
-            hooks: FieldHooks::default(),
-            access: FieldAccess::default(),
-            relationship: None,
-            fields: vec![],
-            blocks: vec![],
-            localized: false,
-            picker_appearance: None,
+            ..Default::default()
         }
     }
 
@@ -517,6 +505,7 @@ mod tests {
                     block_type: "text_block".to_string(),
                     label: Some(LocalizedString::Plain("Text Block".to_string())),
                     fields: vec![make_field("body", FieldType::Textarea)],
+                    ..Default::default()
                 },
             ],
             ..make_field("content", FieldType::Blocks)
@@ -535,7 +524,6 @@ mod tests {
     fn field_def_to_proto_localized() {
         let field = FieldDefinition {
             localized: true,
-            picker_appearance: None,
             ..make_field("title", FieldType::Text)
         };
 

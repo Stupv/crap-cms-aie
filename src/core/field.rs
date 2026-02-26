@@ -141,12 +141,17 @@ pub struct SelectOption {
 }
 
 /// A block type definition for Blocks fields.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BlockDefinition {
+    #[serde(default)]
     pub block_type: String,
+    #[serde(default)]
     pub fields: Vec<FieldDefinition>,
     #[serde(default)]
     pub label: Option<LocalizedString>,
+    /// Sub-field name to use as row label for this block type.
+    #[serde(default)]
+    pub label_field: Option<String>,
 }
 
 /// Admin UI display hints for a field (placeholder, description, visibility, width).
@@ -167,6 +172,31 @@ pub struct FieldAdmin {
     /// For group fields: start collapsed in the admin UI.
     #[serde(default)]
     pub collapsed: bool,
+    /// Sub-field name to use as row label (arrays/blocks).
+    #[serde(default)]
+    pub label_field: Option<String>,
+    /// Lua function ref for computed row labels (arrays/blocks).
+    #[serde(default)]
+    pub row_label: Option<String>,
+    /// For array/blocks: render rows collapsed by default.
+    #[serde(default)]
+    pub init_collapsed: bool,
+    /// Custom singular label for row items (e.g., "Slide" -> "Add Slide").
+    #[serde(default)]
+    pub labels_singular: Option<LocalizedString>,
+    /// Custom plural label for the field header.
+    #[serde(default)]
+    pub labels_plural: Option<LocalizedString>,
+    /// Field position in the admin form layout ("main" or "sidebar").
+    /// Defaults to "main" when not set.
+    #[serde(default)]
+    pub position: Option<String>,
+    /// Lua function ref for conditional field visibility.
+    /// The function receives form data and returns either:
+    /// - a boolean (server-evaluated on each change via HTMX)
+    /// - a condition table (serialized to JSON, client-evaluated instantly)
+    #[serde(default)]
+    pub condition: Option<String>,
 }
 
 /// Lua function references for field-level access control (read/create/update).
@@ -237,6 +267,36 @@ pub struct FieldDefinition {
     /// Valid values: "dayOnly" (default), "dayAndTime", "timeOnly", "monthOnly".
     #[serde(default)]
     pub picker_appearance: Option<String>,
+    /// Minimum number of rows (array/blocks). Validated on create/update.
+    #[serde(default)]
+    pub min_rows: Option<usize>,
+    /// Maximum number of rows (array/blocks). Validated on create/update.
+    #[serde(default)]
+    pub max_rows: Option<usize>,
+}
+
+impl Default for FieldDefinition {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            field_type: FieldType::Text,
+            required: false,
+            unique: false,
+            validate: None,
+            default_value: None,
+            options: Vec::new(),
+            admin: FieldAdmin::default(),
+            hooks: FieldHooks::default(),
+            access: FieldAccess::default(),
+            relationship: None,
+            fields: Vec::new(),
+            blocks: Vec::new(),
+            localized: false,
+            picker_appearance: None,
+            min_rows: None,
+            max_rows: None,
+        }
+    }
 }
 
 impl FieldDefinition {

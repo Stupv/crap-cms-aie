@@ -65,6 +65,7 @@ Each block definition has:
 |----------|------|-------------|
 | `type` | string | **Required.** Block type identifier. |
 | `label` | string | Display label (defaults to type name). |
+| `label_field` | string | Sub-field name to use as row label for this block type. |
 | `fields` | FieldDefinition[] | Fields within this block type. |
 
 ## API Representation
@@ -104,10 +105,143 @@ Via gRPC, pass an array of objects with `_block_type`:
 
 On write, all existing block rows for the parent are deleted and replaced. This is a full replacement, not a merge.
 
+## Row Labels
+
+By default, block rows display the block type label and row index (e.g., "Hero Section 0"). You can customize this per block type with `label_field`, or across all block types with `row_label`.
+
+### Per-Block `label_field`
+
+Set `label_field` on each block definition to a sub-field name. The value of that field is used as the row title, and updates live as you type.
+
+```lua
+{
+    name = "content",
+    type = "blocks",
+    blocks = {
+        {
+            type = "hero",
+            label = "Hero Section",
+            label_field = "heading",
+            fields = {
+                { name = "heading", type = "text", required = true },
+                { name = "subheading", type = "text" },
+            },
+        },
+        {
+            type = "image",
+            label = "Image",
+            label_field = "caption",
+            fields = {
+                { name = "image", type = "upload", relationship = { collection = "media" } },
+                { name = "caption", type = "text" },
+            },
+        },
+    },
+}
+```
+
+Each block type can have a different `label_field` — hero blocks show the heading, image blocks show the caption.
+
+### `row_label` (Lua function)
+
+For computed labels across all block types, set `admin.row_label` on the blocks field. The function receives the full row data (including `_block_type`) and returns a display string.
+
+```lua
+-- collections/posts.lua
+{
+    name = "content",
+    type = "blocks",
+    admin = {
+        row_label = "labels.content_block_row",
+    },
+    blocks = { ... },
+}
+```
+
+```lua
+-- hooks/labels.lua
+local M = {}
+
+function M.content_block_row(row)
+    if row._block_type == "hero" then
+        return "Hero: " .. (row.heading or "Untitled")
+    elseif row._block_type == "code" then
+        local lang = row.language or ""
+        if lang ~= "" then return "Code (" .. lang .. ")" end
+        return "Code"
+    end
+    return nil -- fall back to per-block label_field or default
+end
+
+return M
+```
+
+### Priority
+
+1. `row_label` Lua function (if set and returns a non-empty string)
+2. Per-block `label_field` on the `BlockDefinition`
+3. Field-level `admin.label_field` (shared across all block types)
+4. Default: block type label + row index (e.g., "Hero Section 0")
+
+> **Note:** `row_label` is only evaluated server-side. Rows added via JavaScript in the browser fall back to `label_field` (live-updated) or the default until the form is saved and reloaded.
+
+## Row Limits (`min_rows` / `max_rows`)
+
+Enforce minimum and maximum block counts. These are validation constraints, not just UI hints.
+
+```lua
+{
+    name = "content",
+    type = "blocks",
+    min_rows = 1,
+    max_rows = 20,
+    blocks = { ... },
+}
+```
+
+- **`min_rows`**: Minimum number of blocks. Validated on create/update (skipped for draft saves).
+- **`max_rows`**: Maximum number of blocks. Validated on create/update. The admin UI disables the "Add Block" button when the limit is reached.
+
+## Default Collapsed State (`init_collapsed`)
+
+Render existing block rows collapsed by default on page load. New blocks added via the UI are always expanded.
+
+```lua
+{
+    name = "content",
+    type = "blocks",
+    admin = {
+        init_collapsed = true,
+    },
+    blocks = { ... },
+}
+```
+
+## Custom Labels (`labels`)
+
+Customize the "Add Block" button text with singular/plural labels.
+
+```lua
+{
+    name = "content",
+    type = "blocks",
+    admin = {
+        labels = { singular = "Section", plural = "Sections" },
+    },
+    blocks = { ... },
+}
+```
+
+With this config, the add button reads "Add Section" instead of "Add Block".
+
 ## Admin Rendering
 
 Renders as a repeatable fieldset with:
-- A block type selector dropdown
-- "Add Block" button that creates a new row of the selected type
-- Each row shows the block type label, expand/collapse, and remove button
+- Drag handle for drag-and-drop reordering
+- Row count badge showing the number of blocks
+- Collapse/expand all buttons
+- Block type selector dropdown with "Add Block" button (or custom label)
+- Each row shows the block type label (or custom label), move up/down, duplicate, and remove buttons
+- "No items yet" empty state when no blocks exist
 - Block-specific fields rendered within each row
+- Add button disabled when `max_rows` is reached

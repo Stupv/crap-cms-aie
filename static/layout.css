@@ -92,6 +92,7 @@
   grid-template-columns: 1fr 280px;
   gap: var(--space-lg);
   align-items: start;
+  grid-column: 1 / -1;
 }
 
 .edit-layout__content {

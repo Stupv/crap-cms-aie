@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use crap_cms::config::CrapConfig;
 use crap_cms::core::Document;
-use crap_cms::core::field::{FieldAccess, FieldDefinition, FieldHooks, FieldType};
+use crap_cms::core::field::{FieldDefinition, FieldType};
 use crap_cms::core::collection::CollectionHooks;
 use crap_cms::db::{migrate, pool, query};
 use crap_cms::db::query::AccessResult;
@@ -388,6 +388,166 @@ fn custom_validate_returns_error_message() {
     );
 }
 
+// ── 2D. Block/Array Sub-field Validation ─────────────────────────────────────
+
+#[test]
+fn validate_blocks_required_subfield_fails_when_empty() {
+    let (_tmp, pool, _registry, runner) = setup();
+
+    // Build a blocks field definition with a required sub-field
+    let blocks_field = FieldDefinition {
+        name: "content".to_string(),
+        field_type: FieldType::Blocks,
+        blocks: vec![
+            crap_cms::core::field::BlockDefinition {
+                block_type: "text".to_string(),
+                fields: vec![
+                    FieldDefinition {
+                        name: "title".to_string(),
+                        field_type: FieldType::Text,
+                        required: true,
+                        ..Default::default()
+                    },
+                    FieldDefinition {
+                        name: "body".to_string(),
+                        field_type: FieldType::Textarea,
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+
+    let fields = vec![blocks_field];
+    let mut data = HashMap::new();
+    data.insert("content".to_string(), serde_json::json!([
+        { "_block_type": "text", "title": "", "body": "some content" }
+    ]));
+
+    let conn = pool.get().expect("DB connection");
+    let result = runner.validate_fields(&fields, &data, &conn, "articles", None, false);
+    assert!(result.is_err(), "Validation should fail with empty required block sub-field");
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.field == "content[0][title]"),
+        "Should have content[0][title] error, got: {:?}",
+        err.errors.iter().map(|e| &e.field).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn validate_blocks_required_subfield_passes_when_present() {
+    let (_tmp, pool, _registry, runner) = setup();
+
+    let blocks_field = FieldDefinition {
+        name: "content".to_string(),
+        field_type: FieldType::Blocks,
+        blocks: vec![
+            crap_cms::core::field::BlockDefinition {
+                block_type: "text".to_string(),
+                fields: vec![
+                    FieldDefinition {
+                        name: "title".to_string(),
+                        field_type: FieldType::Text,
+                        required: true,
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+
+    let fields = vec![blocks_field];
+    let mut data = HashMap::new();
+    data.insert("content".to_string(), serde_json::json!([
+        { "_block_type": "text", "title": "Hello World" }
+    ]));
+
+    let conn = pool.get().expect("DB connection");
+    let result = runner.validate_fields(&fields, &data, &conn, "articles", None, false);
+    assert!(result.is_ok(), "Validation should pass when required block sub-field is present");
+}
+
+#[test]
+fn validate_blocks_skips_required_for_drafts() {
+    let (_tmp, pool, _registry, runner) = setup();
+
+    let blocks_field = FieldDefinition {
+        name: "content".to_string(),
+        field_type: FieldType::Blocks,
+        blocks: vec![
+            crap_cms::core::field::BlockDefinition {
+                block_type: "text".to_string(),
+                fields: vec![
+                    FieldDefinition {
+                        name: "title".to_string(),
+                        field_type: FieldType::Text,
+                        required: true,
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+
+    let fields = vec![blocks_field];
+    let mut data = HashMap::new();
+    data.insert("content".to_string(), serde_json::json!([
+        { "_block_type": "text", "title": "" }
+    ]));
+
+    let conn = pool.get().expect("DB connection");
+    let result = runner.validate_fields(&fields, &data, &conn, "articles", None, true);
+    assert!(result.is_ok(), "Validation should skip required sub-fields for drafts");
+}
+
+#[test]
+fn validate_array_required_subfield_fails_when_empty() {
+    let (_tmp, pool, _registry, runner) = setup();
+
+    let array_field = FieldDefinition {
+        name: "items".to_string(),
+        field_type: FieldType::Array,
+        fields: vec![
+            FieldDefinition {
+                name: "label".to_string(),
+                field_type: FieldType::Text,
+                required: true,
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+
+    let fields = vec![array_field];
+    let mut data = HashMap::new();
+    data.insert("items".to_string(), serde_json::json!([
+        { "label": "ok" },
+        { "label": "" }
+    ]));
+
+    let conn = pool.get().expect("DB connection");
+    let result = runner.validate_fields(&fields, &data, &conn, "articles", None, false);
+    assert!(result.is_err(), "Validation should fail for empty required array sub-field");
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.field == "items[1][label]"),
+        "Should have items[1][label] error, got: {:?}",
+        err.errors.iter().map(|e| &e.field).collect::<Vec<_>>()
+    );
+    // First row should pass
+    assert!(
+        !err.errors.iter().any(|e| e.field == "items[0][label]"),
+        "First row should not have error"
+    );
+}
+
 // ── Run before_write lifecycle (integrated) ──────────────────────────────────
 
 #[test]
@@ -485,19 +645,7 @@ fn make_field(name: &str, field_type: FieldType) -> FieldDefinition {
     FieldDefinition {
         name: name.to_string(),
         field_type,
-        required: false,
-        unique: false,
-        validate: None,
-        default_value: None,
-        options: Vec::new(),
-        admin: Default::default(),
-        hooks: FieldHooks::default(),
-        access: FieldAccess::default(),
-        relationship: None,
-        fields: Vec::new(),
-        blocks: Vec::new(),
-        localized: false,
-        picker_appearance: None,
+        ..Default::default()
     }
 }
 

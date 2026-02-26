@@ -14,7 +14,7 @@ dev_mode = true
 # token_expiry = 7200           # seconds, default 2 hours
 
 [live]
-# enabled = true                # enable SSE + gRPC Subscribe for live mutation events
+enabled = true                # enable SSE + gRPC Subscribe for live mutation events
 # channel_capacity = 1024       # broadcast channel buffer size
 
 [locale]

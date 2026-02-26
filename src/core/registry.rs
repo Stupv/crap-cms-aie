@@ -125,6 +125,7 @@ mod tests {
             hooks: CollectionHooks::default(),
             access: CollectionAccess::default(),
             live: None,
+            versions: None,
         }
     }
 

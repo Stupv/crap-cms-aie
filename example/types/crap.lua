@@ -61,6 +61,10 @@ crap = {}
 --- @field position?    string   "main" or "sidebar".
 --- @field condition?   string   Lua function ref for conditional show/hide.
 --- @field components?  table    Override admin UI partials for this field.
+--- @field label_field? string   Sub-field name to use as row label in admin (arrays/blocks). The value of this sub-field is shown as the row title. For blocks, per-block `label_field` on `BlockDefinition` takes priority.
+--- @field row_label?   string   Lua function ref for computed row labels (arrays/blocks). Receives the row data table, returns a display string or nil. Takes priority over `label_field`. Signature: `fun(row: table): string?`.
+--- @field init_collapsed? boolean  For array/blocks: render rows collapsed by default (default: false).
+--- @field labels?      crap.FieldAdminLabels  Custom singular/plural labels for row items (e.g., `{ singular = "Slide", plural = "Slides" }` → "Add Slide" button).
 
 --- Custom validation function type.
 --- Return nil or true if valid, return a string error message if invalid.
@@ -92,9 +96,10 @@ crap = {}
 --- after_change and after_read field hooks do NOT have CRUD access (fire-and-forget).
 
 --- @class crap.BlockDefinition
---- @field type   string                    Block type identifier (required).
---- @field label? crap.LocalizedString      Display label for the block type (defaults to type name).
---- @field fields crap.FieldDefinition[]    Fields within this block type.
+--- @field type         string                    Block type identifier (required).
+--- @field label?       crap.LocalizedString      Display label for the block type (defaults to type name).
+--- @field label_field? string                    Sub-field name to use as row label for this block type. Overrides the field-level `admin.label_field` for blocks of this type.
+--- @field fields       crap.FieldDefinition[]    Fields within this block type.
 
 --- @alias crap.PickerAppearance "dayOnly" | "dayAndTime" | "timeOnly" | "monthOnly"
 
@@ -117,6 +122,12 @@ crap = {}
 --- @field admin?        crap.FieldAdmin   Admin UI display options.
 --- @field access?       crap.FieldAccess  Field-level access control (read/create/update).
 --- @field picker_appearance? crap.PickerAppearance  For "date" fields: controls HTML input type and storage format. "dayOnly" (default) = date picker, stored as `YYYY-MM-DDT12:00:00.000Z`. "dayAndTime" = datetime-local picker, stored as full ISO 8601 UTC. "timeOnly" = time picker, stored as `HH:MM`. "monthOnly" = month picker, stored as `YYYY-MM`.
+--- @field min_rows?    integer  Minimum number of rows for array/blocks fields. Validated on create/update (skipped for drafts).
+--- @field max_rows?    integer  Maximum number of rows for array/blocks fields. Validated on create/update (skipped for drafts). Admin UI disables "Add" button at max.
+
+--- @class crap.FieldAdminLabels
+--- @field singular? crap.LocalizedString  Custom singular label for row items (e.g., "Slide" → "Add Slide" button).
+--- @field plural?   crap.LocalizedString  Custom plural label for the field header.
 
 
 -- ── Collection Types ─────────────────────────────────────────

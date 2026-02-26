@@ -83,8 +83,28 @@ pub fn find(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition,
     Ok(documents)
 }
 
-/// Find a single document by ID.
+/// Find a single document by ID with full hydration (join tables, group reconstruction).
+///
+/// This is the standard read function — returns a fully hydrated document with
+/// nested group objects and populated join table data (arrays, blocks, relationships).
+/// Use `find_by_id_raw` when you only need flat column data without hydration.
 pub fn find_by_id(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition, id: &str, locale_ctx: Option<&LocaleContext>) -> Result<Option<Document>> {
+    let doc = find_by_id_raw(conn, slug, def, id, locale_ctx)?;
+    match doc {
+        Some(mut d) => {
+            super::hydrate_document(conn, slug, &def.fields, &mut d, None, locale_ctx)?;
+            Ok(Some(d))
+        }
+        None => Ok(None),
+    }
+}
+
+/// Find a single document by ID without hydration (raw column data only).
+///
+/// Returns flat column data as stored in the parent table. Group fields remain
+/// as `field__subfield` flat keys. Join table data (arrays, blocks, relationships)
+/// is NOT populated. Used internally by write operations that don't need hydration.
+pub(crate) fn find_by_id_raw(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition, id: &str, locale_ctx: Option<&LocaleContext>) -> Result<Option<Document>> {
     let (select_exprs, result_names) = match locale_ctx {
         Some(ctx) if ctx.config.is_enabled() => get_locale_select_columns(&def.fields, def.timestamps, ctx),
         _ => {
@@ -284,37 +304,11 @@ mod tests {
             fields: vec![
                 FieldDefinition {
                     name: "title".to_string(),
-                    field_type: FieldType::Text,
-                    required: false,
-                    unique: false,
-                    validate: None,
-                    default_value: None,
-                    options: vec![],
-                    admin: FieldAdmin::default(),
-                    hooks: FieldHooks::default(),
-                    access: FieldAccess::default(),
-                    relationship: None,
-                    fields: vec![],
-                    blocks: vec![],
-                    localized: false,
-                    picker_appearance: None,
+                    ..Default::default()
                 },
                 FieldDefinition {
                     name: "status".to_string(),
-                    field_type: FieldType::Text,
-                    required: false,
-                    unique: false,
-                    validate: None,
-                    default_value: None,
-                    options: vec![],
-                    admin: FieldAdmin::default(),
-                    hooks: FieldHooks::default(),
-                    access: FieldAccess::default(),
-                    relationship: None,
-                    fields: vec![],
-                    blocks: vec![],
-                    localized: false,
-                    picker_appearance: None,
+                    ..Default::default()
                 },
             ],
             admin: CollectionAdmin::default(),

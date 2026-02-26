@@ -209,25 +209,13 @@ mod tests {
     use crate::core::collection::{
         CollectionAccess, CollectionAdmin, CollectionHooks, CollectionLabels,
     };
-    use crate::core::field::{FieldAccess, FieldAdmin, FieldHooks, LocalizedString, SelectOption};
+    use crate::core::field::{LocalizedString, SelectOption};
 
     fn text_field(name: &str, required: bool) -> FieldDefinition {
         FieldDefinition {
             name: name.to_string(),
-            field_type: FieldType::Text,
             required,
-            unique: false,
-            validate: None,
-            default_value: None,
-            options: vec![],
-            admin: FieldAdmin::default(),
-            hooks: FieldHooks::default(),
-            access: FieldAccess::default(),
-            relationship: None,
-            fields: vec![],
-            blocks: vec![],
-            localized: false,
-            picker_appearance: None,
+            ..Default::default()
         }
     }
 
@@ -236,9 +224,6 @@ mod tests {
             name: name.to_string(),
             field_type: FieldType::Select,
             required,
-            unique: false,
-            validate: None,
-            default_value: None,
             options: opts
                 .iter()
                 .map(|v| SelectOption {
@@ -246,14 +231,7 @@ mod tests {
                     value: v.to_string(),
                 })
                 .collect(),
-            admin: FieldAdmin::default(),
-            hooks: FieldHooks::default(),
-            access: FieldAccess::default(),
-            relationship: None,
-            fields: vec![],
-            blocks: vec![],
-            localized: false,
-            picker_appearance: None,
+            ..Default::default()
         }
     }
 
@@ -261,19 +239,7 @@ mod tests {
         FieldDefinition {
             name: name.to_string(),
             field_type: FieldType::Checkbox,
-            required: false,
-            unique: false,
-            validate: None,
-            default_value: None,
-            options: vec![],
-            admin: FieldAdmin::default(),
-            hooks: FieldHooks::default(),
-            access: FieldAccess::default(),
-            relationship: None,
-            fields: vec![],
-            blocks: vec![],
-            localized: false,
-            picker_appearance: None,
+            ..Default::default()
         }
     }
 
@@ -400,6 +366,7 @@ mod tests {
             hooks: CollectionHooks::default(),
             access: CollectionAccess::default(),
             live: None,
+            versions: None,
         };
 
         let mut out = String::new();

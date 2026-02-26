@@ -44,7 +44,7 @@ pub fn export(
         let mut docs = crate::db::query::find(&conn, slug, def, &query, None)?;
 
         for doc in &mut docs {
-            crate::db::query::hydrate_document(&conn, slug, def, doc, None, None)?;
+            crate::db::query::hydrate_document(&conn, slug, &def.fields, doc, None, None)?;
         }
 
         let docs_json: Vec<serde_json::Value> = docs.into_iter()
@@ -207,7 +207,7 @@ pub fn import(
 
             // Save join table data
             if !join_data.is_empty() {
-                crate::db::query::save_join_table_data(&tx, slug, def, id, &join_data, None)?;
+                crate::db::query::save_join_table_data(&tx, slug, &def.fields, id, &join_data, None)?;
             }
 
             total_imported += 1;

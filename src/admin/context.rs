@@ -20,6 +20,7 @@ pub enum PageType {
     CollectionDelete,
     CollectionVersions,
     GlobalEdit,
+    GlobalVersions,
     AuthLogin,
     AuthForgot,
     AuthReset,
@@ -39,6 +40,7 @@ impl PageType {
             PageType::CollectionDelete => "collection_delete",
             PageType::CollectionVersions => "collection_versions",
             PageType::GlobalEdit => "global_edit",
+            PageType::GlobalVersions => "global_versions",
             PageType::AuthLogin => "auth_login",
             PageType::AuthForgot => "auth_forgot",
             PageType::AuthReset => "auth_reset",
@@ -301,6 +303,12 @@ pub fn build_global_context(def: &GlobalDefinition) -> Value {
     json!({
         "slug": def.slug,
         "display_name": def.display_name(),
+        "has_drafts": def.has_drafts(),
+        "has_versions": def.has_versions(),
+        "versions": def.versions.as_ref().map(|v| json!({
+            "drafts": v.drafts,
+            "max_versions": v.max_versions,
+        })),
         "fields_meta": build_fields_meta(&def.fields),
     })
 }

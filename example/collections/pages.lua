@@ -46,6 +46,7 @@ crap.collections.define("pages", {
 				{
 					type = "image",
 					label = "Image",
+					label_field = "caption",
 					fields = {
 						{
 							name = "image",
@@ -59,6 +60,7 @@ crap.collections.define("pages", {
 				{
 					type = "cta",
 					label = "Call to Action",
+					label_field = "heading",
 					fields = {
 						{ name = "heading", type = "text", required = true },
 						{ name = "body", type = "textarea" },
@@ -84,6 +86,7 @@ crap.collections.define("pages", {
 								{
 									type = "image",
 									label = "Image",
+									label_field = "caption",
 									fields = {
 										{
 											name = "image",
@@ -97,6 +100,7 @@ crap.collections.define("pages", {
 								{
 									type = "cta",
 									label = "Call to Action",
+									label_field = "heading",
 									fields = {
 										{ name = "heading", type = "text", required = true },
 										{ name = "body", type = "textarea" },

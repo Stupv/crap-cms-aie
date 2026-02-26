@@ -91,6 +91,7 @@ pub async fn sse_handler(
                             "operation": op_str,
                             "collection": event.collection,
                             "document_id": event.document_id,
+                            "edited_by": event.edited_by,
                         });
 
                         let sse_event = Event::default()

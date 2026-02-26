@@ -21,6 +21,7 @@ use crate::core::SharedRegistry;
 use crate::db::query::{AccessResult, Filter, FilterClause, FilterOp, FindQuery, LocaleContext};
 use crate::db::DbPool;
 use crate::db::{ops, query};
+use crate::core::event::EventUser;
 use crate::hooks::lifecycle::HookRunner;
 
 use convert::{
@@ -134,6 +135,14 @@ impl ContentService {
         self.hook_runner
             .check_access(access_ref, user_doc, id, data, &conn)
             .map_err(|e| Status::internal(format!("Access check error: {}", e)))
+    }
+
+    /// Extract an EventUser from the gRPC AuthUser (for SSE event attribution).
+    fn event_user_from(auth_user: &Option<AuthUser>) -> Option<EventUser> {
+        auth_user.as_ref().map(|au| EventUser {
+            id: au.claims.sub.clone(),
+            email: au.claims.email.clone(),
+        })
     }
 
     /// Strip field-level read-denied fields from a proto document.
@@ -261,7 +270,7 @@ impl ContentApi for ContentService {
             let conn = pool.get().context("DB connection for hydration")?;
             let select_slice = select.as_deref();
             for doc in &mut docs {
-                query::hydrate_document(&conn, &collection, &def_owned, doc, select_slice, locale_ctx.as_ref())?;
+                query::hydrate_document(&conn, &collection, &def_owned.fields, doc, select_slice, locale_ctx.as_ref())?;
             }
             // Assemble sizes for upload collections
             if let Some(ref upload_config) = def_owned.upload {
@@ -524,6 +533,7 @@ impl ContentApi for ContentService {
                 req.collection.clone(),
                 doc.id.clone(),
                 doc.fields.clone(),
+                Self::event_user_from(&auth_user),
             );
 
             // Auto-send verification email for auth collections with verify_email
@@ -649,6 +659,7 @@ impl ContentApi for ContentService {
                 req.collection.clone(),
                 req.id.clone(),
                 doc.fields.clone(),
+                Self::event_user_from(&auth_user),
             );
         }
 
@@ -710,6 +721,7 @@ impl ContentApi for ContentService {
             req.collection.clone(),
             req.id.clone(),
             HashMap::new(),
+            Self::event_user_from(&auth_user),
         );
 
         Ok(Response::new(content::DeleteResponse { success: true }))
@@ -862,7 +874,7 @@ impl ContentApi for ContentService {
             let mut count = 0i64;
             for doc in &docs {
                 query::update(&tx, &collection, &def_owned, &doc.id, &data, locale_ctx.as_ref())?;
-                query::save_join_table_data(&tx, &collection, &def_owned, &doc.id, &join_data, locale_ctx.as_ref())?;
+                query::save_join_table_data(&tx, &collection, &def_owned.fields, &doc.id, &join_data, locale_ctx.as_ref())?;
                 count += 1;
             }
 
@@ -1035,6 +1047,13 @@ impl ContentApi for ContentService {
             return Err(Status::permission_denied("Update access denied"));
         }
 
+        // Extract join table data (preserves structured arrays/objects)
+        let join_data = req
+            .data
+            .as_ref()
+            .map(prost_struct_to_json_map)
+            .unwrap_or_default();
+
         // Strip field-level update-denied fields
         let mut data = req
             .data
@@ -1070,9 +1089,11 @@ impl ContentApi for ContentService {
                 &slug,
                 &def_owned,
                 data,
+                &join_data,
                 locale_ctx.as_ref(),
                 None,
                 user_doc.as_ref(),
+                false,
             )
         })
         .await
@@ -1094,6 +1115,7 @@ impl ContentApi for ContentService {
                 req.slug.clone(),
                 doc.id.clone(),
                 doc.fields.clone(),
+                Self::event_user_from(&auth_user),
             );
         }
 

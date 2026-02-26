@@ -5,27 +5,27 @@
       <div class="edit-sidebar__actions">
         {{#if collection.has_drafts}}
           {{#if editing}}
-            <button type="submit" form="edit-form" name="_action" value="publish" class="button button--primary">
+            <button type="submit" name="_action" value="publish" class="button button--primary">
               {{t "publish"}}
             </button>
-            <button type="submit" form="edit-form" name="_action" value="save_draft" class="button button--secondary">
+            <button type="submit" name="_action" value="save_draft" class="button button--secondary">
               {{t "save_draft"}}
             </button>
             {{#if (eq document.status "published")}}
-            <button type="submit" form="edit-form" name="_action" value="unpublish" class="button button--ghost">
+            <button type="submit" name="_action" value="unpublish" class="button button--ghost">
               {{t "unpublish"}}
             </button>
             {{/if}}
           {{else}}
-            <button type="submit" form="edit-form" name="_action" value="publish" class="button button--primary">
+            <button type="submit" name="_action" value="publish" class="button button--primary">
               {{t "publish"}}
             </button>
-            <button type="submit" form="edit-form" name="_action" value="save_draft" class="button button--secondary">
+            <button type="submit" name="_action" value="save_draft" class="button button--secondary">
               {{t "save_as_draft"}}
             </button>
           {{/if}}
         {{else}}
-          <button type="submit" form="edit-form" class="button button--primary">
+          <button type="submit" class="button button--primary">
             {{#if editing}}{{t "update"}}{{else}}{{t "create"}}{{/if}} {{collection.singular_name}}
           </button>
         {{/if}}
@@ -40,6 +40,26 @@
       </div>
     </div>
   </div>
+
+  {{#if sidebar_fields}}
+  {{!-- Sidebar fields panel --}}
+  <div class="edit-sidebar__panel">
+    <div class="edit-sidebar__panel-header">
+      <span class="material-symbols-outlined">tune</span>
+      {{t "fields"}}
+    </div>
+    <div class="edit-sidebar__panel-body">
+      {{#each sidebar_fields}}
+      <div class="form__field{{#if (eq condition_visible false)}} form__field--hidden{{/if}}"
+        {{#if condition_json}}data-condition='{{{json condition_json}}}'{{/if}}
+        {{#if condition_ref}}data-condition-ref="{{condition_ref}}"{{/if}}
+        data-field-name="{{name}}">
+        {{{render_field this}}}
+      </div>
+      {{/each}}
+    </div>
+  </div>
+  {{/if}}
 
   {{#if has_locales}}
   {{!-- Locale selector panel --}}
@@ -99,41 +119,7 @@
   </div>
 
   {{#if collection.has_versions}}
-  {{!-- Version history panel --}}
-  <div class="edit-sidebar__panel">
-    <div class="edit-sidebar__panel-header">
-      <span class="material-symbols-outlined">history</span>
-      {{t "version_history"}}
-    </div>
-    <div class="edit-sidebar__panel-body">
-      {{#if versions}}
-      <div class="edit-sidebar__versions">
-        {{#each versions}}
-        <div class="edit-sidebar__version-row">
-          <div class="edit-sidebar__version-info">
-            <span class="edit-sidebar__version-number">v{{this.version}}</span>
-            <span class="badge badge--{{this.status}}">{{this.status}}</span>
-          </div>
-          <div class="edit-sidebar__version-meta">{{this.created_at}}</div>
-          {{#unless this.latest}}
-          <form method="post" action="/admin/collections/{{../collection.slug}}/{{../document.id}}/versions/{{this.id}}/restore" style="margin:0;">
-            <button type="submit" class="button button--ghost button--small">{{t "restore"}}</button>
-          </form>
-          {{/unless}}
-        </div>
-        {{/each}}
-      </div>
-      {{#if has_more_versions}}
-      <a class="edit-sidebar__versions-link"
-        href="/admin/collections/{{collection.slug}}/{{document.id}}/versions"
-        hx-get="/admin/collections/{{collection.slug}}/{{document.id}}/versions"
-        hx-target="body" hx-push-url="true">
-        {{t "view_all_versions"}}
-      </a>
-      {{/if}}
-      {{/if}}
-    </div>
-  </div>
+  {{> components/version_sidebar}}
   {{/if}}
 
   {{!-- Actions panel --}}
@@ -143,16 +129,12 @@
       {{t "actions"}}
     </div>
     <div class="edit-sidebar__panel-body">
-      <crap-confirm message="{{t "confirm_delete_sidebar" name=collection.singular_name}}">
-        <form method="post" action="/admin/collections/{{collection.slug}}/{{document.id}}"
-          hx-post="/admin/collections/{{collection.slug}}/{{document.id}}"
-          hx-target="body">
-          <input type="hidden" name="_method" value="DELETE" />
-          <button type="submit" class="button button--danger" style="width: 100%;">
-            {{t "delete"}} {{collection.singular_name}}
-          </button>
-        </form>
-      </crap-confirm>
+      <button type="button" class="button button--danger" style="width: 100%;"
+        hx-delete="/admin/collections/{{collection.slug}}/{{document.id}}"
+        hx-target="body"
+        hx-confirm="{{t "confirm_delete_sidebar" name=collection.singular_name}}">
+        {{t "delete"}} {{collection.singular_name}}
+      </button>
     </div>
   </div>
   {{/if}}

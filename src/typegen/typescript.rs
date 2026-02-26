@@ -142,28 +142,25 @@ mod tests {
     use crate::core::collection::{
         CollectionAccess, CollectionAdmin, CollectionHooks, CollectionLabels,
     };
-    use crate::core::field::{FieldAccess, FieldAdmin, FieldHooks, LocalizedString, SelectOption};
+    use crate::core::field::{LocalizedString, SelectOption};
 
     fn text_field(name: &str, required: bool) -> FieldDefinition {
         FieldDefinition {
-            name: name.to_string(), field_type: FieldType::Text, required,
-            unique: false, validate: None, default_value: None, options: vec![],
-            admin: FieldAdmin::default(), hooks: FieldHooks::default(),
-            access: FieldAccess::default(), relationship: None,
-            fields: vec![], blocks: vec![], localized: false, picker_appearance: None,
+            name: name.to_string(),
+            required,
+            ..Default::default()
         }
     }
 
     fn select_field(name: &str, opts: &[&str]) -> FieldDefinition {
         FieldDefinition {
-            name: name.to_string(), field_type: FieldType::Select, required: true,
-            unique: false, validate: None, default_value: None,
+            name: name.to_string(),
+            field_type: FieldType::Select,
+            required: true,
             options: opts.iter().map(|v| SelectOption {
                 label: LocalizedString::Plain(v.to_string()), value: v.to_string(),
             }).collect(),
-            admin: FieldAdmin::default(), hooks: FieldHooks::default(),
-            access: FieldAccess::default(), relationship: None,
-            fields: vec![], blocks: vec![], localized: false, picker_appearance: None,
+            ..Default::default()
         }
     }
 
@@ -202,6 +199,7 @@ mod tests {
             fields: vec![text_field("site_name", true)],
             hooks: CollectionHooks::default(), access: CollectionAccess::default(),
             live: None,
+            versions: None,
         };
 
         let mut out = String::new();

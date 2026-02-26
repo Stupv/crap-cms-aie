@@ -403,7 +403,7 @@ fn hook_opts<'a>(
     field: Option<&'a str>,
     force: bool,
 ) -> scaffold::MakeHookOptions<'a> {
-    scaffold::MakeHookOptions { config_dir, name, hook_type, collection, position, field, force }
+    scaffold::MakeHookOptions { config_dir, name, hook_type, collection, position, field, force, condition_field: None }
 }
 
 #[test]

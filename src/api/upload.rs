@@ -18,6 +18,7 @@ use crate::admin::AdminState;
 use crate::admin::handlers::collections::forms::parse_multipart_form;
 use crate::admin::server::load_auth_user;
 use crate::core::auth::{self, AuthUser};
+use crate::core::event::EventUser;
 use crate::core::upload::{self, inject_upload_metadata};
 use crate::db::query::{self, AccessResult};
 
@@ -157,11 +158,16 @@ async fn create_upload(
 
     match result {
         Ok(Ok((doc, _req_context))) => {
+            let edited_by = auth_user.as_ref().map(|au| EventUser {
+                id: au.claims.sub.clone(),
+                email: au.claims.email.clone(),
+            });
             state.hook_runner.publish_event(
                 &state.event_bus, &def.hooks, def.live.as_ref(),
                 crate::core::event::EventTarget::Collection,
                 crate::core::event::EventOperation::Create,
                 slug, doc.id.clone(), doc.fields.clone(),
+                edited_by,
             );
 
             let body = serde_json::json!({ "document": doc });
@@ -287,11 +293,16 @@ async fn update_upload(
                 upload::delete_upload_files(&state.config_dir, &old_fields);
             }
 
+            let edited_by = auth_user.as_ref().map(|au| EventUser {
+                id: au.claims.sub.clone(),
+                email: au.claims.email.clone(),
+            });
             state.hook_runner.publish_event(
                 &state.event_bus, &def.hooks, def.live.as_ref(),
                 crate::core::event::EventTarget::Collection,
                 crate::core::event::EventOperation::Update,
                 slug, id, doc.fields.clone(),
+                edited_by,
             );
 
             let body = serde_json::json!({ "document": doc });
@@ -369,11 +380,16 @@ async fn delete_upload(
                 upload::delete_upload_files(&state.config_dir, &fields);
             }
 
+            let edited_by = auth_user.as_ref().map(|au| EventUser {
+                id: au.claims.sub.clone(),
+                email: au.claims.email.clone(),
+            });
             state.hook_runner.publish_event(
                 &state.event_bus, &def.hooks, def.live.as_ref(),
                 crate::core::event::EventTarget::Collection,
                 crate::core::event::EventOperation::Delete,
                 slug, id, HashMap::new(),
+                edited_by,
             );
 
             json_ok(StatusCode::OK, &serde_json::json!({ "success": true }))

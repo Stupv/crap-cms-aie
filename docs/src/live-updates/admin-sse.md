@@ -37,4 +37,4 @@ Same as gRPC Subscribe: read access is checked at connection time per collection
 
 ## Custom Integration
 
-If you override the admin templates, the SSE listener is in `static/components.js` at the bottom. You can customize or replace it by overriding `components.js` in your config dir's `static/` folder.
+If you override the admin templates, the SSE listener is in `static/components/live-events.js`. You can customize or replace it by placing your own `static/components/live-events.js` in your config dir's `static/` folder.

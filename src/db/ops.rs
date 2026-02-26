@@ -85,12 +85,12 @@ pub fn find_by_id_full(
         query::find(conn, slug, def, &fq, locale_ctx)?
             .into_iter().next()
     } else {
-        query::find_by_id(conn, slug, def, id, locale_ctx)?
+        query::find_by_id_raw(conn, slug, def, id, locale_ctx)?
     };
 
     // Hydrate join table data (blocks, arrays, has-many relationships)
     if let Some(ref mut d) = doc {
-        query::hydrate_document(conn, slug, def, d, None, locale_ctx)?;
+        query::hydrate_document(conn, slug, &def.fields, d, None, locale_ctx)?;
     }
 
     Ok(doc)

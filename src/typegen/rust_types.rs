@@ -120,15 +120,12 @@ mod tests {
     use crate::core::collection::{
         CollectionAccess, CollectionAdmin, CollectionHooks, CollectionLabels,
     };
-    use crate::core::field::{FieldAccess, FieldAdmin, FieldHooks};
 
     fn text_field(name: &str, required: bool) -> FieldDefinition {
         FieldDefinition {
-            name: name.to_string(), field_type: FieldType::Text, required,
-            unique: false, validate: None, default_value: None, options: vec![],
-            admin: FieldAdmin::default(), hooks: FieldHooks::default(),
-            access: FieldAccess::default(), relationship: None,
-            fields: vec![], blocks: vec![], localized: false, picker_appearance: None,
+            name: name.to_string(),
+            required,
+            ..Default::default()
         }
     }
 

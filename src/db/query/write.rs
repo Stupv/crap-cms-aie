@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use crate::core::{CollectionDefinition, Document};
 use crate::core::field::FieldType;
 use super::{LocaleContext, locale_write_column, coerce_value};
-use super::read::find_by_id;
+use super::read::find_by_id_raw;
 
 /// Create a new document. Returns the created document.
 pub fn create(
@@ -85,7 +85,7 @@ pub fn create(
         .with_context(|| format!("Failed to insert into '{}'", slug))?;
 
     // Return the created document with the same locale context
-    find_by_id(conn, slug, def, &id, locale_ctx)?
+    find_by_id_raw(conn, slug, def, &id, locale_ctx)?
         .ok_or_else(|| anyhow::anyhow!("Failed to find newly created document"))
 }
 
@@ -143,7 +143,7 @@ pub fn update(
     }
 
     if set_clauses.is_empty() {
-        return find_by_id(conn, slug, def, id, locale_ctx)?
+        return find_by_id_raw(conn, slug, def, id, locale_ctx)?
             .ok_or_else(|| anyhow::anyhow!("Document not found"));
     }
 
@@ -160,7 +160,7 @@ pub fn update(
     conn.execute(&sql, params_from_iter(param_refs.iter()))
         .with_context(|| format!("Failed to update document {} in '{}'", id, slug))?;
 
-    find_by_id(conn, slug, def, id, locale_ctx)?
+    find_by_id_raw(conn, slug, def, id, locale_ctx)?
         .ok_or_else(|| anyhow::anyhow!("Document not found after update"))
 }
 
@@ -175,7 +175,7 @@ pub fn delete(conn: &rusqlite::Connection, slug: &str, id: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::find_by_id;
+    use super::find_by_id_raw;
     use rusqlite::Connection;
     use crate::core::collection::*;
     use crate::core::field::*;
@@ -188,37 +188,11 @@ mod tests {
             fields: vec![
                 FieldDefinition {
                     name: "title".to_string(),
-                    field_type: FieldType::Text,
-                    required: false,
-                    unique: false,
-                    validate: None,
-                    default_value: None,
-                    options: vec![],
-                    admin: FieldAdmin::default(),
-                    hooks: FieldHooks::default(),
-                    access: FieldAccess::default(),
-                    relationship: None,
-                    fields: vec![],
-                    blocks: vec![],
-                    localized: false,
-                    picker_appearance: None,
+                    ..Default::default()
                 },
                 FieldDefinition {
                     name: "status".to_string(),
-                    field_type: FieldType::Text,
-                    required: false,
-                    unique: false,
-                    validate: None,
-                    default_value: None,
-                    options: vec![],
-                    admin: FieldAdmin::default(),
-                    hooks: FieldHooks::default(),
-                    access: FieldAccess::default(),
-                    relationship: None,
-                    fields: vec![],
-                    blocks: vec![],
-                    localized: false,
-                    picker_appearance: None,
+                    ..Default::default()
                 },
             ],
             admin: CollectionAdmin::default(),
@@ -288,19 +262,7 @@ mod tests {
         def.fields.push(FieldDefinition {
             name: "published".to_string(),
             field_type: FieldType::Checkbox,
-            required: false,
-            unique: false,
-            validate: None,
-            default_value: None,
-            options: vec![],
-            admin: FieldAdmin::default(),
-            hooks: FieldHooks::default(),
-            access: FieldAccess::default(),
-            relationship: None,
-            fields: vec![],
-            blocks: vec![],
-            localized: false,
-            picker_appearance: None,
+            ..Default::default()
         });
 
         // Create without providing the checkbox field
@@ -371,7 +333,7 @@ mod tests {
 
         delete(&conn, "posts", &id).unwrap();
 
-        let found = find_by_id(&conn, "posts", &def, &id, None).unwrap();
+        let found = find_by_id_raw(&conn, "posts", &def, &id, None).unwrap();
         assert!(found.is_none(), "Document should be gone after delete");
     }
 

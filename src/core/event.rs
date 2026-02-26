@@ -24,6 +24,13 @@ pub enum EventOperation {
     Delete,
 }
 
+/// The user who triggered a mutation event.
+#[derive(Debug, Clone, Serialize)]
+pub struct EventUser {
+    pub id: String,
+    pub email: String,
+}
+
 /// A mutation event broadcast to all subscribers.
 #[derive(Debug, Clone, Serialize)]
 pub struct MutationEvent {
@@ -34,6 +41,7 @@ pub struct MutationEvent {
     pub collection: String,
     pub document_id: String,
     pub data: HashMap<String, serde_json::Value>,
+    pub edited_by: Option<EventUser>,
 }
 
 /// Broadcast channel for real-time mutation events.
@@ -64,6 +72,7 @@ impl EventBus {
         collection: String,
         document_id: String,
         data: HashMap<String, serde_json::Value>,
+        edited_by: Option<EventUser>,
     ) -> Option<MutationEvent> {
         let event = MutationEvent {
             sequence: self.sequence.fetch_add(1, Ordering::Relaxed),
@@ -73,6 +82,7 @@ impl EventBus {
             collection,
             document_id,
             data,
+            edited_by,
         };
 
         match self.sender.send(event.clone()) {
@@ -110,6 +120,7 @@ mod tests {
             "posts".to_string(),
             "id1".to_string(),
             HashMap::new(),
+            None,
         );
         assert!(result.is_none());
     }
@@ -124,6 +135,7 @@ mod tests {
             "posts".to_string(),
             "id1".to_string(),
             HashMap::new(),
+            Some(EventUser { id: "u1".into(), email: "test@example.com".into() }),
         );
         assert!(result.is_some());
         let event = result.unwrap();
@@ -131,14 +143,16 @@ mod tests {
         assert_eq!(event.document_id, "id1");
         assert_eq!(event.target, EventTarget::Collection);
         assert_eq!(event.operation, EventOperation::Create);
+        assert!(event.edited_by.is_some());
+        assert_eq!(event.edited_by.unwrap().email, "test@example.com");
     }
 
     #[test]
     fn sequence_increments() {
         let bus = EventBus::new(16);
         let _rx = bus.subscribe();
-        let e1 = bus.publish(EventTarget::Collection, EventOperation::Create, "a".into(), "1".into(), HashMap::new()).unwrap();
-        let e2 = bus.publish(EventTarget::Collection, EventOperation::Update, "a".into(), "2".into(), HashMap::new()).unwrap();
+        let e1 = bus.publish(EventTarget::Collection, EventOperation::Create, "a".into(), "1".into(), HashMap::new(), None).unwrap();
+        let e2 = bus.publish(EventTarget::Collection, EventOperation::Update, "a".into(), "2".into(), HashMap::new(), None).unwrap();
         assert_eq!(e2.sequence, e1.sequence + 1);
     }
 
@@ -146,7 +160,7 @@ mod tests {
     fn subscriber_receives_event() {
         let bus = EventBus::new(16);
         let mut rx = bus.subscribe();
-        bus.publish(EventTarget::Global, EventOperation::Update, "settings".into(), "default".into(), HashMap::new());
+        bus.publish(EventTarget::Global, EventOperation::Update, "settings".into(), "default".into(), HashMap::new(), None);
         let event = rx.try_recv().expect("should receive event");
         assert_eq!(event.collection, "settings");
         assert_eq!(event.target, EventTarget::Global);

@@ -17,7 +17,7 @@ use anyhow::Result;
 pub use self::init::{init, InitOptions};
 pub use self::collection::{make_collection, VALID_FIELD_TYPES};
 pub use self::global::make_global;
-pub use self::hook::{make_hook, HookType, MakeHookOptions};
+pub use self::hook::{make_hook, HookType, MakeHookOptions, ConditionFieldInfo};
 pub use self::job::make_job;
 pub use self::migration::make_migration;
 pub use self::blueprint::{

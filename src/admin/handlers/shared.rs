@@ -11,9 +11,12 @@ use std::collections::HashMap;
 use crate::admin::AdminState;
 use crate::admin::context::{ContextBuilder, PageType};
 use crate::core::auth::AuthUser;
-use crate::core::field::FieldType;
+use crate::core::collection::VersionsConfig;
+use crate::core::document::VersionSnapshot;
+use crate::core::field::{FieldDefinition, FieldType};
 use crate::core::upload;
 use crate::db::query::{self, AccessResult, LocaleContext};
+use crate::db::DbPool;
 
 /// Query parameters for paginated collection list views.
 #[derive(Debug, Deserialize)]
@@ -32,6 +35,14 @@ pub struct LocaleParams {
 /// Extract the user document from AuthUser extension (for access checks).
 pub(super) fn get_user_doc(auth_user: &Option<Extension<AuthUser>>) -> Option<&crate::core::Document> {
     auth_user.as_ref().map(|Extension(au)| &au.user_doc)
+}
+
+/// Extract an EventUser from the AuthUser extension (for SSE event attribution).
+pub(super) fn get_event_user(auth_user: &Option<Extension<AuthUser>>) -> Option<crate::core::event::EventUser> {
+    auth_user.as_ref().map(|Extension(au)| crate::core::event::EventUser {
+        id: au.claims.sub.clone(),
+        email: au.claims.email.clone(),
+    })
 }
 
 /// Strip denied fields from a document's fields map.
@@ -105,6 +116,40 @@ pub(super) fn auto_label_from_name(name: &str) -> String {
         .join(" ")
 }
 
+/// Compute a custom row label for an array or blocks row.
+///
+/// Priority: `row_label` Lua function > block-level `label_field` > field-level `label_field` > None.
+fn compute_row_label(
+    admin: &crate::core::field::FieldAdmin,
+    block_label_field: Option<&str>,
+    row_data: Option<&serde_json::Map<String, serde_json::Value>>,
+    hook_runner: &crate::hooks::lifecycle::HookRunner,
+) -> Option<String> {
+    // 1. Try row_label Lua function
+    if let Some(ref func_ref) = admin.row_label {
+        if let Some(row) = row_data {
+            let json_val = serde_json::Value::Object(row.clone());
+            if let Some(label) = hook_runner.call_row_label(func_ref, &json_val) {
+                if !label.is_empty() {
+                    return Some(label);
+                }
+            }
+        }
+    }
+
+    // 2. Try block-level label_field, then field-level label_field
+    let lf = block_label_field.or(admin.label_field.as_deref())?;
+    let row = row_data?;
+    let val = row.get(lf)?;
+    let s = match val {
+        serde_json::Value::String(s) if !s.is_empty() => s.clone(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Bool(b) => b.to_string(),
+        _ => return None,
+    };
+    Some(s)
+}
+
 /// Check if the current locale is a non-default locale (fields should be locked).
 pub(super) fn is_non_default_locale(state: &AdminState, requested_locale: Option<&str>) -> bool {
     let config = &state.config.locale;
@@ -160,6 +205,10 @@ fn build_single_field_context(
         "locale_locked": locale_locked,
     });
 
+    if let Some(ref pos) = field.admin.position {
+        ctx["position"] = serde_json::json!(pos);
+    }
+
     if let Some(err) = errors.get(&full_name) {
         ctx["error"] = serde_json::json!(err);
     }
@@ -199,6 +248,21 @@ fn build_single_field_context(
             ctx["sub_fields"] = serde_json::json!(sub_fields);
             ctx["row_count"] = serde_json::json!(0);
             ctx["template_id"] = serde_json::json!(safe_template_id(&full_name));
+            if let Some(ref lf) = field.admin.label_field {
+                ctx["label_field"] = serde_json::json!(lf);
+            }
+            if let Some(max) = field.max_rows {
+                ctx["max_rows"] = serde_json::json!(max);
+            }
+            if let Some(min) = field.min_rows {
+                ctx["min_rows"] = serde_json::json!(min);
+            }
+            if field.admin.init_collapsed {
+                ctx["init_collapsed"] = serde_json::json!(true);
+            }
+            if let Some(ref ls) = field.admin.labels_singular {
+                ctx["add_label"] = serde_json::json!(ls.resolve_default());
+            }
         }
         FieldType::Group => {
             // Group sub-fields use double-underscore naming at top level,
@@ -266,15 +330,34 @@ fn build_single_field_context(
                 let block_fields: Vec<_> = bd.fields.iter().map(|sf| {
                     build_single_field_context(sf, &HashMap::new(), &HashMap::new(), &template_prefix, non_default_locale, depth + 1)
                 }).collect();
-                serde_json::json!({
+                let mut def = serde_json::json!({
                     "block_type": bd.block_type,
                     "label": bd.label.as_ref().map(|ls| ls.resolve_default()).unwrap_or(&bd.block_type),
                     "fields": block_fields,
-                })
+                });
+                if let Some(ref lf) = bd.label_field {
+                    def["label_field"] = serde_json::json!(lf);
+                }
+                def
             }).collect();
             ctx["block_definitions"] = serde_json::json!(block_defs);
             ctx["row_count"] = serde_json::json!(0);
             ctx["template_id"] = serde_json::json!(safe_template_id(&full_name));
+            if let Some(ref lf) = field.admin.label_field {
+                ctx["label_field"] = serde_json::json!(lf);
+            }
+            if let Some(max) = field.max_rows {
+                ctx["max_rows"] = serde_json::json!(max);
+            }
+            if let Some(min) = field.min_rows {
+                ctx["min_rows"] = serde_json::json!(min);
+            }
+            if field.admin.init_collapsed {
+                ctx["init_collapsed"] = serde_json::json!(true);
+            }
+            if let Some(ref ls) = field.admin.labels_singular {
+                ctx["add_label"] = serde_json::json!(ls.resolve_default());
+            }
         }
         _ => {}
     }
@@ -333,6 +416,21 @@ fn apply_field_type_extras(
             sub_ctx["sub_fields"] = serde_json::json!(sub_fields);
             sub_ctx["row_count"] = serde_json::json!(0);
             sub_ctx["template_id"] = serde_json::json!(safe_template_id(name_prefix));
+            if let Some(ref lf) = sf.admin.label_field {
+                sub_ctx["label_field"] = serde_json::json!(lf);
+            }
+            if let Some(max) = sf.max_rows {
+                sub_ctx["max_rows"] = serde_json::json!(max);
+            }
+            if let Some(min) = sf.min_rows {
+                sub_ctx["min_rows"] = serde_json::json!(min);
+            }
+            if sf.admin.init_collapsed {
+                sub_ctx["init_collapsed"] = serde_json::json!(true);
+            }
+            if let Some(ref ls) = sf.admin.labels_singular {
+                sub_ctx["add_label"] = serde_json::json!(ls.resolve_default());
+            }
         }
         FieldType::Group => {
             let sub_fields: Vec<_> = sf.fields.iter().map(|nested| {
@@ -349,15 +447,31 @@ fn apply_field_type_extras(
                 let block_fields: Vec<_> = bd.fields.iter().map(|nested| {
                     build_single_field_context(nested, &HashMap::new(), &HashMap::new(), &template_prefix, non_default_locale, depth + 1)
                 }).collect();
-                serde_json::json!({
+                let mut def = serde_json::json!({
                     "block_type": bd.block_type,
                     "label": bd.label.as_ref().map(|ls| ls.resolve_default()).unwrap_or(&bd.block_type),
                     "fields": block_fields,
-                })
+                });
+                if let Some(ref lf) = bd.label_field {
+                    def["label_field"] = serde_json::json!(lf);
+                }
+                def
             }).collect();
             sub_ctx["block_definitions"] = serde_json::json!(block_defs);
             sub_ctx["row_count"] = serde_json::json!(0);
             sub_ctx["template_id"] = serde_json::json!(safe_template_id(name_prefix));
+            if let Some(max) = sf.max_rows {
+                sub_ctx["max_rows"] = serde_json::json!(max);
+            }
+            if let Some(min) = sf.min_rows {
+                sub_ctx["min_rows"] = serde_json::json!(min);
+            }
+            if sf.admin.init_collapsed {
+                sub_ctx["init_collapsed"] = serde_json::json!(true);
+            }
+            if let Some(ref ls) = sf.admin.labels_singular {
+                sub_ctx["add_label"] = serde_json::json!(ls.resolve_default());
+            }
         }
         FieldType::Relationship => {
             if let Some(ref rc) = sf.relationship {
@@ -396,6 +510,55 @@ pub(super) fn build_field_contexts(
     }).collect()
 }
 
+/// Evaluate display conditions for field contexts and inject condition data.
+/// For fields with `admin.condition`, calls the Lua function and sets:
+/// - `condition_visible`: initial visibility (bool)
+/// - `condition_json`: condition table for client-side evaluation (if table returned)
+/// - `condition_ref`: Lua function ref for server-side evaluation (if bool returned)
+pub(super) fn apply_display_conditions(
+    fields: &mut [serde_json::Value],
+    field_defs: &[crate::core::field::FieldDefinition],
+    form_data: &serde_json::Value,
+    hook_runner: &crate::hooks::lifecycle::HookRunner,
+    filter_hidden: bool,
+) {
+    use crate::hooks::lifecycle::DisplayConditionResult;
+
+    let defs_iter: Box<dyn Iterator<Item = &crate::core::field::FieldDefinition>> = if filter_hidden {
+        Box::new(field_defs.iter().filter(|f| !f.admin.hidden))
+    } else {
+        Box::new(field_defs.iter())
+    };
+
+    for (ctx, field_def) in fields.iter_mut().zip(defs_iter) {
+        if let Some(ref cond_ref) = field_def.admin.condition {
+            match hook_runner.call_display_condition(cond_ref, form_data) {
+                Some(DisplayConditionResult::Bool(visible)) => {
+                    ctx["condition_visible"] = serde_json::json!(visible);
+                    ctx["condition_ref"] = serde_json::json!(cond_ref);
+                }
+                Some(DisplayConditionResult::Table { condition, visible }) => {
+                    ctx["condition_visible"] = serde_json::json!(visible);
+                    ctx["condition_json"] = condition;
+                }
+                None => {
+                    // Lua error → show field (safe default)
+                }
+            }
+        }
+    }
+}
+
+/// Split field contexts into main and sidebar based on the `position` property.
+/// Returns `(main_fields, sidebar_fields)`.
+pub(super) fn split_sidebar_fields(
+    fields: Vec<serde_json::Value>,
+) -> (Vec<serde_json::Value>, Vec<serde_json::Value>) {
+    fields.into_iter().partition(|f| {
+        f.get("position").and_then(|v| v.as_str()) != Some("sidebar")
+    })
+}
+
 /// Build a sub-field context for a single field within an array/blocks row,
 /// recursively handling nested composite sub-fields.
 ///
@@ -414,6 +577,7 @@ fn build_enriched_sub_field_context(
     locale_locked: bool,
     non_default_locale: bool,
     depth: usize,
+    errors: &HashMap<String, String>,
 ) -> serde_json::Value {
     let indexed_name = format!("{}[{}][{}]", parent_name, idx, sf.name);
 
@@ -446,6 +610,10 @@ fn build_enriched_sub_field_context(
         "placeholder": sf.admin.placeholder.as_ref().map(|ls| ls.resolve_default()),
         "description": sf.admin.description.as_ref().map(|ls| ls.resolve_default()),
     });
+
+    if let Some(err) = errors.get(&indexed_name) {
+        sub_ctx["error"] = serde_json::json!(err);
+    }
 
     if depth >= MAX_FIELD_DEPTH { return sub_ctx; }
 
@@ -500,13 +668,19 @@ fn build_enriched_sub_field_context(
                             let nested_raw = nested_row_obj.and_then(|m| m.get(&nested_sf.name));
                             build_enriched_sub_field_context(
                                 nested_sf, nested_raw, &indexed_name, nested_idx,
-                                locale_locked, non_default_locale, depth + 1,
+                                locale_locked, non_default_locale, depth + 1, errors,
                             )
                         }).collect();
-                        serde_json::json!({
+                        let row_has_errors = nested_sub_values.iter()
+                            .any(|sf_ctx| sf_ctx.get("error").is_some());
+                        let mut row_json = serde_json::json!({
                             "index": nested_idx,
                             "sub_fields": nested_sub_values,
-                        })
+                        });
+                        if row_has_errors {
+                            row_json["has_errors"] = serde_json::json!(true);
+                        }
+                        row_json
                     }).collect()
                 }
                 _ => Vec::new(),
@@ -520,6 +694,18 @@ fn build_enriched_sub_field_context(
             sub_ctx["rows"] = serde_json::json!(nested_rows);
             sub_ctx["row_count"] = serde_json::json!(nested_rows.len());
             sub_ctx["template_id"] = serde_json::json!(safe_template_id(&indexed_name));
+            if let Some(max) = sf.max_rows {
+                sub_ctx["max_rows"] = serde_json::json!(max);
+            }
+            if let Some(min) = sf.min_rows {
+                sub_ctx["min_rows"] = serde_json::json!(min);
+            }
+            if sf.admin.init_collapsed {
+                sub_ctx["init_collapsed"] = serde_json::json!(true);
+            }
+            if let Some(ref ls) = sf.admin.labels_singular {
+                sub_ctx["add_label"] = serde_json::json!(ls.resolve_default());
+            }
         }
         FieldType::Blocks => {
             // Nested blocks: recurse into block rows
@@ -541,16 +727,22 @@ fn build_enriched_sub_field_context(
                                 let nested_raw = nested_row_obj.and_then(|m| m.get(&nested_sf.name));
                                 build_enriched_sub_field_context(
                                     nested_sf, nested_raw, &indexed_name, nested_idx,
-                                    locale_locked, non_default_locale, depth + 1,
+                                    locale_locked, non_default_locale, depth + 1, errors,
                                 )
                             }).collect())
                             .unwrap_or_default();
-                        serde_json::json!({
+                        let row_has_errors = nested_sub_values.iter()
+                            .any(|sf_ctx| sf_ctx.get("error").is_some());
+                        let mut row_json = serde_json::json!({
                             "index": nested_idx,
                             "_block_type": block_type,
                             "block_label": block_label,
                             "sub_fields": nested_sub_values,
-                        })
+                        });
+                        if row_has_errors {
+                            row_json["has_errors"] = serde_json::json!(true);
+                        }
+                        row_json
                     }).collect()
                 }
                 _ => Vec::new(),
@@ -561,16 +753,35 @@ fn build_enriched_sub_field_context(
                 let block_fields: Vec<_> = bd.fields.iter().map(|nested_sf| {
                     build_single_field_context(nested_sf, &HashMap::new(), &HashMap::new(), &template_prefix, non_default_locale, depth + 1)
                 }).collect();
-                serde_json::json!({
+                let mut def = serde_json::json!({
                     "block_type": bd.block_type,
                     "label": bd.label.as_ref().map(|ls| ls.resolve_default()).unwrap_or(&bd.block_type),
                     "fields": block_fields,
-                })
+                });
+                if let Some(ref lf) = bd.label_field {
+                    def["label_field"] = serde_json::json!(lf);
+                }
+                def
             }).collect();
             sub_ctx["block_definitions"] = serde_json::json!(block_defs);
             sub_ctx["rows"] = serde_json::json!(nested_rows);
             sub_ctx["row_count"] = serde_json::json!(nested_rows.len());
             sub_ctx["template_id"] = serde_json::json!(safe_template_id(&indexed_name));
+            if let Some(ref lf) = sf.admin.label_field {
+                sub_ctx["label_field"] = serde_json::json!(lf);
+            }
+            if let Some(max) = sf.max_rows {
+                sub_ctx["max_rows"] = serde_json::json!(max);
+            }
+            if let Some(min) = sf.min_rows {
+                sub_ctx["min_rows"] = serde_json::json!(min);
+            }
+            if sf.admin.init_collapsed {
+                sub_ctx["init_collapsed"] = serde_json::json!(true);
+            }
+            if let Some(ref ls) = sf.admin.labels_singular {
+                sub_ctx["add_label"] = serde_json::json!(ls.resolve_default());
+            }
         }
         FieldType::Group => {
             // Nested group: sub-fields are stored as keys in the same row object
@@ -634,6 +845,7 @@ pub(super) fn enrich_field_contexts(
     state: &AdminState,
     filter_hidden: bool,
     non_default_locale: bool,
+    errors: &HashMap<String, String>,
 ) {
     let reg = match state.registry.read() {
         Ok(r) => r,
@@ -713,13 +925,25 @@ pub(super) fn enrich_field_contexts(
                                 let raw_value = row_obj.and_then(|m| m.get(&sf.name));
                                 build_enriched_sub_field_context(
                                     sf, raw_value, &field_def.name, idx,
-                                    locale_locked, non_default_locale, 1,
+                                    locale_locked, non_default_locale, 1, errors,
                                 )
                             }).collect();
-                            serde_json::json!({
+                            let row_has_errors = sub_values.iter()
+                                .any(|sf_ctx| sf_ctx.get("error").is_some());
+                            let mut row_json = serde_json::json!({
                                 "index": idx,
                                 "sub_fields": sub_values,
-                            })
+                            });
+                            if row_has_errors {
+                                row_json["has_errors"] = serde_json::json!(true);
+                            }
+                            // Compute custom row label
+                            if let Some(label) = compute_row_label(
+                                &field_def.admin, None, row_obj, &state.hook_runner,
+                            ) {
+                                row_json["custom_label"] = serde_json::json!(label);
+                            }
+                            row_json
                         }).collect()
                     }
                     _ => Vec::new(),
@@ -825,21 +1049,34 @@ pub(super) fn enrich_field_contexts(
                                 .unwrap_or(block_type);
                             let block_def = field_def.blocks.iter()
                                 .find(|bd| bd.block_type == block_type);
+                            let block_label_field = block_def.and_then(|bd| bd.label_field.as_deref());
                             let sub_values: Vec<_> = block_def
                                 .map(|bd| bd.fields.iter().map(|sf| {
                                     let raw_value = row_obj.and_then(|m| m.get(&sf.name));
                                     build_enriched_sub_field_context(
                                         sf, raw_value, &field_def.name, idx,
-                                        locale_locked, non_default_locale, 1,
+                                        locale_locked, non_default_locale, 1, errors,
                                     )
                                 }).collect())
                                 .unwrap_or_default();
-                            serde_json::json!({
+                            let row_has_errors = sub_values.iter()
+                                .any(|sf_ctx| sf_ctx.get("error").is_some());
+                            let mut row_json = serde_json::json!({
                                 "index": idx,
                                 "_block_type": block_type,
                                 "block_label": block_label,
                                 "sub_fields": sub_values,
-                            })
+                            });
+                            if row_has_errors {
+                                row_json["has_errors"] = serde_json::json!(true);
+                            }
+                            // Compute custom row label
+                            if let Some(label) = compute_row_label(
+                                &field_def.admin, block_label_field, row_obj, &state.hook_runner,
+                            ) {
+                                row_json["custom_label"] = serde_json::json!(label);
+                            }
+                            row_json
                         }).collect()
                     }
                     _ => Vec::new(),
@@ -850,6 +1087,58 @@ pub(super) fn enrich_field_contexts(
             _ => {}
         }
     }
+}
+
+/// Map a `VersionSnapshot` to the JSON object used in templates.
+pub(super) fn version_to_json(v: VersionSnapshot) -> serde_json::Value {
+    serde_json::json!({
+        "id": v.id,
+        "version": v.version,
+        "status": v.status,
+        "latest": v.latest,
+        "created_at": v.created_at,
+    })
+}
+
+/// Fetch the last N versions + total count for sidebar display.
+/// Returns `(versions_json, total_count)`.
+pub(super) fn fetch_version_sidebar_data(
+    pool: &DbPool,
+    table_name: &str,
+    parent_id: &str,
+) -> (Vec<serde_json::Value>, i64) {
+    if let Ok(conn) = pool.get() {
+        let total = query::count_versions(&conn, table_name, parent_id).unwrap_or(0);
+        let vers = query::list_versions(&conn, table_name, parent_id, Some(3), None)
+            .unwrap_or_default()
+            .into_iter()
+            .map(version_to_json)
+            .collect();
+        (vers, total)
+    } else {
+        (vec![], 0)
+    }
+}
+
+/// Execute the unpublish flow on an already-open transaction:
+/// set status to draft, build snapshot, create version, prune.
+pub(super) fn do_unpublish(
+    tx: &rusqlite::Transaction,
+    table_name: &str,
+    parent_id: &str,
+    fields: &[FieldDefinition],
+    versions_config: Option<&VersionsConfig>,
+    doc: &crate::core::Document,
+) -> anyhow::Result<()> {
+    query::set_document_status(tx, table_name, parent_id, "draft")?;
+    let snapshot = query::build_snapshot(tx, table_name, fields, doc)?;
+    query::create_version(tx, table_name, parent_id, "draft", &snapshot)?;
+    if let Some(vc) = versions_config {
+        if vc.max_versions > 0 {
+            query::prune_versions(tx, table_name, parent_id, vc.max_versions)?;
+        }
+    }
+    Ok(())
 }
 
 /// Render a 403 Forbidden page with the given message.
@@ -866,9 +1155,21 @@ pub(super) fn forbidden(state: &AdminState, message: &str) -> (StatusCode, Html<
     (StatusCode::FORBIDDEN, html)
 }
 
-/// Create a redirect response to the given URL.
+/// Create a redirect response to the given URL (303 See Other).
 pub(super) fn redirect_response(url: &str) -> axum::response::Response {
     Redirect::to(url).into_response()
+}
+
+/// Create an HTMX-aware redirect: returns 200 + `HX-Redirect` header so HTMX does a full
+/// page navigation instead of an in-place body swap. This avoids issues with custom
+/// elements (ProseMirror richtext editors in blocks) not re-initializing properly during
+/// HTMX innerHTML swaps after write operations.
+pub(super) fn htmx_redirect(url: &str) -> axum::response::Response {
+    axum::response::Response::builder()
+        .status(StatusCode::OK)
+        .header("HX-Redirect", url)
+        .body(axum::body::Body::empty())
+        .unwrap_or_else(|_| Redirect::to(url).into_response())
 }
 
 /// Render a template and set the X-Crap-Toast header for client-side notifications.
@@ -876,7 +1177,8 @@ pub(super) fn html_with_toast(state: &AdminState, template: &str, data: &serde_j
     match state.render(template, data) {
         Ok(html) => {
             let mut resp = Html(html).into_response();
-            if let Ok(val) = toast.parse() {
+            let json_toast = serde_json::json!({ "message": toast, "type": "error" }).to_string();
+            if let Ok(val) = json_toast.parse() {
                 resp.headers_mut().insert("X-Crap-Toast", val);
             }
             resp
@@ -1002,25 +1304,13 @@ mod tests {
 
     // --- build_field_contexts: array/block sub-field enrichment tests ---
 
-    use crate::core::field::{FieldDefinition, FieldAdmin, FieldHooks, FieldAccess, SelectOption, LocalizedString, BlockDefinition};
+    use crate::core::field::{FieldDefinition, SelectOption, LocalizedString, BlockDefinition};
 
     fn make_field(name: &str, ft: FieldType) -> FieldDefinition {
         FieldDefinition {
             name: name.to_string(),
             field_type: ft,
-            required: false,
-            unique: false,
-            validate: None,
-            default_value: None,
-            options: Vec::new(),
-            admin: FieldAdmin::default(),
-            hooks: FieldHooks::default(),
-            access: FieldAccess::default(),
-            relationship: None,
-            fields: Vec::new(),
-            blocks: Vec::new(),
-            localized: false,
-            picker_appearance: None,
+            ..Default::default()
         }
     }
 
@@ -1074,6 +1364,7 @@ mod tests {
                 make_field("heading", FieldType::Text),
                 make_field("body", FieldType::Richtext),
             ],
+            ..Default::default()
         }];
         let fields = vec![blocks_field];
         let values = HashMap::new();
@@ -1101,6 +1392,7 @@ mod tests {
             block_type: "section".to_string(),
             label: None,
             fields: vec![select_sf],
+            ..Default::default()
         }];
         let fields = vec![blocks_field];
         let values = HashMap::new();
@@ -1202,6 +1494,7 @@ mod tests {
             block_type: "text".to_string(),
             label: None,
             fields: vec![make_field("body", FieldType::Text)],
+            ..Default::default()
         }];
         let fields = vec![blocks_field];
         let result = build_field_contexts(&fields, &HashMap::new(), &HashMap::new(), false, false);
@@ -1239,6 +1532,7 @@ mod tests {
                 make_field("title", FieldType::Text),
                 inner_array,
             ],
+            ..Default::default()
         }];
         let fields = vec![blocks_field];
         let result = build_field_contexts(&fields, &HashMap::new(), &HashMap::new(), false, false);
@@ -1274,6 +1568,7 @@ mod tests {
             block_type: "text".to_string(),
             label: None,
             fields: vec![make_field("body", FieldType::Richtext)],
+            ..Default::default()
         }];
         let mut arr_field = make_field("pages", FieldType::Array);
         arr_field.fields = vec![
@@ -1362,7 +1657,7 @@ mod tests {
 
         let ctx = build_enriched_sub_field_context(
             &inner_array, Some(&raw_value), "content", 0,
-            false, false, 1,
+            false, false, 1, &HashMap::new(),
         );
 
         assert_eq!(ctx["field_type"], "array");
@@ -1395,6 +1690,7 @@ mod tests {
             block_type: "text".to_string(),
             label: Some(LocalizedString::Plain("Text".to_string())),
             fields: vec![make_field("body", FieldType::Richtext)],
+            ..Default::default()
         }];
 
         let raw_value = serde_json::json!([
@@ -1403,7 +1699,7 @@ mod tests {
 
         let ctx = build_enriched_sub_field_context(
             &inner_blocks, Some(&raw_value), "page", 2,
-            false, false, 1,
+            false, false, 1, &HashMap::new(),
         );
 
         assert_eq!(ctx["field_type"], "blocks");
@@ -1437,7 +1733,7 @@ mod tests {
 
         let ctx = build_enriched_sub_field_context(
             &inner_group, Some(&raw_value), "items", 0,
-            false, false, 1,
+            false, false, 1, &HashMap::new(),
         );
 
         assert_eq!(ctx["field_type"], "group");
@@ -1457,7 +1753,7 @@ mod tests {
         // No data
         let ctx = build_enriched_sub_field_context(
             &inner_array, None, "items", 0,
-            false, false, 1,
+            false, false, 1, &HashMap::new(),
         );
 
         assert_eq!(ctx["field_type"], "array");
@@ -1478,7 +1774,7 @@ mod tests {
 
         let ctx = build_enriched_sub_field_context(
             &select_field, Some(&raw_value), "items", 0,
-            false, false, 1,
+            false, false, 1, &HashMap::new(),
         );
 
         let opts = ctx["options"].as_array().unwrap();

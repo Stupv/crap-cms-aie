@@ -36,20 +36,8 @@ fn make_posts_def() -> CollectionDefinition {
         fields: vec![
             FieldDefinition {
                 name: "title".to_string(),
-                field_type: FieldType::Text,
                 required: true,
-                unique: false,
-                validate: None,
-                default_value: None,
-                options: Vec::new(),
-                admin: FieldAdmin::default(),
-                hooks: FieldHooks::default(),
-                access: FieldAccess::default(),
-                relationship: None,
-                fields: Vec::new(),
-                blocks: Vec::new(),
-                localized: false,
-                picker_appearance: None,
+                ..Default::default()
             },
         ],
         admin: CollectionAdmin::default(),
@@ -76,34 +64,11 @@ fn make_users_def() -> CollectionDefinition {
                 field_type: FieldType::Email,
                 required: true,
                 unique: true,
-                validate: None,
-                default_value: None,
-                options: Vec::new(),
-                admin: FieldAdmin::default(),
-                hooks: FieldHooks::default(),
-                access: FieldAccess::default(),
-                relationship: None,
-                fields: Vec::new(),
-                blocks: Vec::new(),
-                localized: false,
-                picker_appearance: None,
+                ..Default::default()
             },
             FieldDefinition {
                 name: "name".to_string(),
-                field_type: FieldType::Text,
-                required: false,
-                unique: false,
-                validate: None,
-                default_value: None,
-                options: Vec::new(),
-                admin: FieldAdmin::default(),
-                hooks: FieldHooks::default(),
-                access: FieldAccess::default(),
-                relationship: None,
-                fields: Vec::new(),
-                blocks: Vec::new(),
-                localized: false,
-                picker_appearance: None,
+                ..Default::default()
             },
         ],
         admin: CollectionAdmin::default(),
@@ -126,25 +91,13 @@ fn make_global_def() -> GlobalDefinition {
         fields: vec![
             FieldDefinition {
                 name: "site_name".to_string(),
-                field_type: FieldType::Text,
-                required: false,
-                unique: false,
-                validate: None,
-                default_value: None,
-                options: Vec::new(),
-                admin: FieldAdmin::default(),
-                hooks: FieldHooks::default(),
-                access: FieldAccess::default(),
-                relationship: None,
-                fields: Vec::new(),
-                blocks: Vec::new(),
-                localized: false,
-                picker_appearance: None,
+                ..Default::default()
             },
         ],
         hooks: CollectionHooks::default(),
         access: CollectionAccess::default(),
         live: None,
+        versions: None,
     }
 }
 
@@ -552,8 +505,8 @@ async fn create_action_creates_document() {
         .unwrap();
     let status = resp.status();
     assert!(
-        status == StatusCode::SEE_OTHER || status == StatusCode::FOUND,
-        "Create action should redirect, got {}",
+        status == StatusCode::SEE_OTHER || status == StatusCode::FOUND || status == StatusCode::OK,
+        "Create action should redirect or HX-Redirect, got {}",
         status
     );
 }
@@ -616,8 +569,8 @@ async fn update_action_updates_document() {
         .unwrap();
     let status = resp.status();
     assert!(
-        status == StatusCode::SEE_OTHER || status == StatusCode::FOUND,
-        "Update action should redirect, got {}",
+        status == StatusCode::SEE_OTHER || status == StatusCode::FOUND || status == StatusCode::OK,
+        "Update action should redirect or HX-Redirect, got {}",
         status
     );
 }
@@ -712,8 +665,8 @@ async fn global_update_action() {
         .unwrap();
     let status = resp.status();
     assert!(
-        status == StatusCode::SEE_OTHER || status == StatusCode::FOUND,
-        "Global update should redirect, got {}",
+        status == StatusCode::SEE_OTHER || status == StatusCode::FOUND || status == StatusCode::OK,
+        "Global update should redirect or HX-Redirect, got {}",
         status
     );
 }
@@ -765,39 +718,16 @@ fn make_media_def() -> CollectionDefinition {
     fn hidden_text(name: &str) -> FieldDefinition {
         FieldDefinition {
             name: name.to_string(),
-            field_type: FieldType::Text,
-            required: false,
-            unique: false,
-            validate: None,
-            default_value: None,
-            options: Vec::new(),
             admin: FieldAdmin { hidden: true, ..Default::default() },
-            hooks: FieldHooks::default(),
-            access: FieldAccess::default(),
-            relationship: None,
-            fields: Vec::new(),
-            blocks: Vec::new(),
-            localized: false,
-            picker_appearance: None,
+            ..Default::default()
         }
     }
     fn hidden_number(name: &str) -> FieldDefinition {
         FieldDefinition {
             name: name.to_string(),
             field_type: FieldType::Number,
-            required: false,
-            unique: false,
-            validate: None,
-            default_value: None,
-            options: Vec::new(),
             admin: FieldAdmin { hidden: true, ..Default::default() },
-            hooks: FieldHooks::default(),
-            access: FieldAccess::default(),
-            relationship: None,
-            fields: Vec::new(),
-            blocks: Vec::new(),
-            localized: false,
-            picker_appearance: None,
+            ..Default::default()
         }
     }
 
@@ -812,20 +742,9 @@ fn make_media_def() -> CollectionDefinition {
             // Upload metadata fields (normally auto-injected by Lua parser)
             FieldDefinition {
                 name: "filename".to_string(),
-                field_type: FieldType::Text,
                 required: true,
-                unique: false,
-                validate: None,
-                default_value: None,
-                options: Vec::new(),
                 admin: FieldAdmin { readonly: true, ..Default::default() },
-                hooks: FieldHooks::default(),
-                access: FieldAccess::default(),
-                relationship: None,
-                fields: Vec::new(),
-                blocks: Vec::new(),
-                localized: false,
-                picker_appearance: None,
+                ..Default::default()
             },
             hidden_text("mime_type"),
             hidden_number("filesize"),
@@ -835,20 +754,7 @@ fn make_media_def() -> CollectionDefinition {
             // User-defined field
             FieldDefinition {
                 name: "alt".to_string(),
-                field_type: FieldType::Text,
-                required: false,
-                unique: false,
-                validate: None,
-                default_value: None,
-                options: Vec::new(),
-                admin: FieldAdmin::default(),
-                hooks: FieldHooks::default(),
-                access: FieldAccess::default(),
-                relationship: None,
-                fields: Vec::new(),
-                blocks: Vec::new(),
-                localized: false,
-                picker_appearance: None,
+                ..Default::default()
             },
         ],
         admin: CollectionAdmin::default(),
@@ -1224,37 +1130,15 @@ fn make_localized_pages_def() -> CollectionDefinition {
         fields: vec![
             FieldDefinition {
                 name: "title".to_string(),
-                field_type: FieldType::Text,
                 required: true,
                 localized: true,
-                picker_appearance: None,
-                unique: false,
-                validate: None,
-                default_value: None,
-                options: Vec::new(),
-                admin: FieldAdmin::default(),
-                hooks: FieldHooks::default(),
-                access: FieldAccess::default(),
-                relationship: None,
-                fields: Vec::new(),
-                blocks: Vec::new(),
+                ..Default::default()
             },
             FieldDefinition {
                 name: "body".to_string(),
                 field_type: FieldType::Textarea,
-                required: false,
                 localized: true,
-                picker_appearance: None,
-                unique: false,
-                validate: None,
-                default_value: None,
-                options: Vec::new(),
-                admin: FieldAdmin::default(),
-                hooks: FieldHooks::default(),
-                access: FieldAccess::default(),
-                relationship: None,
-                fields: Vec::new(),
-                blocks: Vec::new(),
+                ..Default::default()
             },
         ],
         admin: CollectionAdmin {
@@ -1361,8 +1245,13 @@ async fn localized_collection_create_via_form() {
         )
         .await
         .unwrap();
-    // Successful create redirects (303 See Other)
-    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    // Successful create responds with HX-Redirect (200) or redirect (303)
+    let status = resp.status();
+    assert!(
+        status == StatusCode::SEE_OTHER || status == StatusCode::OK,
+        "Localized create should redirect or HX-Redirect, got {}",
+        status
+    );
 }
 
 /// Regression: the edit page for a localized document must return 200.

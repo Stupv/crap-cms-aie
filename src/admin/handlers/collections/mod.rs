@@ -21,11 +21,13 @@ use crate::db::query::{AccessResult, FindQuery, Filter, FilterOp, FilterClause, 
 
 use super::shared::{
     PaginationParams, LocaleParams,
-    get_user_doc, strip_denied_fields,
+    get_user_doc, get_event_user, strip_denied_fields,
     check_access_or_forbid, build_locale_template_data,
     is_non_default_locale,
     build_field_contexts, enrich_field_contexts,
-    forbidden, redirect_response, html_with_toast,
+    apply_display_conditions, split_sidebar_fields,
+    version_to_json, fetch_version_sidebar_data, do_unpublish,
+    forbidden, redirect_response, htmx_redirect, html_with_toast,
     render_or_error, not_found, server_error,
 };
 
@@ -302,7 +304,11 @@ pub async fn create_form(
     let mut fields = build_field_contexts(&def.fields, &HashMap::new(), &HashMap::new(), true, non_default_locale);
 
     // Enrich relationship and array fields
-    enrich_field_contexts(&mut fields, &def.fields, &HashMap::new(), &state, true, non_default_locale);
+    enrich_field_contexts(&mut fields, &def.fields, &HashMap::new(), &state, true, non_default_locale, &HashMap::new());
+
+    // Evaluate display conditions (empty form data for create)
+    let empty_data = serde_json::json!({});
+    apply_display_conditions(&mut fields, &def.fields, &empty_data, &state.hook_runner, true);
 
     if def.is_auth_collection() {
         fields.push(serde_json::json!({
@@ -315,6 +321,9 @@ pub async fn create_form(
         }));
     }
 
+    // Split fields into main and sidebar
+    let (main_fields, sidebar_fields) = split_sidebar_fields(fields);
+
     let (_locale_ctx, locale_data) = build_locale_template_data(&state, locale_params.locale.as_deref());
 
     let claims_ref = claims.as_ref().map(|Extension(c)| c);
@@ -322,7 +331,8 @@ pub async fn create_form(
         .page(PageType::CollectionCreate, format!("Create {}", def.singular_name()))
         .set("page_title", serde_json::json!(format!("Create {}", def.singular_name())))
         .collection_def(&def)
-        .fields(fields)
+        .fields(main_fields)
+        .set("sidebar_fields", serde_json::json!(sidebar_fields))
         .set("editing", serde_json::json!(false))
         .set("has_drafts", serde_json::json!(def.has_drafts()))
         .breadcrumbs(vec![
@@ -407,13 +417,19 @@ pub async fn create_action(
                 Ok(processed) => inject_upload_metadata(&mut form_data, &processed),
                 Err(e) => {
                     tracing::error!("Upload processing error: {}", e);
-                    let fields = build_field_contexts(&def.fields, &form_data, &HashMap::new(), true, false);
+                    let mut fields = build_field_contexts(&def.fields, &form_data, &HashMap::new(), true, false);
+                    enrich_field_contexts(&mut fields, &def.fields, &HashMap::new(), &state, true, false, &HashMap::new());
+                    let empty_data = serde_json::json!({});
+                    apply_display_conditions(&mut fields, &def.fields, &empty_data, &state.hook_runner, true);
+                    let (main_fields, sidebar_fields) = split_sidebar_fields(fields);
                     let data = ContextBuilder::new(&state, None)
                         .page(PageType::CollectionCreate, format!("Create {}", def.singular_name()))
                         .set("page_title", serde_json::json!(format!("Create {}", def.singular_name())))
                         .collection_def(&def)
-                        .fields(fields)
+                        .fields(main_fields)
+                        .set("sidebar_fields", serde_json::json!(sidebar_fields))
                         .set("editing", serde_json::json!(false))
+                        .set("has_drafts", serde_json::json!(def.has_drafts()))
                         .build();
                     return html_with_toast(&state, "collections/edit", &data, &e.to_string());
                 }
@@ -456,6 +472,7 @@ pub async fn create_action(
     let slug_owned = slug.clone();
     let def_owned = def.clone();
     let form_data_clone = form_data.clone();
+    let join_data_clone = join_data.clone();
     let user_doc = get_user_doc(&auth_user).cloned();
     let locale = locale_ctx.as_ref().and_then(|ctx| match &ctx.mode {
         query::LocaleMode::Single(l) => Some(l.clone()),
@@ -477,6 +494,7 @@ pub async fn create_action(
                 crate::core::event::EventTarget::Collection,
                 crate::core::event::EventOperation::Create,
                 slug.clone(), doc.id.clone(), doc.fields.clone(),
+                get_event_user(&auth_user),
             );
 
             // Auto-send verification email for auth collections with verify_email enabled
@@ -494,18 +512,24 @@ pub async fn create_action(
                 }
             }
 
-            redirect_response(&format!("/admin/collections/{}", slug))
+            htmx_redirect(&format!("/admin/collections/{}", slug))
         }
         Ok(Err(e)) => {
             if let Some(ve) = e.downcast_ref::<ValidationError>() {
                 let error_map = ve.to_field_map();
-                let fields = build_field_contexts(&def.fields, &form_data_clone, &error_map, true, false);
+                let mut fields = build_field_contexts(&def.fields, &form_data_clone, &error_map, true, false);
+                enrich_field_contexts(&mut fields, &def.fields, &join_data_clone, &state, true, false, &error_map);
+                let form_json = serde_json::json!(form_data_clone.iter().map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone()))).collect::<serde_json::Map<String, serde_json::Value>>());
+                apply_display_conditions(&mut fields, &def.fields, &form_json, &state.hook_runner, true);
+                let (main_fields, sidebar_fields) = split_sidebar_fields(fields);
                 let data = ContextBuilder::new(&state, None)
                     .page(PageType::CollectionCreate, format!("Create {}", def.singular_name()))
                     .set("page_title", serde_json::json!(format!("Create {}", def.singular_name())))
                     .collection_def(&def)
-                    .fields(fields)
+                    .fields(main_fields)
+                    .set("sidebar_fields", serde_json::json!(sidebar_fields))
                     .set("editing", serde_json::json!(false))
+                    .set("has_drafts", serde_json::json!(def.has_drafts()))
                     .build();
                 html_with_toast(&state, "collections/edit", &data, &e.to_string())
             } else {
@@ -617,7 +641,11 @@ pub async fn edit_form(
     let mut fields = build_field_contexts(&def.fields, &values, &HashMap::new(), true, non_default_locale);
 
     // Enrich relationship and array fields with extra data
-    enrich_field_contexts(&mut fields, &def.fields, &document.fields, &state, true, non_default_locale);
+    enrich_field_contexts(&mut fields, &def.fields, &document.fields, &state, true, non_default_locale, &HashMap::new());
+
+    // Evaluate display conditions with document data
+    let form_data_json = serde_json::json!(document.fields);
+    apply_display_conditions(&mut fields, &def.fields, &form_data_json, &state.hook_runner, true);
 
     if def.is_auth_collection() {
         fields.push(serde_json::json!({
@@ -629,6 +657,9 @@ pub async fn edit_form(
             "description": "Leave blank to keep current password",
         }));
     }
+
+    // Split fields into main and sidebar
+    let (main_fields, sidebar_fields) = split_sidebar_fields(fields);
 
     // Determine document title for breadcrumb
     let doc_title = def.title_field()
@@ -647,23 +678,7 @@ pub async fn edit_form(
         String::new()
     };
     let (versions, total_versions): (Vec<serde_json::Value>, i64) = if has_versions {
-        if let Ok(conn) = state.pool.get() {
-            let total = query::count_versions(&conn, &slug, &document.id).unwrap_or(0);
-            let vers = query::list_versions(&conn, &slug, &document.id, Some(3), None)
-                .unwrap_or_default()
-                .into_iter()
-                .map(|v| serde_json::json!({
-                    "id": v.id,
-                    "version": v.version,
-                    "status": v.status,
-                    "latest": v.latest,
-                    "created_at": v.created_at,
-                }))
-                .collect();
-            (vers, total)
-        } else {
-            (vec![], 0)
-        }
+        fetch_version_sidebar_data(&state.pool, &slug, &document.id)
     } else {
         (vec![], 0)
     };
@@ -674,12 +689,15 @@ pub async fn edit_form(
         .set("page_title", serde_json::json!(format!("Edit {}", def.singular_name())))
         .collection_def(&def)
         .document_with_status(&document, &doc_status)
-        .fields(fields)
+        .fields(main_fields)
+        .set("sidebar_fields", serde_json::json!(sidebar_fields))
         .set("editing", serde_json::json!(true))
         .set("has_drafts", serde_json::json!(has_drafts))
         .set("has_versions", serde_json::json!(has_versions))
         .set("versions", serde_json::json!(versions))
         .set("has_more_versions", serde_json::json!(total_versions > 3))
+        .set("restore_url_prefix", serde_json::json!(format!("/admin/collections/{}/{}", slug, id)))
+        .set("versions_url", serde_json::json!(format!("/admin/collections/{}/{}/versions", slug, id)))
         .breadcrumbs(vec![
             Breadcrumb::link("Collections", "/admin/collections"),
             Breadcrumb::link(def.display_name(), format!("/admin/collections/{}", slug)),
@@ -840,14 +858,20 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
                 Ok(processed) => inject_upload_metadata(&mut form_data, &processed),
                 Err(e) => {
                     tracing::error!("Upload processing error: {}", e);
-                    let fields = build_field_contexts(&def.fields, &form_data, &HashMap::new(), true, false);
+                    let mut fields = build_field_contexts(&def.fields, &form_data, &HashMap::new(), true, false);
+                    enrich_field_contexts(&mut fields, &def.fields, &HashMap::new(), state, true, false, &HashMap::new());
+                    let form_json = serde_json::json!(form_data.iter().map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone()))).collect::<serde_json::Map<String, serde_json::Value>>());
+                    apply_display_conditions(&mut fields, &def.fields, &form_json, &state.hook_runner, true);
+                    let (main_fields, sidebar_fields) = split_sidebar_fields(fields);
                     let data = ContextBuilder::new(state, None)
                         .page(PageType::CollectionEdit, format!("Edit {}", def.singular_name()))
                         .set("page_title", serde_json::json!(format!("Edit {}", def.singular_name())))
                         .collection_def(&def)
                         .document_stub(id)
-                        .fields(fields)
+                        .fields(main_fields)
+                        .set("sidebar_fields", serde_json::json!(sidebar_fields))
                         .set("editing", serde_json::json!(true))
+                        .set("has_drafts", serde_json::json!(def.has_drafts()))
                         .build();
                     return html_with_toast(state, "collections/edit", &data, &e.to_string());
                 }
@@ -882,6 +906,7 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
     let id_owned = id.to_string();
     let def_owned = def.clone();
     let form_data_clone = form_data.clone();
+    let join_data_clone = join_data.clone();
     let user_doc = get_user_doc(auth_user).cloned();
     let locale = locale_ctx.as_ref().and_then(|ctx| match &ctx.mode {
         query::LocaleMode::Single(l) => Some(l.clone()),
@@ -893,16 +918,9 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
         if action_owned == "unpublish" && def_owned.has_versions() {
             let mut conn = pool.get().map_err(|e| anyhow::anyhow!("DB connection: {}", e))?;
             let tx = conn.transaction().map_err(|e| anyhow::anyhow!("Start transaction: {}", e))?;
-            query::set_document_status(&tx, &slug_owned, &id_owned, "draft")?;
-            let doc = query::find_by_id(&tx, &slug_owned, &def_owned, &id_owned, locale_ctx.as_ref())?
+            let doc = query::find_by_id_raw(&tx, &slug_owned, &def_owned, &id_owned, locale_ctx.as_ref())?
                 .ok_or_else(|| anyhow::anyhow!("Document not found"))?;
-            let snapshot = query::build_snapshot(&tx, &slug_owned, &def_owned, &doc)?;
-            query::create_version(&tx, &slug_owned, &id_owned, "draft", &snapshot)?;
-            if let Some(ref vc) = def_owned.versions {
-                if vc.max_versions > 0 {
-                    query::prune_versions(&tx, &slug_owned, &id_owned, vc.max_versions)?;
-                }
-            }
+            do_unpublish(&tx, &slug_owned, &id_owned, &def_owned.fields, def_owned.versions.as_ref(), &doc)?;
             tx.commit().map_err(|e| anyhow::anyhow!("Commit: {}", e))?;
             Ok((doc, HashMap::new()))
         } else {
@@ -932,20 +950,27 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
                 crate::core::event::EventTarget::Collection,
                 crate::core::event::EventOperation::Update,
                 slug.to_string(), id.to_string(), doc.fields.clone(),
+                get_event_user(auth_user),
             );
-            redirect_response(&format!("/admin/collections/{}/{}{}", slug, id, locale_suffix))
+            htmx_redirect(&format!("/admin/collections/{}/{}{}", slug, id, locale_suffix))
         }
         Ok(Err(e)) => {
             if let Some(ve) = e.downcast_ref::<ValidationError>() {
                 let error_map = ve.to_field_map();
-                let fields = build_field_contexts(&def.fields, &form_data_clone, &error_map, true, false);
+                let mut fields = build_field_contexts(&def.fields, &form_data_clone, &error_map, true, false);
+                enrich_field_contexts(&mut fields, &def.fields, &join_data_clone, state, true, false, &error_map);
+                let form_json = serde_json::json!(form_data_clone.iter().map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone()))).collect::<serde_json::Map<String, serde_json::Value>>());
+                apply_display_conditions(&mut fields, &def.fields, &form_json, &state.hook_runner, true);
+                let (main_fields, sidebar_fields) = split_sidebar_fields(fields);
                 let data = ContextBuilder::new(state, None)
                     .page(PageType::CollectionEdit, format!("Edit {}", def.singular_name()))
                     .set("page_title", serde_json::json!(format!("Edit {}", def.singular_name())))
                     .collection_def(&def)
                     .document_stub(id)
-                    .fields(fields)
+                    .fields(main_fields)
+                    .set("sidebar_fields", serde_json::json!(sidebar_fields))
                     .set("editing", serde_json::json!(true))
+                    .set("has_drafts", serde_json::json!(def.has_drafts()))
                     .build();
                 html_with_toast(state, "collections/edit", &data, &e.to_string())
             } else {
@@ -1082,6 +1107,7 @@ async fn delete_action_impl(state: &AdminState, slug: &str, id: &str, auth_user:
                 crate::core::event::EventTarget::Collection,
                 crate::core::event::EventOperation::Delete,
                 slug.to_string(), id.to_string(), std::collections::HashMap::new(),
+                get_event_user(auth_user),
             );
         }
         Ok(Err(e)) => {
@@ -1092,7 +1118,7 @@ async fn delete_action_impl(state: &AdminState, slug: &str, id: &str, auth_user:
         }
     }
 
-    axum::response::Redirect::to(&format!("/admin/collections/{}", slug)).into_response()
+    htmx_redirect(&format!("/admin/collections/{}", slug))
 }
 
 /// POST /admin/collections/{slug}/{id}/versions/{version_id}/restore — restore a version
@@ -1142,14 +1168,14 @@ pub async fn restore_version(
     }).await;
 
     match result {
-        Ok(Ok(_)) => redirect_response(&format!("/admin/collections/{}/{}", slug, id)),
+        Ok(Ok(_)) => htmx_redirect(&format!("/admin/collections/{}/{}", slug, id)),
         Ok(Err(e)) => {
             tracing::error!("Restore version error: {}", e);
-            redirect_response(&format!("/admin/collections/{}/{}", slug, id))
+            htmx_redirect(&format!("/admin/collections/{}/{}", slug, id))
         }
         Err(e) => {
             tracing::error!("Restore version task error: {}", e);
-            redirect_response(&format!("/admin/collections/{}/{}", slug, id))
+            htmx_redirect(&format!("/admin/collections/{}/{}", slug, id))
         }
     }
 }
@@ -1211,13 +1237,7 @@ pub async fn list_versions_page(
     let versions: Vec<serde_json::Value> = query::list_versions(&conn, &slug, &id, Some(per_page), Some(offset))
         .unwrap_or_default()
         .into_iter()
-        .map(|v| serde_json::json!({
-            "id": v.id,
-            "version": v.version,
-            "status": v.status,
-            "latest": v.latest,
-            "created_at": v.created_at,
-        }))
+        .map(version_to_json)
         .collect();
 
     let claims_ref = claims.as_ref().map(|Extension(c)| c);
@@ -1228,6 +1248,7 @@ pub async fn list_versions_page(
         .document_stub(&id)
         .set("doc_title", serde_json::json!(doc_title))
         .set("versions", serde_json::json!(versions))
+        .set("restore_url_prefix", serde_json::json!(format!("/admin/collections/{}/{}", slug, id)))
         .pagination(
             page, per_page, total,
             format!("/admin/collections/{}/{}/versions?page={}", slug, id, page - 1),
@@ -1244,4 +1265,33 @@ pub async fn list_versions_page(
     let data = state.hook_runner.run_before_render(data);
 
     render_or_error(&state, "collections/versions", &data).into_response()
+}
+
+/// POST /admin/collections/{slug}/evaluate-conditions
+/// Evaluates server-only display conditions with current form data.
+/// Returns JSON: { "field_name": true/false, ... }
+pub async fn evaluate_conditions(
+    State(state): State<AdminState>,
+    Path(_slug): Path<String>,
+    axum::Json(req): axum::Json<EvaluateConditionsRequest>,
+) -> impl IntoResponse {
+    use crate::hooks::lifecycle::DisplayConditionResult;
+
+    let form_data = serde_json::json!(req.form_data);
+    let mut results = serde_json::Map::new();
+    for (field_name, func_ref) in &req.conditions {
+        let visible = match state.hook_runner.call_display_condition(func_ref, &form_data) {
+            Some(DisplayConditionResult::Bool(b)) => b,
+            Some(DisplayConditionResult::Table { visible, .. }) => visible,
+            None => true, // error → show
+        };
+        results.insert(field_name.clone(), serde_json::json!(visible));
+    }
+    axum::Json(serde_json::Value::Object(results))
+}
+
+#[derive(serde::Deserialize)]
+pub struct EvaluateConditionsRequest {
+    form_data: HashMap<String, serde_json::Value>,
+    conditions: HashMap<String, String>,
 }

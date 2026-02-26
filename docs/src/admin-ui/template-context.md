@@ -13,7 +13,8 @@ Every admin page receives a structured context object built by the `ContextBuild
 | `collection` | object | collection pages | Full collection definition with metadata |
 | `global` | object | global pages | Full global definition with metadata |
 | `document` | object | edit pages | Current document with raw data |
-| `fields` | array | edit/create/global edit | Processed field contexts for form rendering |
+| `fields` | array | edit/create/global edit | Processed field contexts for main content area |
+| `sidebar_fields` | array | edit/create/global edit | Field contexts for sidebar panel (fields with `admin.position = "sidebar"`) |
 | `items` | array | collection items | Document list with enriched data |
 | `editing` | boolean | edit/create | `true` when editing, `false` when creating |
 | `pagination` | object | items, versions | Pagination state |
@@ -576,6 +577,10 @@ Every field context object has:
 | `localized` | boolean | Whether the field is localized |
 | `locale_locked` | boolean | `true` when editing a non-default locale and the field is not localized |
 | `error` | string/null | Validation error message (on re-render after failed save) |
+| `position` | string/null | Field position: `"main"` (default) or `"sidebar"`. Fields with `"sidebar"` appear in `sidebar_fields` instead of `fields` |
+| `condition_visible` | boolean/null | Initial visibility from display condition evaluation. `false` = hidden on page load |
+| `condition_json` | object/null | Client-side condition table (JSON). Present for condition functions that return a table |
+| `condition_ref` | string/null | Server-side condition function reference. Present for condition functions that return a boolean |
 
 ### Select Fields
 
@@ -638,8 +643,16 @@ Sub-field `name` is formatted as `group__subfield` (double underscore).
 | `sub_fields` | array | Sub-field definitions (template for new rows) |
 | `rows` | array | Existing row data |
 | `row_count` | integer | Number of existing rows |
+| `template_id` | string | Unique ID for DOM targeting (count badge, row container, templates) |
+| `label_field` | string/null | Sub-field name used for dynamic row labels (from `admin.label_field`) |
+| `max_rows` | integer/null | Maximum number of rows allowed (from `max_rows` on field definition) |
+| `min_rows` | integer/null | Minimum number of rows required (from `min_rows` on field definition) |
+| `init_collapsed` | boolean | Whether existing rows render collapsed by default (from `admin.init_collapsed`) |
+| `add_label` | string/null | Custom singular label for the add button (from `admin.labels.singular`, e.g., "Slide" → "Add Slide") |
 
-Each row: `index` (integer), `sub_fields` (array of field contexts with indexed names like `items[0][title]`).
+Each row: `index` (integer), `sub_fields` (array of field contexts with indexed names like `items[0][title]`), `custom_label` (string/null — computed label from `row_label` or `label_field`).
+
+The `<fieldset>` element includes a `data-label-field` attribute when `label_field` is set, enabling JavaScript to update row titles live as the user types.
 
 ### Blocks Fields
 
@@ -648,10 +661,16 @@ Each row: `index` (integer), `sub_fields` (array of field contexts with indexed 
 | `block_definitions` | array | Available block types with their fields |
 | `rows` | array | Existing block instances |
 | `row_count` | integer | Number of existing blocks |
+| `template_id` | string | Unique ID for DOM targeting (count badge, row container, templates) |
+| `label_field` | string/null | Field-level `admin.label_field` (shared fallback for all block types) |
+| `max_rows` | integer/null | Maximum number of blocks allowed (from `max_rows` on field definition) |
+| `min_rows` | integer/null | Minimum number of blocks required (from `min_rows` on field definition) |
+| `init_collapsed` | boolean | Whether existing block rows render collapsed by default (from `admin.init_collapsed`) |
+| `add_label` | string/null | Custom singular label for the add button (from `admin.labels.singular`, e.g., "Section" → "Add Section") |
 
-Each block definition: `block_type`, `label`, `fields` (array of sub-field contexts).
+Each block definition: `block_type`, `label`, `label_field` (string/null — per-block-type label field), `fields` (array of sub-field contexts).
 
-Each row: `index`, `_block_type`, `block_label`, `sub_fields` (array of field contexts with indexed names like `content[0][heading]`).
+Each row: `index`, `_block_type`, `block_label`, `custom_label` (string/null — computed label from `row_label`, block `label_field`, or field `label_field`), `sub_fields` (array of field contexts with indexed names like `content[0][heading]`).
 
 ---
 

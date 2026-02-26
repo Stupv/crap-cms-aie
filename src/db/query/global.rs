@@ -40,6 +40,9 @@ pub fn get_global(conn: &rusqlite::Connection, slug: &str, def: &GlobalDefinitio
         }
     }
 
+    // Hydrate join table data (arrays, blocks, has-many relationships)
+    super::hydrate_document(conn, &table_name, &def.fields, &mut doc, None, locale_ctx)?;
+
     Ok(doc)
 }
 
@@ -59,6 +62,26 @@ pub fn update_global(
     let mut idx = 1;
 
     for field in &def.fields {
+        // Group fields expand sub-fields as prefixed columns (same as collections)
+        if field.field_type == FieldType::Group {
+            for sub in &field.fields {
+                let data_key = format!("{}__{}", field.name, sub.name);
+                let col_name = locale_write_column(&data_key, sub, &locale_ctx);
+                if let Some(value) = data.get(&data_key) {
+                    set_clauses.push(format!("{} = ?{}", col_name, idx));
+                    params.push(coerce_value(&sub.field_type, value));
+                    idx += 1;
+                } else if sub.field_type == FieldType::Checkbox {
+                    set_clauses.push(format!("{} = ?{}", col_name, idx));
+                    params.push(Box::new(0i32));
+                    idx += 1;
+                }
+            }
+            continue;
+        }
+        if !field.has_parent_column() {
+            continue;
+        }
         let col_name = locale_write_column(&field.name, field, &locale_ctx);
         if let Some(value) = data.get(&field.name) {
             set_clauses.push(format!("{} = ?{}", col_name, idx));
@@ -95,7 +118,20 @@ pub fn update_global(
 fn get_global_column_names(def: &GlobalDefinition) -> Vec<String> {
     let mut names = vec!["id".to_string()];
     for field in &def.fields {
+        // Group fields expand sub-fields as prefixed columns (same as collections)
+        if field.field_type == FieldType::Group {
+            for sub in &field.fields {
+                names.push(format!("{}__{}", field.name, sub.name));
+            }
+            continue;
+        }
+        if !field.has_parent_column() {
+            continue;
+        }
         names.push(field.name.clone());
+    }
+    if def.has_drafts() {
+        names.push("_status".to_string());
     }
     names.push("created_at".to_string());
     names.push("updated_at".to_string());
@@ -103,53 +139,18 @@ fn get_global_column_names(def: &GlobalDefinition) -> Vec<String> {
 }
 
 /// Build SELECT columns for globals with locale support.
-/// Unlike collections, globals store group fields as single TEXT columns (JSON),
-/// so group fields must NOT be expanded into sub-field columns.
+/// Group fields are expanded into `field__subfield` sub-columns (same as collections).
 fn get_global_locale_columns(def: &GlobalDefinition, ctx: &LocaleContext) -> (Vec<String>, Vec<String>) {
-    let mut select_exprs = vec!["id".to_string()];
-    let mut result_names = vec!["id".to_string()];
+    // Reuse the shared logic from mod.rs — same expansion as collections
+    let (mut select_exprs, mut result_names) = super::get_locale_select_columns(&def.fields, true, ctx);
 
-    for field in &def.fields {
-        if field.localized && ctx.config.is_enabled() {
-            // Localized field: apply locale column logic
-            match &ctx.mode {
-                LocaleMode::Default => {
-                    let locale = &ctx.config.default_locale;
-                    select_exprs.push(format!("{}__{} AS {}", field.name, locale, field.name));
-                    result_names.push(field.name.clone());
-                }
-                LocaleMode::Single(locale) => {
-                    if ctx.config.fallback && *locale != ctx.config.default_locale {
-                        select_exprs.push(format!(
-                            "COALESCE({}__{}, {}__{}) AS {}",
-                            field.name, locale,
-                            field.name, ctx.config.default_locale,
-                            field.name
-                        ));
-                    } else {
-                        select_exprs.push(format!("{}__{} AS {}", field.name, locale, field.name));
-                    }
-                    result_names.push(field.name.clone());
-                }
-                LocaleMode::All => {
-                    for locale in &ctx.config.locales {
-                        let col = format!("{}__{}", field.name, locale);
-                        select_exprs.push(col.clone());
-                        result_names.push(col);
-                    }
-                }
-            }
-        } else {
-            // Non-localized field (including groups): single column
-            select_exprs.push(field.name.clone());
-            result_names.push(field.name.clone());
-        }
+    // Insert _status before timestamps if present
+    if def.has_drafts() {
+        // Timestamps are the last 2 entries; insert _status before them
+        let ts_pos = select_exprs.len() - 2;
+        select_exprs.insert(ts_pos, "_status".to_string());
+        result_names.insert(ts_pos, "_status".to_string());
     }
-
-    select_exprs.push("created_at".to_string());
-    result_names.push("created_at".to_string());
-    select_exprs.push("updated_at".to_string());
-    result_names.push("updated_at".to_string());
 
     (select_exprs, result_names)
 }
@@ -168,42 +169,17 @@ mod tests {
             fields: vec![
                 FieldDefinition {
                     name: "site_name".to_string(),
-                    field_type: FieldType::Text,
-                    required: false,
-                    unique: false,
-                    validate: None,
-                    default_value: None,
-                    options: vec![],
-                    admin: FieldAdmin::default(),
-                    hooks: FieldHooks::default(),
-                    access: FieldAccess::default(),
-                    relationship: None,
-                    fields: vec![],
-                    blocks: vec![],
-                    localized: false,
-                    picker_appearance: None,
+                    ..Default::default()
                 },
                 FieldDefinition {
                     name: "tagline".to_string(),
-                    field_type: FieldType::Text,
-                    required: false,
-                    unique: false,
-                    validate: None,
-                    default_value: None,
-                    options: vec![],
-                    admin: FieldAdmin::default(),
-                    hooks: FieldHooks::default(),
-                    access: FieldAccess::default(),
-                    relationship: None,
-                    fields: vec![],
-                    blocks: vec![],
-                    localized: false,
-                    picker_appearance: None,
+                    ..Default::default()
                 },
             ],
             hooks: CollectionHooks::default(),
             access: CollectionAccess::default(),
             live: None,
+            versions: None,
         }
     }
 
@@ -223,22 +199,22 @@ mod tests {
         conn
     }
 
-    /// Regression: globals with group fields must not expand sub-fields into
-    /// separate columns when locale is enabled (globals store groups as single
-    /// JSON TEXT columns, unlike collections).
+    /// Globals with group fields expand sub-fields into `field__subfield` columns
+    /// (same as collections).
     #[test]
     fn get_global_with_group_fields_and_locale() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE _global_site (
                 id TEXT PRIMARY KEY,
-                site_name TEXT,
-                social TEXT,
+                site_name__en TEXT,
+                site_name__de TEXT,
+                social__github TEXT,
                 created_at TEXT,
                 updated_at TEXT
             );
-            INSERT INTO _global_site (id, site_name, social, created_at, updated_at)
-            VALUES ('default', 'My Site', '{\"github\":\"https://github.com\"}', '2024-01-01', '2024-01-01');"
+            INSERT INTO _global_site (id, site_name__en, social__github, created_at, updated_at)
+            VALUES ('default', 'My Site', 'https://github.com', '2024-01-01', '2024-01-01');"
         ).unwrap();
 
         let def = GlobalDefinition {
@@ -247,34 +223,25 @@ mod tests {
             fields: vec![
                 FieldDefinition {
                     name: "site_name".to_string(),
-                    field_type: FieldType::Text,
-                    required: false, unique: false, validate: None, default_value: None,
-                    options: vec![], admin: FieldAdmin::default(), hooks: FieldHooks::default(),
-                    access: FieldAccess::default(), relationship: None,
-                    fields: vec![], blocks: vec![], localized: false, picker_appearance: None,
+                    localized: true,
+                    ..Default::default()
                 },
                 FieldDefinition {
                     name: "social".to_string(),
                     field_type: FieldType::Group,
-                    required: false, unique: false, validate: None, default_value: None,
-                    options: vec![], admin: FieldAdmin::default(), hooks: FieldHooks::default(),
-                    access: FieldAccess::default(), relationship: None,
                     fields: vec![
                         FieldDefinition {
                             name: "github".to_string(),
-                            field_type: FieldType::Text,
-                            required: false, unique: false, validate: None, default_value: None,
-                            options: vec![], admin: FieldAdmin::default(), hooks: FieldHooks::default(),
-                            access: FieldAccess::default(), relationship: None,
-                            fields: vec![], blocks: vec![], localized: false, picker_appearance: None,
+                            ..Default::default()
                         },
                     ],
-                    blocks: vec![], localized: false, picker_appearance: None,
+                    ..Default::default()
                 },
             ],
             hooks: CollectionHooks::default(),
             access: CollectionAccess::default(),
             live: None,
+            versions: None,
         };
 
         let locale_config = crate::config::LocaleConfig {
@@ -284,11 +251,12 @@ mod tests {
         };
         let locale_ctx = LocaleContext::from_locale_string(Some("en"), &locale_config);
 
-        // This must NOT fail with "no such column: social__github"
         let doc = get_global(&conn, "site", &def, locale_ctx.as_ref()).unwrap();
         assert_eq!(doc.id, "default");
         assert_eq!(doc.get_str("site_name"), Some("My Site"));
-        assert_eq!(doc.get_str("social"), Some("{\"github\":\"https://github.com\"}"));
+        // Group sub-field reconstructed as nested object by hydrate_document
+        let social = doc.fields.get("social").expect("social should exist");
+        assert_eq!(social.get("github").and_then(|v| v.as_str()), Some("https://github.com"));
     }
 
     #[test]

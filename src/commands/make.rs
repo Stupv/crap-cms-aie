@@ -219,10 +219,10 @@ fn make_hook_command(
     let hook_type = match hook_type {
         Some(t) => crate::scaffold::HookType::from_str(&t)
             .ok_or_else(|| anyhow::anyhow!(
-                "Unknown hook type '{}' — valid: collection, field, access", t
+                "Unknown hook type '{}' — valid: collection, field, access, condition", t
             ))?,
         None => {
-            let items = &["Collection", "Field", "Access"];
+            let items = &["Collection", "Field", "Access", "Condition"];
             let selection = Select::new()
                 .with_prompt("Hook type")
                 .items(items)
@@ -232,7 +232,8 @@ fn make_hook_command(
             match selection {
                 0 => crate::scaffold::HookType::Collection,
                 1 => crate::scaffold::HookType::Field,
-                _ => crate::scaffold::HookType::Access,
+                2 => crate::scaffold::HookType::Access,
+                _ => crate::scaffold::HookType::Condition,
             }
         }
     };
@@ -272,13 +273,23 @@ fn make_hook_command(
         }
         None => {
             let positions = hook_type.valid_positions();
-            let selection = Select::new()
-                .with_prompt("Lifecycle position")
-                .items(&positions.to_vec())
-                .default(0)
-                .interact()
-                .context("Failed to read position selection")?;
-            positions[selection].to_string()
+            if positions.len() == 1 {
+                // Single valid position (e.g., condition hooks) — skip prompt
+                positions[0].to_string()
+            } else {
+                let prompt = if hook_type == crate::scaffold::HookType::Condition {
+                    "Return type"
+                } else {
+                    "Lifecycle position"
+                };
+                let selection = Select::new()
+                    .with_prompt(prompt)
+                    .items(&positions.to_vec())
+                    .default(0)
+                    .interact()
+                    .context("Failed to read position selection")?;
+                positions[selection].to_string()
+            }
         }
     };
 
@@ -321,6 +332,46 @@ fn make_hook_command(
         }
     };
 
+    // 6. For condition hooks: resolve watched field with type info
+    let condition_field = if hook_type == crate::scaffold::HookType::Condition {
+        let field_infos = try_load_field_infos(config_dir, &collection);
+        if let Some(ref f) = field {
+            // CLI --field flag provided — look up type info from registry if available
+            if let Some(ref infos) = field_infos {
+                if let Some(info) = infos.iter().find(|i| i.name == *f) {
+                    Some(info.clone())
+                } else {
+                    Some(crate::scaffold::ConditionFieldInfo {
+                        name: f.clone(),
+                        field_type: "text".to_string(),
+                        select_options: vec![],
+                    })
+                }
+            } else {
+                Some(crate::scaffold::ConditionFieldInfo {
+                    name: f.clone(),
+                    field_type: "text".to_string(),
+                    select_options: vec![],
+                })
+            }
+        } else if let Some(infos) = field_infos.filter(|i| !i.is_empty()) {
+            let labels: Vec<String> = infos.iter()
+                .map(|f| format!("{} ({})", f.name, f.field_type))
+                .collect();
+            let selection = Select::new()
+                .with_prompt("Watch which field?")
+                .items(&labels)
+                .default(0)
+                .interact()
+                .context("Failed to read field selection")?;
+            Some(infos[selection].clone())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let opts = crate::scaffold::MakeHookOptions {
         config_dir,
         name: &name,
@@ -329,6 +380,7 @@ fn make_hook_command(
         position: &position,
         field: field.as_deref(),
         force,
+        condition_field,
     };
 
     crate::scaffold::make_hook(&opts)
@@ -365,4 +417,25 @@ fn try_load_field_names(config_dir: &Path, collection: &str) -> Option<Vec<Strin
     let reg = registry.read().ok()?;
     let def = reg.get_collection(collection)?;
     Some(def.fields.iter().map(|f| f.name.clone()).collect())
+}
+
+/// Try to load field definitions (name + type + options) for condition hook scaffolding.
+fn try_load_field_infos(config_dir: &Path, collection: &str) -> Option<Vec<crate::scaffold::ConditionFieldInfo>> {
+    let config_dir = config_dir.canonicalize().ok()?;
+    let cfg = crate::config::CrapConfig::load(&config_dir).ok()?;
+    let registry = crate::hooks::init_lua(&config_dir, &cfg).ok()?;
+    let reg = registry.read().ok()?;
+    let def = reg.get_collection(collection)?;
+    Some(def.fields.iter()
+        .filter(|f| !matches!(f.field_type,
+            crate::core::field::FieldType::Array
+            | crate::core::field::FieldType::Blocks
+            | crate::core::field::FieldType::Group
+        ))
+        .map(|f| crate::scaffold::ConditionFieldInfo {
+            name: f.name.clone(),
+            field_type: format!("{:?}", f.field_type).to_lowercase(),
+            select_options: f.options.iter().map(|o| o.value.clone()).collect(),
+        })
+        .collect())
 }

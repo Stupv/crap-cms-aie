@@ -95,7 +95,7 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
             // Hydrate join table data + populate relationships
             let select_slice = find_query.select.as_deref();
             for doc in &mut docs {
-                query::hydrate_document(conn, &collection, &def, doc, select_slice, locale_ctx.as_ref())
+                query::hydrate_document(conn, &collection, &def.fields, doc, select_slice, locale_ctx.as_ref())
                     .map_err(|e| mlua::Error::RuntimeError(format!("hydrate error: {}", e)))?;
             }
             if depth > 0 {
@@ -309,7 +309,7 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
 
             // Save has-many, array, and blocks join-table data
             let join_data = lua_table_to_json_map(lua, &data_table)?;
-            query::save_join_table_data(conn, &collection, &def, &doc.id, &join_data, locale_ctx.as_ref())
+            query::save_join_table_data(conn, &collection, &def.fields, &doc.id, &join_data, locale_ctx.as_ref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("join data error: {}", e)))?;
 
             // Versioning: set status (only if drafts enabled) and create initial version snapshot
@@ -318,7 +318,7 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                     query::set_document_status(conn, &collection, &doc.id, status)
                         .map_err(|e| mlua::Error::RuntimeError(format!("set_status error: {}", e)))?;
                 }
-                let snapshot = query::build_snapshot(conn, &collection, &def, &doc)
+                let snapshot = query::build_snapshot(conn, &collection, &def.fields, &doc)
                     .map_err(|e| mlua::Error::RuntimeError(format!("snapshot error: {}", e)))?;
                 query::create_version(conn, &collection, &doc.id, status, &snapshot)
                     .map_err(|e| mlua::Error::RuntimeError(format!("version error: {}", e)))?;
@@ -332,7 +332,7 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
 
             // Hydrate join-table fields before returning
             let mut doc = doc;
-            query::hydrate_document(conn, &collection, &def, &mut doc, None, locale_ctx.as_ref())
+            query::hydrate_document(conn, &collection, &def.fields, &mut doc, None, locale_ctx.as_ref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("hydrate error: {}", e)))?;
 
             document_to_lua_table(lua, &doc)
@@ -393,7 +393,7 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
 
             if is_draft && def.has_versions() {
                 // Version-only save: do NOT update the main table.
-                let existing_doc = query::find_by_id(conn, &collection, &def, &id, None)
+                let existing_doc = query::find_by_id_raw(conn, &collection, &def, &id, None)
                     .map_err(|e| mlua::Error::RuntimeError(format!("find error: {}", e)))?
                     .ok_or_else(|| mlua::Error::RuntimeError(
                         format!("Document {} not found in {}", id, collection)
@@ -411,7 +411,7 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                     updated_at: existing_doc.updated_at.clone(),
                 };
 
-                let snapshot = query::build_snapshot(conn, &collection, &def, &snapshot_doc)
+                let snapshot = query::build_snapshot(conn, &collection, &def.fields, &snapshot_doc)
                     .map_err(|e| mlua::Error::RuntimeError(format!("snapshot error: {}", e)))?;
                 query::create_version(conn, &collection, &id, "draft", &snapshot)
                     .map_err(|e| mlua::Error::RuntimeError(format!("version error: {}", e)))?;
@@ -430,7 +430,7 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
 
                 // Save has-many, array, and blocks join-table data
                 let join_data = lua_table_to_json_map(lua, &data_table)?;
-                query::save_join_table_data(conn, &collection, &def, &doc.id, &join_data, locale_ctx.as_ref())
+                query::save_join_table_data(conn, &collection, &def.fields, &doc.id, &join_data, locale_ctx.as_ref())
                     .map_err(|e| mlua::Error::RuntimeError(format!("join data error: {}", e)))?;
 
                 // Versioning: set status to published (only if drafts enabled) and create version
@@ -439,7 +439,7 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                         query::set_document_status(conn, &collection, &doc.id, "published")
                             .map_err(|e| mlua::Error::RuntimeError(format!("set_status error: {}", e)))?;
                     }
-                    let snapshot = query::build_snapshot(conn, &collection, &def, &doc)
+                    let snapshot = query::build_snapshot(conn, &collection, &def.fields, &doc)
                         .map_err(|e| mlua::Error::RuntimeError(format!("snapshot error: {}", e)))?;
                     query::create_version(conn, &collection, &doc.id, "published", &snapshot)
                         .map_err(|e| mlua::Error::RuntimeError(format!("version error: {}", e)))?;
@@ -453,7 +453,7 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
 
                 // Hydrate join-table fields before returning
                 let mut doc = doc;
-                query::hydrate_document(conn, &collection, &def, &mut doc, None, locale_ctx.as_ref())
+                query::hydrate_document(conn, &collection, &def.fields, &mut doc, None, locale_ctx.as_ref())
                     .map_err(|e| mlua::Error::RuntimeError(format!("hydrate error: {}", e)))?;
 
                 document_to_lua_table(lua, &doc)
@@ -629,7 +629,7 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
             for doc in &docs {
                 query::update(conn, &collection, &def, &doc.id, &data, locale_ctx.as_ref())
                     .map_err(|e| mlua::Error::RuntimeError(format!("update error: {}", e)))?;
-                query::save_join_table_data(conn, &collection, &def, &doc.id, &join_data, locale_ctx.as_ref())
+                query::save_join_table_data(conn, &collection, &def.fields, &doc.id, &join_data, locale_ctx.as_ref())
                     .map_err(|e| mlua::Error::RuntimeError(format!("join data error: {}", e)))?;
                 modified += 1;
             }

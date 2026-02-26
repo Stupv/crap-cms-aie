@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 
-use crate::core::{CollectionDefinition, Document};
+use crate::core::Document;
 use crate::core::field::{FieldDefinition, FieldType};
 use super::{coerce_value, LocaleContext, LocaleMode};
 
@@ -383,12 +383,12 @@ pub fn find_block_rows(
 pub fn hydrate_document(
     conn: &rusqlite::Connection,
     slug: &str,
-    def: &CollectionDefinition,
+    fields: &[FieldDefinition],
     doc: &mut Document,
     select: Option<&[String]>,
     locale_ctx: Option<&LocaleContext>,
 ) -> Result<()> {
-    for field in &def.fields {
+    for field in fields {
         // Skip hydrating fields not in the select list
         if let Some(sel) = select {
             if !sel.iter().any(|s| s == &field.name) {
@@ -430,7 +430,9 @@ pub fn hydrate_document(
                         group_obj.insert(sub.name.clone(), val);
                     }
                 }
-                doc.fields.insert(field.name.clone(), serde_json::Value::Object(group_obj));
+                if !group_obj.is_empty() {
+                    doc.fields.insert(field.name.clone(), serde_json::Value::Object(group_obj));
+                }
             }
             FieldType::Blocks => {
                 let mut rows = find_block_rows(conn, slug, &field.name, &doc.id, locale_ref)?;
@@ -451,12 +453,12 @@ pub fn hydrate_document(
 pub fn save_join_table_data(
     conn: &rusqlite::Connection,
     slug: &str,
-    def: &CollectionDefinition,
+    fields: &[FieldDefinition],
     parent_id: &str,
     data: &HashMap<String, serde_json::Value>,
     locale_ctx: Option<&LocaleContext>,
 ) -> Result<()> {
-    for field in &def.fields {
+    for field in fields {
         let locale = resolve_join_locale(field, locale_ctx);
         let locale_ref = locale.as_deref();
         match field.field_type {
@@ -569,19 +571,11 @@ mod tests {
         vec![
             FieldDefinition {
                 name: "label".to_string(),
-                field_type: FieldType::Text,
-                required: false, unique: false, validate: None, default_value: None,
-                options: vec![], admin: FieldAdmin::default(), hooks: FieldHooks::default(),
-                access: FieldAccess::default(), relationship: None, fields: vec![],
-                blocks: vec![], localized: false, picker_appearance: None,
+                ..Default::default()
             },
             FieldDefinition {
                 name: "value".to_string(),
-                field_type: FieldType::Text,
-                required: false, unique: false, validate: None, default_value: None,
-                options: vec![], admin: FieldAdmin::default(), hooks: FieldHooks::default(),
-                access: FieldAccess::default(), relationship: None, fields: vec![],
-                blocks: vec![], localized: false, picker_appearance: None,
+                ..Default::default()
             },
         ]
     }
@@ -594,11 +588,7 @@ mod tests {
             fields: vec![
                 FieldDefinition {
                     name: "title".to_string(),
-                    field_type: FieldType::Text,
-                    required: false, unique: false, validate: None, default_value: None,
-                    options: vec![], admin: FieldAdmin::default(), hooks: FieldHooks::default(),
-                    access: FieldAccess::default(), relationship: None, fields: vec![],
-                    blocks: vec![], localized: false, picker_appearance: None,
+                    ..Default::default()
                 },
                 FieldDefinition {
                     name: "tags".to_string(),
@@ -608,27 +598,18 @@ mod tests {
                         has_many: true,
                         max_depth: None,
                     }),
-                    required: false, unique: false, validate: None, default_value: None,
-                    options: vec![], admin: FieldAdmin::default(), hooks: FieldHooks::default(),
-                    access: FieldAccess::default(), fields: vec![],
-                    blocks: vec![], localized: false, picker_appearance: None,
+                    ..Default::default()
                 },
                 FieldDefinition {
                     name: "items".to_string(),
                     field_type: FieldType::Array,
                     fields: array_sub_fields(),
-                    required: false, unique: false, validate: None, default_value: None,
-                    options: vec![], admin: FieldAdmin::default(), hooks: FieldHooks::default(),
-                    access: FieldAccess::default(), relationship: None,
-                    blocks: vec![], localized: false, picker_appearance: None,
+                    ..Default::default()
                 },
                 FieldDefinition {
                     name: "content".to_string(),
                     field_type: FieldType::Blocks,
-                    required: false, unique: false, validate: None, default_value: None,
-                    options: vec![], admin: FieldAdmin::default(), hooks: FieldHooks::default(),
-                    access: FieldAccess::default(), relationship: None, fields: vec![],
-                    blocks: vec![], localized: false, picker_appearance: None,
+                    ..Default::default()
                 },
             ],
             admin: CollectionAdmin::default(),
@@ -823,7 +804,7 @@ mod tests {
         let mut doc = crate::core::Document::new("p1".to_string());
         doc.fields.insert("title".to_string(), serde_json::json!("Post 1"));
 
-        hydrate_document(&conn, "posts", &def, &mut doc, None, None).unwrap();
+        hydrate_document(&conn, "posts", &def.fields, &mut doc, None, None).unwrap();
 
         // Verify has-many tags
         let tags = doc.fields.get("tags").expect("tags should be populated");

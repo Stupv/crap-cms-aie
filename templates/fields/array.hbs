@@ -1,16 +1,44 @@
-<fieldset class="form__array" data-field-type="array" data-field-name="{{name}}">
+<fieldset class="form__array" data-field-type="array" data-field-name="{{name}}"{{#if label_field}} data-label-field="{{label_field}}"{{/if}}>
   <legend>
     {{label}}
     {{#if required}}<span class="required">*</span>{{/if}}
+    <span class="form__array-count" id="array-count-{{template_id}}">{{row_count}}</span>
+    <span class="form__array-legend-actions">
+      <button type="button" class="form__array-legend-btn" onclick="toggleAllRows(this, true)" title="Collapse all">
+        <span class="material-symbols-outlined" style="font-size:14px">unfold_less</span>
+      </button>
+      <button type="button" class="form__array-legend-btn" onclick="toggleAllRows(this, false)" title="Expand all">
+        <span class="material-symbols-outlined" style="font-size:14px">unfold_more</span>
+      </button>
+    </span>
   </legend>
 
-  <div class="form__array-rows" id="array-rows-{{template_id}}">
+  <div class="form__array-rows" id="array-rows-{{template_id}}"
+       ondragover="rowDragOver(event)"
+       ondrop="rowDrop(event)">
     {{#each rows}}
-    <div class="form__array-row" data-row-index="{{this.index}}">
+    <div class="form__array-row{{#if ../init_collapsed}}{{#unless this.has_errors}} form__array-row--collapsed{{/unless}}{{/if}}{{#if this.has_errors}} form__array-row--has-errors{{/if}}" data-row-index="{{this.index}}">
       <div class="form__array-row-header" onclick="toggleArrayRow(this)">
+        <span class="form__array-row-drag" draggable="true"
+              onmousedown="event.stopPropagation()"
+              ondragstart="rowDragStart(event)"
+              ondragend="rowDragEnd(event)"
+              title="Drag to reorder">
+          <span class="material-symbols-outlined" style="font-size:16px">drag_indicator</span>
+        </span>
         <span class="form__array-row-chevron material-symbols-outlined">expand_more</span>
-        <span class="form__array-row-title">{{../label}} {{this.index}}</span>
-        <button type="button" class="button button--ghost button--small" onclick="event.stopPropagation();removeArrayRow(this)">
+        <span class="form__array-row-title">{{#if this.custom_label}}{{this.custom_label}}{{else}}{{../label}} {{this.index}}{{/if}}</span>
+        {{#if this.has_errors}}<span class="form__array-row-error-badge" title="Contains validation errors"><span class="material-symbols-outlined" style="font-size:16px">error</span></span>{{/if}}
+        <button type="button" class="form__array-row-btn" onclick="event.stopPropagation();moveRowUp(this)" title="Move up">
+          <span class="material-symbols-outlined" style="font-size:16px">arrow_upward</span>
+        </button>
+        <button type="button" class="form__array-row-btn" onclick="event.stopPropagation();moveRowDown(this)" title="Move down">
+          <span class="material-symbols-outlined" style="font-size:16px">arrow_downward</span>
+        </button>
+        <button type="button" class="form__array-row-btn" onclick="event.stopPropagation();duplicateRow(this)" title="Duplicate">
+          <span class="material-symbols-outlined" style="font-size:16px">content_copy</span>
+        </button>
+        <button type="button" class="form__array-row-btn" onclick="event.stopPropagation();removeArrayRow(this)" title="Remove">
           <span class="material-symbols-outlined" style="font-size:16px">close</span>
         </button>
       </div>
@@ -27,12 +55,30 @@
     {{/each}}
   </div>
 
+  {{#unless rows}}<div class="form__array-empty"><p>No items yet</p></div>{{/unless}}
+
   <template id="array-template-{{template_id}}">
     <div class="form__array-row" data-row-index="__INDEX__">
       <div class="form__array-row-header" onclick="toggleArrayRow(this)">
+        <span class="form__array-row-drag" draggable="true"
+              onmousedown="event.stopPropagation()"
+              ondragstart="rowDragStart(event)"
+              ondragend="rowDragEnd(event)"
+              title="Drag to reorder">
+          <span class="material-symbols-outlined" style="font-size:16px">drag_indicator</span>
+        </span>
         <span class="form__array-row-chevron material-symbols-outlined">expand_more</span>
         <span class="form__array-row-title">{{label}} __INDEX__</span>
-        <button type="button" class="button button--ghost button--small" onclick="event.stopPropagation();removeArrayRow(this)">
+        <button type="button" class="form__array-row-btn" onclick="event.stopPropagation();moveRowUp(this)" title="Move up">
+          <span class="material-symbols-outlined" style="font-size:16px">arrow_upward</span>
+        </button>
+        <button type="button" class="form__array-row-btn" onclick="event.stopPropagation();moveRowDown(this)" title="Move down">
+          <span class="material-symbols-outlined" style="font-size:16px">arrow_downward</span>
+        </button>
+        <button type="button" class="form__array-row-btn" onclick="event.stopPropagation();duplicateRow(this)" title="Duplicate">
+          <span class="material-symbols-outlined" style="font-size:16px">content_copy</span>
+        </button>
+        <button type="button" class="form__array-row-btn" onclick="event.stopPropagation();removeArrayRow(this)" title="Remove">
           <span class="material-symbols-outlined" style="font-size:16px">close</span>
         </button>
       </div>
@@ -48,9 +94,11 @@
     </div>
   </template>
 
-  <button type="button" class="button button--ghost button--small" onclick="addArrayRow('{{template_id}}')">
+  <button type="button" class="button button--ghost button--small"
+      onclick="addArrayRow('{{template_id}}')"
+      {{#if max_rows}}data-max-rows="{{max_rows}}"{{/if}}>
     <span class="material-symbols-outlined" style="font-size:16px">add</span>
-    Add Row
+    Add {{#if add_label}}{{add_label}}{{else}}Row{{/if}}
   </button>
 
   {{#if error}}<p class="form__error">{{error}}</p>{{/if}}

@@ -171,6 +171,8 @@ mod tests {
             blocks: Vec::new(),
             localized: false,
             picker_appearance: None,
+            min_rows: None,
+            max_rows: None,
         }
     }
 
