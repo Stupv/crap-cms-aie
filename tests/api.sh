@@ -711,6 +711,17 @@ update_post_draft() {
   }" "$ADDR" crap.ContentAPI/Update
 }
 
+# Unpublish a post (set status to draft, create draft version)
+unpublish_post() {
+  local id="${1:?Usage: unpublish_post <id>}"
+  grpcurl -plaintext -d "{
+    \"collection\": \"posts\",
+    \"id\": \"$id\",
+    \"unpublish\": true,
+    \"data\": {}
+  }" "$ADDR" crap.ContentAPI/Update
+}
+
 # Find posts including drafts (draft=true skips _status=published filter)
 find_posts_with_drafts() {
 grpcurl -plaintext -d '{

@@ -624,6 +624,44 @@ impl ContentApi for ContentService {
         let locale_ctx =
             LocaleContext::from_locale_string(req.locale.as_deref(), &self.locale_config);
 
+        // Handle unpublish: set status to draft, create version, return
+        if req.unpublish.unwrap_or(false) && def.has_versions() {
+            let pool = self.pool.clone();
+            let runner = self.hook_runner.clone();
+            let collection = req.collection.clone();
+            let id = req.id.clone();
+            let def_fields = def.fields.clone();
+            let def_owned = def;
+            let user_doc = auth_user.as_ref().map(|au| au.user_doc.clone());
+            let doc = tokio::task::spawn_blocking(move || {
+                crate::service::unpublish_document(
+                    &pool, &runner, &collection, &id, &def_owned, user_doc.as_ref(),
+                )
+            })
+            .await
+            .map_err(|e| Status::internal(format!("Task error: {}", e)))?
+            .map_err(|e| Status::internal(format!("Unpublish error: {}", e)))?;
+
+            self.hook_runner.publish_event(
+                &self.event_bus,
+                &self.get_collection_def(&req.collection).map(|d| d.hooks.clone()).unwrap_or_default(),
+                self.get_collection_def(&req.collection).ok().and_then(|d| d.live.clone()).as_ref(),
+                crate::core::event::EventTarget::Collection,
+                crate::core::event::EventOperation::Update,
+                req.collection.clone(),
+                req.id.clone(),
+                doc.fields.clone(),
+                Self::event_user_from(&auth_user),
+            );
+
+            let mut proto_doc = document_to_proto(&doc, &req.collection);
+            self.strip_denied_read_fields(&mut proto_doc, &def_fields, &auth_user);
+
+            return Ok(Response::new(content::UpdateResponse {
+                document: Some(proto_doc),
+            }));
+        }
+
         let pool = self.pool.clone();
         let runner = self.hook_runner.clone();
         let collection = req.collection.clone();

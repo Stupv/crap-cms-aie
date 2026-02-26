@@ -27,7 +27,7 @@ pub type WriteResult = (Document, HashMap<String, serde_json::Value>);
 /// data including join table fields (arrays, blocks, relationships).
 /// merge join data, create a draft version snapshot, and prune.
 fn save_draft_version(
-    tx: &rusqlite::Transaction,
+    conn: &rusqlite::Connection,
     table: &str,
     parent_id: &str,
     fields: &[FieldDefinition],
@@ -46,7 +46,7 @@ fn save_draft_version(
         updated_at: existing_doc.updated_at.clone(),
     };
 
-    let mut snapshot = query::build_snapshot(tx, table, fields, &snapshot_doc)?;
+    let mut snapshot = query::build_snapshot(conn, table, fields, &snapshot_doc)?;
     // Merge incoming hook-modified join data (blocks/arrays/has-many) into the snapshot.
     // build_snapshot hydrates from join tables (which have the old/published data),
     // so we must overwrite with the hook-processed data for draft-only saves.
@@ -64,10 +64,10 @@ fn save_draft_version(
             }
         }
     }
-    query::create_version(tx, table, parent_id, "draft", &snapshot)?;
+    query::create_version(conn, table, parent_id, "draft", &snapshot)?;
     if let Some(vc) = versions {
         if vc.max_versions > 0 {
-            query::prune_versions(tx, table, parent_id, vc.max_versions)?;
+            query::prune_versions(conn, table, parent_id, vc.max_versions)?;
         }
     }
     Ok(())
@@ -76,7 +76,7 @@ fn save_draft_version(
 /// Set document status, create a version snapshot, and prune.
 /// Used for both initial creates (status may be "draft") and normal updates ("published").
 fn create_version_snapshot(
-    tx: &rusqlite::Transaction,
+    conn: &rusqlite::Connection,
     table: &str,
     parent_id: &str,
     fields: &[FieldDefinition],
@@ -86,16 +86,128 @@ fn create_version_snapshot(
     doc: &Document,
 ) -> Result<()> {
     if has_drafts {
-        query::set_document_status(tx, table, parent_id, status)?;
+        query::set_document_status(conn, table, parent_id, status)?;
     }
-    let snapshot = query::build_snapshot(tx, table, fields, doc)?;
-    query::create_version(tx, table, parent_id, status, &snapshot)?;
+    let snapshot = query::build_snapshot(conn, table, fields, doc)?;
+    query::create_version(conn, table, parent_id, status, &snapshot)?;
     if let Some(vc) = versions {
         if vc.max_versions > 0 {
-            query::prune_versions(tx, table, parent_id, vc.max_versions)?;
+            query::prune_versions(conn, table, parent_id, vc.max_versions)?;
         }
     }
     Ok(())
+}
+
+/// Persist the DB write phase of a create operation.
+/// Performs: insert → join data → password → version snapshot.
+/// Called by both `create_document` (service layer) and Lua CRUD.
+#[allow(clippy::too_many_arguments)]
+pub fn persist_create(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    def: &CollectionDefinition,
+    final_data: &HashMap<String, String>,
+    hook_data: &HashMap<String, serde_json::Value>,
+    password: Option<&str>,
+    locale_ctx: Option<&LocaleContext>,
+    is_draft: bool,
+) -> Result<Document> {
+    let status = if is_draft { "draft" } else { "published" };
+    let doc = query::create(conn, slug, def, final_data, locale_ctx)?;
+    query::save_join_table_data(conn, slug, &def.fields, &doc.id, hook_data, locale_ctx)?;
+
+    if let Some(pw) = password {
+        if !pw.is_empty() {
+            query::update_password(conn, slug, &doc.id, pw)?;
+        }
+    }
+
+    if def.has_versions() {
+        create_version_snapshot(
+            conn, slug, &doc.id, &def.fields,
+            def.versions.as_ref(), def.has_drafts(), status, &doc,
+        )?;
+    }
+
+    Ok(doc)
+}
+
+/// Persist the DB write phase of a normal (non-draft) update operation.
+/// Performs: update → join data → password → version snapshot (published).
+/// Called by both `update_document` (service layer) and Lua CRUD.
+#[allow(clippy::too_many_arguments)]
+pub fn persist_update(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    id: &str,
+    def: &CollectionDefinition,
+    final_data: &HashMap<String, String>,
+    hook_data: &HashMap<String, serde_json::Value>,
+    password: Option<&str>,
+    locale_ctx: Option<&LocaleContext>,
+) -> Result<Document> {
+    let doc = query::update(conn, slug, def, id, final_data, locale_ctx)?;
+    query::save_join_table_data(conn, slug, &def.fields, &doc.id, hook_data, locale_ctx)?;
+
+    if let Some(pw) = password {
+        if !pw.is_empty() {
+            query::update_password(conn, slug, &doc.id, pw)?;
+        }
+    }
+
+    if def.has_versions() {
+        create_version_snapshot(
+            conn, slug, &doc.id, &def.fields,
+            def.versions.as_ref(), def.has_drafts(), "published", &doc,
+        )?;
+    }
+
+    Ok(doc)
+}
+
+/// Persist a draft-only version save: find existing doc, merge incoming data,
+/// create a draft version snapshot. Main table is NOT modified.
+/// Called by both `update_document` (draft path) and Lua CRUD.
+pub fn persist_draft_version(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    id: &str,
+    def: &CollectionDefinition,
+    hook_data: &HashMap<String, serde_json::Value>,
+    locale_ctx: Option<&LocaleContext>,
+) -> Result<Document> {
+    let existing_doc = query::find_by_id_raw(conn, slug, def, id, locale_ctx)?
+        .ok_or_else(|| anyhow::anyhow!("Document {} not found in {}", id, slug))?;
+
+    save_draft_version(
+        conn, slug, id, &def.fields, def.versions.as_ref(),
+        &existing_doc, hook_data,
+    )?;
+
+    Ok(existing_doc)
+}
+
+/// Persist an unpublish operation: find existing doc, set status to draft,
+/// create a draft version snapshot. Returns the existing doc.
+pub fn persist_unpublish(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    id: &str,
+    def: &CollectionDefinition,
+) -> Result<Document> {
+    let doc = query::find_by_id_raw(conn, slug, def, id, None)?
+        .ok_or_else(|| anyhow::anyhow!("Document {} not found in {}", id, slug))?;
+
+    query::set_document_status(conn, slug, id, "draft")?;
+    let snapshot = query::build_snapshot(conn, slug, &def.fields, &doc)?;
+    query::create_version(conn, slug, id, "draft", &snapshot)?;
+    if let Some(ref vc) = def.versions {
+        if vc.max_versions > 0 {
+            query::prune_versions(conn, slug, id, vc.max_versions)?;
+        }
+    }
+
+    Ok(doc)
 }
 
 /// Create a document within a single transaction: before-hooks → insert → join data → password.
@@ -117,7 +229,6 @@ pub fn create_document(
     draft: bool,
 ) -> Result<WriteResult> {
     let is_draft = draft && def.has_drafts();
-    let status = if is_draft { "draft" } else { "published" };
 
     let mut conn = pool.get().context("DB connection")?;
     let tx = conn.transaction().context("Start transaction")?;
@@ -143,25 +254,10 @@ pub fn create_document(
     )?;
     let req_context = final_ctx.context.clone();
     let final_data = lifecycle::hook_ctx_to_string_map(&final_ctx, &def.fields);
-    let doc = query::create(&tx, slug, def, &final_data, locale_ctx)?;
-
-    // Use hook-modified data so before_change hooks that alter arrays/blocks/relationships
-    // have their changes persisted.
-    query::save_join_table_data(&tx, slug, &def.fields, &doc.id, &final_ctx.data, locale_ctx)?;
-
-    if let Some(pw) = password {
-        if !pw.is_empty() {
-            query::update_password(&tx, slug, &doc.id, pw)?;
-        }
-    }
-
-    // Versioning: set status (only if drafts enabled) and create initial version snapshot
-    if def.has_versions() {
-        create_version_snapshot(
-            &tx, slug, &doc.id, &def.fields,
-            def.versions.as_ref(), def.has_drafts(), status, &doc,
-        )?;
-    }
+    let doc = persist_create(
+        &tx, slug, def, &final_data, &final_ctx.data,
+        password, locale_ctx, is_draft,
+    )?;
 
     // After-hooks: run inside the same transaction, with CRUD access
     let after_ctx = HookContext {
@@ -230,12 +326,8 @@ pub fn update_document(
 
     if is_draft && def.has_versions() {
         // Version-only save: do NOT update the main table.
-        let existing_doc = query::find_by_id_raw(&tx, slug, def, id, None)?
-            .ok_or_else(|| anyhow::anyhow!("Document {} not found in {}", id, slug))?;
-
-        save_draft_version(
-            &tx, slug, id, &def.fields, def.versions.as_ref(),
-            &existing_doc, &final_ctx.data,
+        let existing_doc = persist_draft_version(
+            &tx, slug, id, def, &final_ctx.data, None,
         )?;
 
         // After-hooks: run inside the same transaction, with CRUD access
@@ -257,25 +349,10 @@ pub fn update_document(
         Ok((existing_doc, req_context))
     } else {
         // Normal update: write to main table
-        let doc = query::update(&tx, slug, def, id, &final_data, locale_ctx)?;
-
-        // Use hook-modified data so before_change hooks that alter arrays/blocks/relationships
-        // have their changes persisted.
-        query::save_join_table_data(&tx, slug, &def.fields, &doc.id, &final_ctx.data, locale_ctx)?;
-
-        if let Some(pw) = password {
-            if !pw.is_empty() {
-                query::update_password(&tx, slug, &doc.id, pw)?;
-            }
-        }
-
-        // Versioning: set status to published and create version
-        if def.has_versions() {
-            create_version_snapshot(
-                &tx, slug, &doc.id, &def.fields,
-                def.versions.as_ref(), def.has_drafts(), "published", &doc,
-            )?;
-        }
+        let doc = persist_update(
+            &tx, slug, id, def, &final_data, &final_ctx.data,
+            password, locale_ctx,
+        )?;
 
         // After-hooks: run inside the same transaction, with CRUD access
         let after_ctx = HookContext {
@@ -295,6 +372,51 @@ pub fn update_document(
         tx.commit().context("Commit transaction")?;
         Ok((doc, req_context))
     }
+}
+
+/// Unpublish a versioned document: set status to draft, create a version snapshot,
+/// and run before/after change hooks. Returns the document.
+#[allow(clippy::too_many_arguments)]
+pub fn unpublish_document(
+    pool: &DbPool,
+    runner: &HookRunner,
+    slug: &str,
+    id: &str,
+    def: &CollectionDefinition,
+    user: Option<&Document>,
+) -> Result<Document> {
+    let mut conn = pool.get().context("DB connection")?;
+    let tx = conn.transaction().context("Start transaction")?;
+
+    let doc = query::find_by_id_raw(&tx, slug, def, id, None)?
+        .ok_or_else(|| anyhow::anyhow!("Document {} not found in {}", id, slug))?;
+
+    // Run before_change hooks (unpublish is a state change)
+    let hook_ctx = HookContext {
+        collection: slug.to_string(),
+        operation: "update".to_string(),
+        data: doc.fields.clone(),
+        locale: None,
+        draft: Some(false),
+        context: HashMap::new(),
+    };
+    let final_ctx = runner.run_hooks_with_conn(&def.hooks, HookEvent::BeforeChange, hook_ctx, &tx, user)?;
+
+    persist_unpublish(&tx, slug, id, def)?;
+
+    // Run after_change hooks
+    let after_ctx = HookContext {
+        collection: slug.to_string(),
+        operation: "update".to_string(),
+        data: doc.fields.clone(),
+        locale: None,
+        draft: Some(false),
+        context: final_ctx.context,
+    };
+    runner.run_hooks_with_conn(&def.hooks, HookEvent::AfterChange, after_ctx, &tx, user)?;
+
+    tx.commit().context("Commit transaction")?;
+    Ok(doc)
 }
 
 /// Delete a document within a single transaction: before-hooks → delete → upload cleanup.

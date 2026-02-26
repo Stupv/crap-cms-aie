@@ -3516,3 +3516,355 @@ return M
     "#, &conn, None).expect("eval");
     assert_eq!(result, "ok");
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// API SURFACE PARITY TESTS: password handling, unpublish, before_read, upload sizes
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Lua CRUD Password Handling (Auth Collections) ────────────────────────────
+
+#[test]
+fn lua_create_auth_hashes_password() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let collections_dir = tmp.path().join("collections");
+    std::fs::create_dir_all(&collections_dir).unwrap();
+
+    std::fs::write(
+        collections_dir.join("users.lua"),
+        r#"
+crap.collections.define("users", {
+    auth = true,
+    fields = {
+        { name = "email", type = "email", required = true, unique = true },
+        { name = "name", type = "text" },
+    },
+})
+        "#,
+    ).unwrap();
+    std::fs::write(tmp.path().join("init.lua"), "").unwrap();
+
+    let config = CrapConfig::default();
+    let registry = hooks::init_lua(tmp.path(), &config).expect("init_lua");
+    let mut db_config = CrapConfig::default();
+    db_config.database.path = "test.db".to_string();
+    let pool = crap_cms::db::pool::create_pool(tmp.path(), &db_config).expect("pool");
+    crap_cms::db::migrate::sync_all(&pool, &registry, &config.locale).expect("sync");
+    let runner = HookRunner::new(tmp.path(), registry.clone(), &config).expect("runner");
+
+    let conn = pool.get().expect("conn");
+    let result = runner.eval_lua_with_conn(r#"
+        local doc = crap.collections.create("users", {
+            email = "test@example.com",
+            name = "Test User",
+            password = "secret123",
+        })
+        if doc == nil then return "CREATE_NIL" end
+        if doc.id == nil then return "NO_ID" end
+        -- password should NOT appear in the returned document
+        if doc.password ~= nil then
+            return "PASSWORD_LEAKED:" .. tostring(doc.password)
+        end
+        if doc._password_hash ~= nil then
+            return "HASH_LEAKED:" .. tostring(doc._password_hash)
+        end
+        return doc.id
+    "#, &conn, None).expect("eval");
+    assert!(!result.is_empty() && result != "CREATE_NIL" && result != "NO_ID",
+        "Should return a valid doc id, got: {}", result);
+
+    // Verify the password was actually hashed in the DB
+    let hash = crap_cms::db::query::get_password_hash(&conn, "users", &result)
+        .expect("get_password_hash");
+    assert!(hash.is_some(), "Password hash should exist in DB");
+    let hash = hash.unwrap();
+    assert!(hash.starts_with("$argon2"), "Hash should be argon2: {}", hash);
+}
+
+#[test]
+fn lua_update_auth_changes_password() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let collections_dir = tmp.path().join("collections");
+    std::fs::create_dir_all(&collections_dir).unwrap();
+
+    std::fs::write(
+        collections_dir.join("users.lua"),
+        r#"
+crap.collections.define("users", {
+    auth = true,
+    fields = {
+        { name = "email", type = "email", required = true, unique = true },
+        { name = "name", type = "text" },
+    },
+})
+        "#,
+    ).unwrap();
+    std::fs::write(tmp.path().join("init.lua"), "").unwrap();
+
+    let config = CrapConfig::default();
+    let registry = hooks::init_lua(tmp.path(), &config).expect("init_lua");
+    let mut db_config = CrapConfig::default();
+    db_config.database.path = "test.db".to_string();
+    let pool = crap_cms::db::pool::create_pool(tmp.path(), &db_config).expect("pool");
+    crap_cms::db::migrate::sync_all(&pool, &registry, &config.locale).expect("sync");
+    let runner = HookRunner::new(tmp.path(), registry.clone(), &config).expect("runner");
+
+    let conn = pool.get().expect("conn");
+
+    // Create user with initial password
+    let user_id = runner.eval_lua_with_conn(r#"
+        local doc = crap.collections.create("users", {
+            email = "update@example.com",
+            name = "Update User",
+            password = "oldpass123",
+        })
+        return doc.id
+    "#, &conn, None).expect("create");
+
+    let old_hash = crap_cms::db::query::get_password_hash(&conn, "users", &user_id)
+        .expect("get hash").expect("hash exists");
+
+    // Update with new password
+    runner.eval_lua_with_conn(&format!(r#"
+        local doc = crap.collections.update("users", "{}", {{
+            name = "Updated Name",
+            password = "newpass456",
+        }})
+        return "ok"
+    "#, user_id), &conn, None).expect("update");
+
+    let new_hash = crap_cms::db::query::get_password_hash(&conn, "users", &user_id)
+        .expect("get hash").expect("hash exists");
+
+    assert_ne!(old_hash, new_hash, "Password hash should have changed after update");
+    assert!(new_hash.starts_with("$argon2"), "New hash should be argon2: {}", new_hash);
+
+    // Verify the new password works
+    assert!(
+        crap_cms::core::auth::verify_password("newpass456", &new_hash).expect("verify"),
+        "New password should verify"
+    );
+    // Verify the old password no longer works
+    assert!(
+        !crap_cms::core::auth::verify_password("oldpass123", &new_hash).expect("verify"),
+        "Old password should NOT verify against new hash"
+    );
+}
+
+// ── Lua CRUD Unpublish ───────────────────────────────────────────────────────
+
+#[test]
+fn lua_update_unpublish() {
+    let (_tmp, pool, _reg, runner) = setup_versioned_db();
+    let result = eval_versioned(&runner, &pool, r#"
+        -- Create a published document
+        local doc = crap.collections.create("articles", {
+            title = "Published Article",
+            body = "Content here",
+        })
+        local id = doc.id
+
+        -- Unpublish it
+        local unpublished = crap.collections.update("articles", id, {}, { unpublish = true })
+
+        -- Find without draft flag should NOT find it (status is now "draft")
+        local result = crap.collections.find("articles", {})
+        if result.total ~= 0 then
+            return "STILL_PUBLISHED:total=" .. tostring(result.total)
+        end
+
+        -- Find with draft flag should find it
+        local drafts = crap.collections.find("articles", { draft = true })
+        if drafts.total ~= 1 then
+            return "NOT_IN_DRAFTS:total=" .. tostring(drafts.total)
+        end
+        if drafts.documents[1].id ~= id then
+            return "WRONG_DOC"
+        end
+        return "ok"
+    "#);
+    assert_eq!(result, "ok");
+}
+
+// ── Lua CRUD before_read Hook ────────────────────────────────────────────────
+
+#[test]
+fn lua_find_fires_before_read() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let collections_dir = tmp.path().join("collections");
+    std::fs::create_dir_all(&collections_dir).unwrap();
+    let hooks_dir = tmp.path().join("hooks");
+    std::fs::create_dir_all(&hooks_dir).unwrap();
+
+    std::fs::write(
+        collections_dir.join("guarded.lua"),
+        r#"
+crap.collections.define("guarded", {
+    fields = {
+        { name = "title", type = "text", required = true },
+    },
+    hooks = {
+        before_read = { "hooks.guard.before_read" },
+    },
+})
+        "#,
+    ).unwrap();
+    std::fs::write(
+        hooks_dir.join("guard.lua"),
+        r#"
+local M = {}
+function M.before_read(ctx)
+    error("before_read_blocked")
+end
+return M
+        "#,
+    ).unwrap();
+    std::fs::write(tmp.path().join("init.lua"), "").unwrap();
+
+    let config = CrapConfig::default();
+    let registry = hooks::init_lua(tmp.path(), &config).expect("init_lua");
+    let mut db_config = CrapConfig::default();
+    db_config.database.path = "test.db".to_string();
+    let pool = crap_cms::db::pool::create_pool(tmp.path(), &db_config).expect("pool");
+    crap_cms::db::migrate::sync_all(&pool, &registry, &config.locale).expect("sync");
+    let runner = HookRunner::new(tmp.path(), registry.clone(), &config).expect("runner");
+
+    let conn = pool.get().expect("conn");
+
+    // Create a document (with hooks=false to bypass before_read on the create path)
+    runner.eval_lua_with_conn(r#"
+        crap.collections.create("guarded", { title = "Test" }, { hooks = false })
+        return "ok"
+    "#, &conn, None).expect("create");
+
+    // find should fail because before_read hook throws an error
+    let find_result = runner.eval_lua_with_conn(r#"
+        local ok, err = pcall(function()
+            crap.collections.find("guarded", {})
+        end)
+        if ok then return "SHOULD_HAVE_FAILED" end
+        local err_str = tostring(err)
+        if err_str:find("before_read_blocked") then return "ok" end
+        return "WRONG_ERROR:" .. err_str
+    "#, &conn, None).expect("find eval");
+    assert_eq!(find_result, "ok", "find should propagate before_read error");
+
+    // find_by_id should also fail
+    let find_by_id_result = runner.eval_lua_with_conn(r#"
+        -- Get the doc id first via raw query (bypassing hooks)
+        local ok, err = pcall(function()
+            crap.collections.find_by_id("guarded", "any-id")
+        end)
+        if ok then return "SHOULD_HAVE_FAILED" end
+        local err_str = tostring(err)
+        if err_str:find("before_read_blocked") then return "ok" end
+        return "WRONG_ERROR:" .. err_str
+    "#, &conn, None).expect("find_by_id eval");
+    assert_eq!(find_by_id_result, "ok", "find_by_id should propagate before_read error");
+}
+
+// ── Lua CRUD Upload Sizes Assembly ───────────────────────────────────────────
+
+#[test]
+fn lua_find_upload_sizes() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let collections_dir = tmp.path().join("collections");
+    std::fs::create_dir_all(&collections_dir).unwrap();
+
+    std::fs::write(
+        collections_dir.join("media.lua"),
+        r#"
+crap.collections.define("media", {
+    upload = {
+        enabled = true,
+        image_sizes = {
+            { name = "thumbnail", width = 200, height = 200 },
+            { name = "card", width = 640, height = 480 },
+        },
+    },
+    fields = {
+        { name = "alt", type = "text" },
+    },
+})
+        "#,
+    ).unwrap();
+    std::fs::write(tmp.path().join("init.lua"), "").unwrap();
+
+    let config = CrapConfig::default();
+    let registry = hooks::init_lua(tmp.path(), &config).expect("init_lua");
+    let mut db_config = CrapConfig::default();
+    db_config.database.path = "test.db".to_string();
+    let pool = crap_cms::db::pool::create_pool(tmp.path(), &db_config).expect("pool");
+    crap_cms::db::migrate::sync_all(&pool, &registry, &config.locale).expect("sync");
+    let runner = HookRunner::new(tmp.path(), registry.clone(), &config).expect("runner");
+
+    let conn = pool.get().expect("conn");
+
+    // Create a media doc with required upload fields and manually insert size columns
+    let doc_id = runner.eval_lua_with_conn(r#"
+        local doc = crap.collections.create("media", {
+            filename = "test.jpg",
+            mime_type = "image/jpeg",
+            filesize = 12345,
+            url = "/uploads/test.jpg",
+            alt = "Test image",
+        }, { hooks = false })
+        return doc.id
+    "#, &conn, None).expect("create");
+
+    // Manually set per-size columns in the DB (simulating what the upload handler does)
+    conn.execute(
+        "UPDATE media SET thumbnail_url = ?1, thumbnail_width = ?2, thumbnail_height = ?3, \
+         card_url = ?4, card_width = ?5, card_height = ?6 WHERE id = ?7",
+        rusqlite::params![
+            "/uploads/thumb.jpg", 200, 200,
+            "/uploads/card.jpg", 640, 480,
+            &doc_id,
+        ],
+    ).expect("set size columns");
+
+    // find should assemble the sizes object
+    let find_result = runner.eval_lua_with_conn(r#"
+        local result = crap.collections.find("media", {})
+        if result.total ~= 1 then
+            return "WRONG_TOTAL:" .. tostring(result.total)
+        end
+        local doc = result.documents[1]
+        if doc.sizes == nil then
+            return "NO_SIZES"
+        end
+        if type(doc.sizes) ~= "table" then
+            return "SIZES_NOT_TABLE:" .. type(doc.sizes)
+        end
+        if doc.sizes.thumbnail == nil then
+            return "NO_THUMBNAIL"
+        end
+        if doc.sizes.thumbnail.url ~= "/uploads/thumb.jpg" then
+            return "WRONG_THUMB_URL:" .. tostring(doc.sizes.thumbnail.url)
+        end
+        if doc.sizes.card == nil then
+            return "NO_CARD"
+        end
+        if doc.sizes.card.url ~= "/uploads/card.jpg" then
+            return "WRONG_CARD_URL:" .. tostring(doc.sizes.card.url)
+        end
+        -- Per-size columns should be removed (assembled into sizes)
+        if doc.thumbnail_url ~= nil then
+            return "FLAT_COLUMN_LEAKED:thumbnail_url"
+        end
+        return "ok"
+    "#, &conn, None).expect("find eval");
+    assert_eq!(find_result, "ok");
+
+    // find_by_id should also assemble sizes
+    let find_by_id_result = runner.eval_lua_with_conn(&format!(r#"
+        local doc = crap.collections.find_by_id("media", "{}")
+        if doc == nil then return "NOT_FOUND" end
+        if doc.sizes == nil then return "NO_SIZES" end
+        if doc.sizes.thumbnail == nil then return "NO_THUMBNAIL" end
+        if doc.sizes.thumbnail.url ~= "/uploads/thumb.jpg" then
+            return "WRONG_URL:" .. tostring(doc.sizes.thumbnail.url)
+        end
+        return "ok"
+    "#, doc_id), &conn, None).expect("find_by_id eval");
+    assert_eq!(find_by_id_result, "ok");
+}

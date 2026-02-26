@@ -301,6 +301,7 @@ async fn update_document() {
             data: Some(make_struct(&[("title", "Updated")])),
             locale: None,
             draft: None,
+            unpublish: None,
         }))
         .await
         .unwrap()
@@ -1413,6 +1414,7 @@ async fn update_password_via_grpc() {
             ])),
             locale: None,
             draft: None,
+            unpublish: None,
         }))
         .await
         .unwrap();
@@ -3104,6 +3106,7 @@ async fn create_and_find_with_locale_all() {
             data: Some(make_struct(&[("title", "Deutscher Titel")])),
             locale: Some("de".to_string()),
             draft: None,
+            unpublish: None,
         }))
         .await
         .unwrap();
@@ -3279,6 +3282,7 @@ async fn publish_draft() {
             data: Some(make_struct(&[("title", "Draft to Publish")])),
             locale: None,
             draft: Some(false),
+            unpublish: None,
         }))
         .await
         .unwrap();
@@ -3752,6 +3756,7 @@ async fn list_and_restore_versions() {
             ])),
             locale: None,
             draft: None,
+            unpublish: None,
         }))
         .await
         .unwrap();
@@ -3767,6 +3772,7 @@ async fn list_and_restore_versions() {
             ])),
             locale: None,
             draft: None,
+            unpublish: None,
         }))
         .await
         .unwrap();

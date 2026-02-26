@@ -79,6 +79,7 @@ message UpdateRequest {
   google.protobuf.Struct data = 3;
   optional string locale = 4;
   optional bool draft = 5;
+  optional bool unpublish = 6;
 }
 
 message UpdateResponse {

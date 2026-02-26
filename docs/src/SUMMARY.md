@@ -142,3 +142,7 @@
 # Query & Filters
 
 - [Overview](query-and-filters/overview.md)
+
+# Internals
+
+- [API Surface Comparison](internals/api-surface-comparison.md)

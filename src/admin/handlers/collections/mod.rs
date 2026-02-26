@@ -26,7 +26,7 @@ use super::shared::{
     is_non_default_locale,
     build_field_contexts, enrich_field_contexts,
     apply_display_conditions, split_sidebar_fields,
-    version_to_json, fetch_version_sidebar_data, do_unpublish,
+    version_to_json, fetch_version_sidebar_data,
     forbidden, redirect_response, htmx_redirect, html_with_toast,
     render_or_error, not_found, server_error,
 };
@@ -916,12 +916,9 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
     let result = tokio::task::spawn_blocking(move || {
         // Handle unpublish: set _status to 'draft' and create a version
         if action_owned == "unpublish" && def_owned.has_versions() {
-            let mut conn = pool.get().map_err(|e| anyhow::anyhow!("DB connection: {}", e))?;
-            let tx = conn.transaction().map_err(|e| anyhow::anyhow!("Start transaction: {}", e))?;
-            let doc = query::find_by_id_raw(&tx, &slug_owned, &def_owned, &id_owned, locale_ctx.as_ref())?
-                .ok_or_else(|| anyhow::anyhow!("Document not found"))?;
-            do_unpublish(&tx, &slug_owned, &id_owned, &def_owned.fields, def_owned.versions.as_ref(), &doc)?;
-            tx.commit().map_err(|e| anyhow::anyhow!("Commit: {}", e))?;
+            let doc = crate::service::unpublish_document(
+                &pool, &runner, &slug_owned, &id_owned, &def_owned, user_doc.as_ref(),
+            )?;
             Ok((doc, HashMap::new()))
         } else {
             crate::service::update_document(

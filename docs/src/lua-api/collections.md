@@ -165,8 +165,17 @@ crap.collections.update("articles", "abc123", {
 |-------|------|---------|-------------|
 | `locale` | string | `nil` | Locale code for localized fields. |
 | `draft` | boolean | `false` | Version-only save. Creates a draft version snapshot without modifying the main table. Only affects versioned collections with `drafts = true`. |
+| `unpublish` | boolean | `false` | Set document status to draft and create a draft version snapshot. Ignores the `data` fields when unpublishing. Only affects versioned collections. |
 | `overrideAccess` | boolean | `true` | Skip access control checks. Set to `false` to enforce collection-level and field-level access for the current user. |
 | `hooks` | boolean | `true` | Run lifecycle hooks. Set to `false` to skip all hooks (before_validate, before_change, after_change) and validation. The DB operation still executes. |
+
+### Auth Collections
+
+For collections with `auth = true`, the `password` field is automatically handled:
+- On **create**, if the data contains a `password` key, it is extracted before hooks run, hashed with Argon2id, and stored in the hidden `_password_hash` column. Hooks never see the raw password.
+- On **update**, same pattern — if `password` is present and non-empty, the password is updated. Leave it out or set it to `""` to keep the current password.
+
+This matches the behavior of the gRPC API and admin UI.
 
 ## crap.collections.delete(collection, id, opts?)
 
@@ -195,7 +204,7 @@ Lua CRUD operations run the **same lifecycle hooks** as the gRPC API and admin U
 - **`create`**: before_validate → validate → before_change → DB insert → after_change
 - **`update`**: before_validate → validate → before_change → DB update → after_change
 - **`delete`**: before_delete → DB delete → after_delete
-- **`find` / `find_by_id`**: DB query → after_read
+- **`find` / `find_by_id`**: before_read → DB query → after_read
 
 All hooks have full CRUD access within the same transaction.
 

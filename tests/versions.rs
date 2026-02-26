@@ -1165,6 +1165,7 @@ async fn grpc_draft_update_is_version_only() {
             data: Some(make_struct(&[("title", "Draft Change")])),
             locale: None,
             draft: Some(true),
+            unpublish: None,
         }))
         .await
         .unwrap();
@@ -1209,6 +1210,7 @@ async fn grpc_find_by_id_draft_returns_latest_version() {
             data: Some(make_struct(&[("title", "Draft Title")])),
             locale: None,
             draft: Some(true),
+            unpublish: None,
         }))
         .await
         .unwrap();
@@ -1256,6 +1258,7 @@ async fn grpc_find_by_id_no_draft_returns_main_table() {
             data: Some(make_struct(&[("title", "Draft Only")])),
             locale: None,
             draft: Some(true),
+            unpublish: None,
         }))
         .await
         .unwrap();
@@ -1304,6 +1307,7 @@ async fn grpc_list_versions() {
                 data: Some(make_struct(&[("title", title)])),
                 locale: None,
                 draft: None,
+                unpublish: None,
             }))
             .await
             .unwrap();
@@ -1354,6 +1358,7 @@ async fn grpc_list_versions_with_limit() {
                 data: Some(make_struct(&[("title", &format!("Update {}", i))])),
                 locale: None,
                 draft: None,
+                unpublish: None,
             }))
             .await
             .unwrap();
@@ -1439,6 +1444,7 @@ async fn grpc_restore_version() {
             data: Some(make_struct(&[("title", "Version 2")])),
             locale: None,
             draft: None,
+            unpublish: None,
         }))
         .await
         .unwrap();
@@ -1663,6 +1669,7 @@ async fn grpc_max_versions_prunes_old() {
                 data: Some(make_struct(&[("title", &format!("Update {}", i))])),
                 locale: None,
                 draft: None,
+                unpublish: None,
             }))
             .await
             .unwrap();
@@ -1733,6 +1740,7 @@ async fn grpc_full_draft_publish_workflow() {
             data: Some(make_struct(&[("title", "Revised Article"), ("body", "Better content")])),
             locale: None,
             draft: Some(true),
+            unpublish: None,
         }))
         .await
         .unwrap();
@@ -1745,6 +1753,7 @@ async fn grpc_full_draft_publish_workflow() {
             data: Some(make_struct(&[("title", "Final Article"), ("body", "Final content")])),
             locale: None,
             draft: Some(false),
+            unpublish: None,
         }))
         .await
         .unwrap();
@@ -1775,4 +1784,90 @@ async fn grpc_full_draft_publish_workflow() {
     assert_eq!(versions.versions[0].status, "published");
     assert_eq!(versions.versions[1].status, "draft");
     assert_eq!(versions.versions[2].status, "draft");
+}
+
+// ── gRPC Unpublish ───────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn grpc_update_unpublish() {
+    let ts = setup_service(vec![make_versioned_def()]);
+
+    // 1. Create a published document
+    let doc = ts.service
+        .create(Request::new(content::CreateRequest {
+            collection: "articles".to_string(),
+            data: Some(make_struct(&[("title", "To Unpublish"), ("body", "Published content")])),
+            locale: None,
+            draft: None,
+        }))
+        .await
+        .unwrap()
+        .into_inner()
+        .document
+        .unwrap();
+
+    // Verify it's published (appears in regular find)
+    let resp = ts.service
+        .find(Request::new(content::FindRequest {
+            collection: "articles".to_string(),
+            ..Default::default()
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(resp.total, 1, "should be visible as published");
+
+    // 2. Unpublish via update with unpublish=true
+    let unpublished = ts.service
+        .update(Request::new(content::UpdateRequest {
+            collection: "articles".to_string(),
+            id: doc.id.clone(),
+            data: None,
+            locale: None,
+            draft: None,
+            unpublish: Some(true),
+        }))
+        .await
+        .unwrap()
+        .into_inner()
+        .document
+        .unwrap();
+    assert_eq!(unpublished.id, doc.id);
+
+    // 3. Should NOT appear in regular find (status is now "draft")
+    let resp = ts.service
+        .find(Request::new(content::FindRequest {
+            collection: "articles".to_string(),
+            ..Default::default()
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(resp.total, 0, "unpublished doc should not appear in regular find");
+
+    // 4. Should appear with draft=true
+    let resp = ts.service
+        .find(Request::new(content::FindRequest {
+            collection: "articles".to_string(),
+            draft: Some(true),
+            ..Default::default()
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(resp.total, 1, "unpublished doc should appear with draft=true");
+
+    // 5. Verify a draft version was created
+    let versions = ts.service
+        .list_versions(Request::new(content::ListVersionsRequest {
+            collection: "articles".to_string(),
+            id: doc.id.clone(),
+            limit: None,
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+    // Should have 2 versions: initial published + unpublish draft
+    assert!(versions.versions.len() >= 2, "should have at least 2 versions, got {}", versions.versions.len());
+    assert_eq!(versions.versions[0].status, "draft", "latest version should be draft");
 }

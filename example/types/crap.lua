@@ -280,7 +280,6 @@ crap = {}
 --- @field locale?    string                 Current locale code (nil if localization disabled or default locale).
 --- @field original_doc? crap.Document       Original document (on update).
 --- @field req?       crap.RequestContext     Request context (if available).
---- @field hook_depth  integer               Current hook recursion depth. 0 at gRPC/admin level, 1+ when called from within Lua CRUD inside hooks. Useful for manual recursion decisions.
 --- @field context  table<string, any>     Request-scoped shared table. Persists from before_validate through after_change within one request. Only JSON-compatible values survive (no functions/userdata).
 
 --- @class crap.ReadHookContext
@@ -376,13 +375,11 @@ function crap.collections.find_by_id(collection, id, opts) end
 --- @field locale?         string   Locale code for localized fields. Nil = default locale.
 --- @field overrideAccess? boolean  Skip access control checks (default: true). Set to false to enforce collection-level and field-level access for the current user.
 --- @field draft?          boolean  When true and the collection has `versions.drafts`, creates the document with `_status = 'draft'` and skips required-field validation.
---- @field hooks?          boolean  Run lifecycle hooks (default: true). Set to false to skip all hooks (before_validate, before_change, after_change, validation). The DB operation still executes.
 
 --- @class crap.UpdateOptions
 --- @field locale?         string   Locale code for localized fields. Nil = default locale.
 --- @field overrideAccess? boolean  Skip access control checks (default: true). Set to false to enforce collection-level and field-level access for the current user.
 --- @field draft?          boolean  When true and the collection has `versions.drafts`, performs a version-only save (main table unchanged, only a draft version snapshot is created).
---- @field hooks?          boolean  Run lifecycle hooks (default: true). Set to false to skip all hooks (before_validate, before_change, after_change, validation). The DB operation still executes.
 
 --- Create a new document.
 --- Inside hooks, runs within the parent operation's transaction.
@@ -403,7 +400,6 @@ function crap.collections.update(collection, id, data, opts) end
 
 --- @class crap.DeleteOptions
 --- @field overrideAccess? boolean  Skip access control checks (default: true). Set to false to enforce collection-level access for the current user.
---- @field hooks?          boolean  Run lifecycle hooks (default: true). Set to false to skip before_delete and after_delete hooks. The DB operation still executes.
 
 --- Delete a document.
 --- Inside hooks, runs within the parent operation's transaction.
