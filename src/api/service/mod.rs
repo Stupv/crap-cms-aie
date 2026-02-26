@@ -19,6 +19,7 @@ use crate::core::event::EventBus;
 use crate::core::upload;
 use crate::core::SharedRegistry;
 use crate::db::query::{AccessResult, Filter, FilterClause, FilterOp, FindQuery, LocaleContext};
+use crate::db::query::filter::normalize_filter_fields;
 use crate::db::DbPool;
 use crate::db::{ops, query};
 use crate::core::event::EventUser;
@@ -204,6 +205,9 @@ impl ContentApi for ContentService {
         } else {
             Vec::new()
         };
+
+        // Normalize dot notation: group dots → __, array/block/rel dots preserved
+        normalize_filter_fields(&mut filters, &def.fields);
 
         // Merge access constraint filters
         if let AccessResult::Constrained(ref constraint_filters) = access_result {
@@ -761,6 +765,8 @@ impl ContentApi for ContentService {
             Vec::new()
         };
 
+        normalize_filter_fields(&mut filters, &def.fields);
+
         if let AccessResult::Constrained(ref constraint_filters) = access_result {
             filters.extend(constraint_filters.clone());
         }
@@ -821,6 +827,8 @@ impl ContentApi for ContentService {
         } else {
             Vec::new()
         };
+
+        normalize_filter_fields(&mut filters, &def.fields);
 
         if let AccessResult::Constrained(ref constraint_filters) = read_access {
             filters.extend(constraint_filters.clone());
@@ -927,6 +935,8 @@ impl ContentApi for ContentService {
         } else {
             Vec::new()
         };
+
+        normalize_filter_fields(&mut filters, &def.fields);
 
         if let AccessResult::Constrained(ref constraint_filters) = read_access {
             filters.extend(constraint_filters.clone());

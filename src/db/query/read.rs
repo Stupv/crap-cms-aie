@@ -9,8 +9,8 @@ use crate::core::field::FieldType;
 use crate::db::document::row_to_document;
 use super::{
     LocaleMode, LocaleContext, FindQuery, FilterClause,
-    get_column_names, get_locale_select_columns, get_valid_filter_columns,
-    validate_field_name, validate_query_fields, group_locale_fields,
+    get_column_names, get_locale_select_columns,
+    validate_query_fields, group_locale_fields,
     is_valid_identifier,
 };
 use super::filter::{build_where_clause, resolve_filters, resolve_filter_column};
@@ -36,7 +36,7 @@ pub fn find(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition,
 
     // Build WHERE with locale-resolved column names
     let resolved_filters = resolve_filters(&query.filters, def, locale_ctx);
-    let where_clause = build_where_clause(&resolved_filters, &mut params)?;
+    let where_clause = build_where_clause(&resolved_filters, slug, &def.fields, &mut params)?;
     if !where_clause.is_empty() {
         sql.push_str(&where_clause);
     }
@@ -137,14 +137,14 @@ pub(crate) fn find_by_id_raw(conn: &rusqlite::Connection, slug: &str, def: &Coll
 
 /// Count documents in a collection.
 pub fn count(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition, filters: &[FilterClause], locale_ctx: Option<&LocaleContext>) -> Result<i64> {
-    let valid = get_valid_filter_columns(def, locale_ctx);
+    let (exact, prefixes) = super::get_valid_filter_paths(def, locale_ctx);
     for clause in filters {
         match clause {
-            FilterClause::Single(f) => validate_field_name(&f.field, &valid)?,
+            FilterClause::Single(f) => super::validate_filter_field(&f.field, &exact, &prefixes)?,
             FilterClause::Or(groups) => {
                 for group in groups {
                     for f in group {
-                        validate_field_name(&f.field, &valid)?;
+                        super::validate_filter_field(&f.field, &exact, &prefixes)?;
                     }
                 }
             }
@@ -155,7 +155,7 @@ pub fn count(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
     let resolved_filters = resolve_filters(filters, def, locale_ctx);
-    let where_clause = build_where_clause(&resolved_filters, &mut params)?;
+    let where_clause = build_where_clause(&resolved_filters, slug, &def.fields, &mut params)?;
     if !where_clause.is_empty() {
         sql.push_str(&where_clause);
     }

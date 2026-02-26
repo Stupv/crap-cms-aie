@@ -238,6 +238,121 @@ crap.collections.find("articles", {
 
 See [Versions & Drafts](../collections/versions.md) for the full workflow.
 
+## Nested Field Filters (Dot Notation)
+
+You can filter on sub-fields of group, array, blocks, and has-many relationship fields using dot notation.
+
+### Group Fields
+
+Group sub-fields can be filtered using dot notation. Internally, `seo.meta_title` is converted to `seo__meta_title` (the flat column name). The double-underscore syntax also continues to work.
+
+**Lua:**
+
+```lua
+crap.collections.find("pages", {
+    filters = {
+        ["seo.meta_title"] = { contains = "SEO" },
+    },
+})
+```
+
+**gRPC:**
+
+```bash
+grpcurl -plaintext -d '{
+    "collection": "pages",
+    "where": "{\"seo.meta_title\":{\"contains\":\"SEO\"}}"
+}' localhost:50051 crap.ContentAPI/Find
+```
+
+### Array Sub-Fields
+
+Filter by sub-field values in array rows. Uses an `EXISTS` subquery against the array join table. Returns parent documents that have **at least one** array row matching the condition.
+
+**Lua:**
+
+```lua
+-- Find products where any variant has color "red"
+crap.collections.find("products", {
+    filters = {
+        ["variants.color"] = "red",
+    },
+})
+
+-- Group-in-array: filter by a group sub-field within array rows
+-- (uses json_extract on the JSON column in the join table)
+crap.collections.find("products", {
+    filters = {
+        ["variants.dimensions.width"] = "10",
+    },
+})
+```
+
+### Block Sub-Fields
+
+Filter by field values inside block rows. Uses `json_extract` on the block `data` column. Returns parent documents that have **at least one** block row matching.
+
+**Lua:**
+
+```lua
+-- Find posts where any content block has body containing "hello"
+crap.collections.find("posts", {
+    filters = {
+        ["content.body"] = { contains = "hello" },
+    },
+})
+
+-- Filter by block type
+crap.collections.find("posts", {
+    filters = {
+        ["content._block_type"] = "image",
+    },
+})
+
+-- Group-in-block: filter by a group sub-field within block data
+crap.collections.find("posts", {
+    filters = {
+        ["content.meta.author"] = "Alice",
+    },
+})
+```
+
+### Has-Many Relationships
+
+Filter by related document IDs. Uses an `EXISTS` subquery against the relationship join table.
+
+**Lua:**
+
+```lua
+-- Find posts that have tag "tag-123"
+crap.collections.find("posts", {
+    filters = {
+        ["tags.id"] = "tag-123",
+    },
+})
+```
+
+### Combining Nested and Regular Filters
+
+Nested field filters can be freely combined with regular column filters and OR groups:
+
+**Lua:**
+
+```lua
+crap.collections.find("products", {
+    filters = {
+        status = "published",
+        ["variants.color"] = "red",
+        ["or"] = {
+            { ["content._block_type"] = "image" },
+            { ["tags.id"] = "tag-featured" },
+        },
+    },
+})
+```
+
+All filter operators (equals, contains, like, in, greater_than, etc.) work with nested field filters.
+
 ## Valid Filter Fields
 
 You can filter on any column in the collection table:
@@ -248,4 +363,9 @@ You can filter on any column in the collection table:
 - `updated_at` (if timestamps enabled)
 - `_status` (if `versions.drafts` enabled)
 
-You cannot filter on join-table fields (has-many relationships, arrays) directly.
+Additionally, you can filter on sub-fields using dot notation:
+
+- **Group sub-fields:** `group_name.sub_field` (syntactic sugar for `group_name__sub_field`)
+- **Array sub-fields:** `array_name.sub_field` or `array_name.group.sub_field` (group-in-array)
+- **Block sub-fields:** `blocks_name.field`, `blocks_name._block_type`, or `blocks_name.group.sub_field`
+- **Has-many relationships:** `relationship_name.id`

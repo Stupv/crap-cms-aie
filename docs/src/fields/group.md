@@ -58,6 +58,23 @@ Via gRPC, pass the flat prefixed keys:
 
 The double-underscore separator is used in all write operations (forms, gRPC). On read, the prefixed columns are reconstructed into a nested object.
 
+## Filtering on Group Sub-Fields
+
+Use dot notation to filter on group sub-fields. The dot syntax is converted to the double-underscore column name internally.
+
+```lua
+crap.collections.find("pages", {
+    filters = {
+        ["seo.title"] = { contains = "SEO" },
+        ["seo.no_index"] = "0",
+    },
+})
+```
+
+The equivalent double-underscore syntax also works: `seo__title`.
+
+See [Query & Filters](../query-and-filters/overview.md#nested-field-filters-dot-notation) for filtering on other nested field types (arrays, blocks, relationships).
+
 ## Admin Rendering
 
 Renders as a `<fieldset>` with a legend. Each sub-field is rendered using its own field type template (text, checkbox, select, etc.).

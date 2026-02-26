@@ -134,28 +134,90 @@ pub fn validate_field_name(field: &str, valid_columns: &HashSet<String>) -> Resu
 }
 
 /// Validate all filter fields and order_by in a FindQuery against a collection definition.
+///
+/// Filter fields support dot notation for array/block/relationship sub-fields
+/// (e.g., `items.name`, `content.body`, `tags.id`). The first segment must match
+/// a known field; deeper segments are validated at SQL generation time.
+///
+/// `order_by` only supports flat columns (no dot notation).
 pub fn validate_query_fields(def: &CollectionDefinition, query: &FindQuery, locale_ctx: Option<&LocaleContext>) -> Result<()> {
-    let valid = get_valid_filter_columns(def, locale_ctx);
+    let (exact_columns, prefix_roots) = get_valid_filter_paths(def, locale_ctx);
 
     for clause in &query.filters {
         match clause {
-            FilterClause::Single(f) => validate_field_name(&f.field, &valid)?,
+            FilterClause::Single(f) => validate_filter_field(&f.field, &exact_columns, &prefix_roots)?,
             FilterClause::Or(groups) => {
                 for group in groups {
                     for f in group {
-                        validate_field_name(&f.field, &valid)?;
+                        validate_filter_field(&f.field, &exact_columns, &prefix_roots)?;
                     }
                 }
             }
         }
     }
 
+    // order_by only supports flat columns (no sub-field sorting)
     if let Some(ref order) = query.order_by {
         let col = order.strip_prefix('-').unwrap_or(order);
-        validate_field_name(col, &valid)?;
+        validate_field_name(col, &exact_columns)?;
     }
 
     Ok(())
+}
+
+/// Get valid filter paths: exact column names + prefix roots for dot notation.
+///
+/// Returns `(exact_columns, prefix_roots)` where:
+/// - `exact_columns`: flat column names valid for filtering and order_by
+/// - `prefix_roots`: field names that accept dot-path sub-filters (Array, Blocks, has-many Relationship)
+pub fn get_valid_filter_paths(def: &CollectionDefinition, locale_ctx: Option<&LocaleContext>) -> (HashSet<String>, HashSet<String>) {
+    let exact = get_valid_filter_columns(def, locale_ctx);
+    let mut prefixes = HashSet::new();
+
+    for field in &def.fields {
+        match field.field_type {
+            FieldType::Array | FieldType::Blocks => {
+                prefixes.insert(field.name.clone());
+            }
+            FieldType::Relationship => {
+                if let Some(ref rc) = field.relationship {
+                    if rc.has_many {
+                        prefixes.insert(field.name.clone());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    (exact, prefixes)
+}
+
+/// Validate a single filter field name against exact columns or dot-path prefixes.
+pub(crate) fn validate_filter_field(field: &str, exact_columns: &HashSet<String>, prefix_roots: &HashSet<String>) -> Result<()> {
+    // Exact match — flat column name
+    if exact_columns.contains(field) {
+        return Ok(());
+    }
+    // Dot notation — check if the first segment is a valid prefix root
+    if let Some(dot_pos) = field.find('.') {
+        let root = &field[..dot_pos];
+        if prefix_roots.contains(root) {
+            return Ok(());
+        }
+    }
+    bail!(
+        "Invalid field '{}'. Valid fields: {}",
+        field,
+        {
+            let mut all: Vec<String> = exact_columns.iter().cloned().collect();
+            for p in prefix_roots {
+                all.push(format!("{}.*", p));
+            }
+            all.sort();
+            all.join(", ")
+        }
+    )
 }
 
 /// Get column names for a collection (id + field columns + timestamps).

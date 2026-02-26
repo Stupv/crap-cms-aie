@@ -257,7 +257,7 @@ crap = {}
 --- A single OR group — an object of field filters that are AND-ed together.
 
 --- @class crap.FindQuery
---- @field filters?        table<string, crap.FilterValue>  Field filters. String values = equals, table values = operators. Use `["or"]` key for OR groups.
+--- @field filters?        table<string, crap.FilterValue>  Field filters. String values = equals, table values = operators. Use `["or"]` key for OR groups. Keys support dot notation for nested fields: `"seo.title"` (group), `"variants.color"` (array sub-field), `"content.body"` (block sub-field), `"content._block_type"` (block type), `"tags.id"` (has-many relationship).
 --- @field order_by?       string                 Sort field (prefix with "-" for desc).
 --- @field limit?          integer                Max results to return.
 --- @field offset?         integer                Number of results to skip.
@@ -410,7 +410,7 @@ function crap.collections.update(collection, id, data, opts) end
 function crap.collections.delete(collection, id, opts) end
 
 --- @class crap.CountQuery
---- @field filters?        table<string, crap.FilterValue>  Field filters.
+--- @field filters?        table<string, crap.FilterValue>  Field filters. Supports dot notation for nested fields (same as FindQuery).
 --- @field locale?         string                 Locale code for localized fields.
 --- @field overrideAccess? boolean                Skip access control checks (default: true).
 --- @field draft?          boolean                Include draft documents (default: false).
@@ -423,7 +423,7 @@ function crap.collections.delete(collection, id, opts) end
 function crap.collections.count(collection, query) end
 
 --- @class crap.UpdateManyQuery
---- @field filters?        table<string, crap.FilterValue>  Field filters to match documents.
+--- @field filters?        table<string, crap.FilterValue>  Field filters to match documents. Supports dot notation for nested fields (same as FindQuery).
 --- @field where?          string                 JSON where clause.
 --- @field locale?         string                 Locale code for localized fields.
 --- @field overrideAccess? boolean                Skip access control checks (default: true).
@@ -441,7 +441,7 @@ function crap.collections.count(collection, query) end
 function crap.collections.update_many(collection, query, data, opts) end
 
 --- @class crap.DeleteManyQuery
---- @field filters?        table<string, crap.FilterValue>  Field filters to match documents.
+--- @field filters?        table<string, crap.FilterValue>  Field filters to match documents. Supports dot notation for nested fields (same as FindQuery).
 --- @field where?          string                 JSON where clause.
 --- @field overrideAccess? boolean                Skip access control checks (default: true).
 

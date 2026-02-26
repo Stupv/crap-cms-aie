@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use crate::config::LocaleConfig;
 use crate::core::SharedRegistry;
 use crate::db::query::{self, AccessResult, FindQuery, Filter, FilterOp, FilterClause, LocaleContext};
+use crate::db::query::filter::normalize_filter_fields;
 
 use super::TxContext;
 use super::UserContext;
@@ -70,6 +71,9 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                 Some(qt) => lua_table_to_find_query(&qt)?,
                 None => FindQuery::default(),
             };
+
+            // Normalize dot notation: group dots → __, array/block/rel dots preserved
+            normalize_filter_fields(&mut find_query.filters, &def.fields);
 
             // Enforce access control when overrideAccess = false
             if !override_access {
@@ -537,6 +541,8 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                 None => Vec::new(),
             };
 
+            normalize_filter_fields(&mut filters, &def.fields);
+
             // Enforce access control when overrideAccess = false
             if !override_access {
                 let user_doc = lua.app_data_ref::<UserContext>()
@@ -588,6 +594,7 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
             };
 
             let mut find_query = lua_table_to_find_query(&query_table)?;
+            normalize_filter_fields(&mut find_query.filters, &def.fields);
 
             // Find all matching docs first
             if !override_access {
@@ -671,6 +678,7 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
             };
 
             let mut find_query = lua_table_to_find_query(&query_table)?;
+            normalize_filter_fields(&mut find_query.filters, &def.fields);
 
             if !override_access {
                 let user_doc = lua.app_data_ref::<UserContext>()
