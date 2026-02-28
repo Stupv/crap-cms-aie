@@ -125,13 +125,13 @@ fn parse_composite_form_data(
 
             let is_composite = sf_def.map(|sf| matches!(
                 sf.field_type,
-                FieldType::Array | FieldType::Blocks | FieldType::Group
+                FieldType::Array | FieldType::Blocks | FieldType::Group | FieldType::Row | FieldType::Collapsible | FieldType::Tabs
             )).unwrap_or(false);
 
             if is_composite {
                 let nested_rows = parse_composite_form_data(&sub_form, &base_key, nested_sub_defs);
-                // For group fields, the "rows" are actually a single object
-                if sf_def.map(|sf| sf.field_type == FieldType::Group).unwrap_or(false) {
+                // For group/row fields, the "rows" are actually a single object
+                if sf_def.map(|sf| sf.field_type == FieldType::Group || sf.field_type == FieldType::Row || sf.field_type == FieldType::Collapsible || sf.field_type == FieldType::Tabs).unwrap_or(false) {
                     if let Some(first) = nested_rows.into_iter().next() {
                         obj.insert(base_key, first);
                     }
@@ -169,6 +169,7 @@ mod tests {
             relationship: None,
             fields: Vec::new(),
             blocks: Vec::new(),
+            tabs: Vec::new(),
             localized: false,
             picker_appearance: None,
             min_rows: None,

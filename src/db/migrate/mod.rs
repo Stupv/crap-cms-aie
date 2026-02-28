@@ -2,7 +2,7 @@
 
 mod collection;
 mod global;
-mod helpers;
+pub mod helpers;
 mod tracking;
 
 pub use tracking::{
@@ -60,6 +60,26 @@ pub fn sync_all(pool: &DbPool, registry: &SharedRegistry, locale_config: &Locale
         CREATE INDEX IF NOT EXISTS idx_crap_jobs_queue ON _crap_jobs(queue, status);
         CREATE INDEX IF NOT EXISTS idx_crap_jobs_slug ON _crap_jobs(slug, status);"
     ).context("Failed to create _crap_jobs table")?;
+
+    // Create image processing queue table
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS _crap_image_queue (
+            id TEXT PRIMARY KEY,
+            collection TEXT NOT NULL,
+            document_id TEXT NOT NULL,
+            source_path TEXT NOT NULL,
+            target_path TEXT NOT NULL,
+            format TEXT NOT NULL,
+            quality INTEGER NOT NULL,
+            url_column TEXT NOT NULL,
+            url_value TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            error TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            completed_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_crap_image_queue_status ON _crap_image_queue(status);"
+    ).context("Failed to create _crap_image_queue table")?;
 
     let reg = registry.read()
         .map_err(|e| anyhow::anyhow!("Registry lock poisoned: {}", e))?;

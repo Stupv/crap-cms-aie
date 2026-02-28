@@ -25,41 +25,7 @@ pub fn create(
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(id.clone())];
     let mut idx = 2;
 
-    for field in &def.fields {
-        if field.field_type == FieldType::Group {
-            for sub in &field.fields {
-                let data_key = format!("{}__{}", field.name, sub.name);
-                let col_name = locale_write_column(&data_key, sub, &locale_ctx);
-                if let Some(value) = data.get(&data_key) {
-                    columns.push(col_name);
-                    placeholders.push(format!("?{}", idx));
-                    params.push(coerce_value(&sub.field_type, value));
-                    idx += 1;
-                } else if sub.field_type == FieldType::Checkbox {
-                    columns.push(col_name);
-                    placeholders.push(format!("?{}", idx));
-                    params.push(Box::new(0i32));
-                    idx += 1;
-                }
-            }
-            continue;
-        }
-        if !field.has_parent_column() {
-            continue;
-        }
-        let col_name = locale_write_column(&field.name, field, &locale_ctx);
-        if let Some(value) = data.get(&field.name) {
-            columns.push(col_name);
-            placeholders.push(format!("?{}", idx));
-            params.push(coerce_value(&field.field_type, value));
-            idx += 1;
-        } else if field.field_type == FieldType::Checkbox {
-            columns.push(col_name);
-            placeholders.push(format!("?{}", idx));
-            params.push(Box::new(0i32));
-            idx += 1;
-        }
-    }
+    collect_insert_params(&def.fields, data, &locale_ctx, &mut columns, &mut placeholders, &mut params, &mut idx);
 
     if def.timestamps {
         columns.push("created_at".to_string());
@@ -104,37 +70,7 @@ pub fn update(
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
     let mut idx = 1;
 
-    for field in &def.fields {
-        if field.field_type == FieldType::Group {
-            for sub in &field.fields {
-                let data_key = format!("{}__{}", field.name, sub.name);
-                let col_name = locale_write_column(&data_key, sub, &locale_ctx);
-                if let Some(value) = data.get(&data_key) {
-                    set_clauses.push(format!("{} = ?{}", col_name, idx));
-                    params.push(coerce_value(&sub.field_type, value));
-                    idx += 1;
-                } else if sub.field_type == FieldType::Checkbox {
-                    set_clauses.push(format!("{} = ?{}", col_name, idx));
-                    params.push(Box::new(0i32));
-                    idx += 1;
-                }
-            }
-            continue;
-        }
-        if !field.has_parent_column() {
-            continue;
-        }
-        let col_name = locale_write_column(&field.name, field, &locale_ctx);
-        if let Some(value) = data.get(&field.name) {
-            set_clauses.push(format!("{} = ?{}", col_name, idx));
-            params.push(coerce_value(&field.field_type, value));
-            idx += 1;
-        } else if field.field_type == FieldType::Checkbox {
-            set_clauses.push(format!("{} = ?{}", col_name, idx));
-            params.push(Box::new(0i32));
-            idx += 1;
-        }
-    }
+    collect_update_params(&def.fields, data, &locale_ctx, &mut set_clauses, &mut params, &mut idx);
 
     if def.timestamps {
         set_clauses.push(format!("updated_at = ?{}", idx));
@@ -162,6 +98,121 @@ pub fn update(
 
     find_by_id_raw(conn, slug, def, id, locale_ctx)?
         .ok_or_else(|| anyhow::anyhow!("Document not found after update"))
+}
+
+/// Recursively collect columns, placeholders, and params for INSERT.
+/// Handles Group (prefixed), Row/Collapsible (promoted flat), Tabs (promoted flat),
+/// and arbitrary nesting of layout fields.
+fn collect_insert_params(
+    fields: &[crate::core::field::FieldDefinition],
+    data: &HashMap<String, String>,
+    locale_ctx: &Option<&LocaleContext>,
+    columns: &mut Vec<String>,
+    placeholders: &mut Vec<String>,
+    params: &mut Vec<Box<dyn rusqlite::types::ToSql>>,
+    idx: &mut usize,
+) {
+    for field in fields {
+        match field.field_type {
+            FieldType::Group => {
+                for sub in &field.fields {
+                    let data_key = format!("{}__{}", field.name, sub.name);
+                    let col_name = locale_write_column(&data_key, sub, locale_ctx);
+                    if let Some(value) = data.get(&data_key) {
+                        columns.push(col_name);
+                        placeholders.push(format!("?{}", *idx));
+                        params.push(coerce_value(&sub.field_type, value));
+                        *idx += 1;
+                    } else if sub.field_type == FieldType::Checkbox {
+                        columns.push(col_name);
+                        placeholders.push(format!("?{}", *idx));
+                        params.push(Box::new(0i32));
+                        *idx += 1;
+                    }
+                }
+            }
+            FieldType::Row | FieldType::Collapsible => {
+                collect_insert_params(&field.fields, data, locale_ctx, columns, placeholders, params, idx);
+            }
+            FieldType::Tabs => {
+                for tab in &field.tabs {
+                    collect_insert_params(&tab.fields, data, locale_ctx, columns, placeholders, params, idx);
+                }
+            }
+            _ => {
+                if !field.has_parent_column() {
+                    continue;
+                }
+                let col_name = locale_write_column(&field.name, field, locale_ctx);
+                if let Some(value) = data.get(&field.name) {
+                    columns.push(col_name);
+                    placeholders.push(format!("?{}", *idx));
+                    params.push(coerce_value(&field.field_type, value));
+                    *idx += 1;
+                } else if field.field_type == FieldType::Checkbox {
+                    columns.push(col_name);
+                    placeholders.push(format!("?{}", *idx));
+                    params.push(Box::new(0i32));
+                    *idx += 1;
+                }
+            }
+        }
+    }
+}
+
+/// Recursively collect SET clauses + params for UPDATE.
+/// Handles Group (prefixed), Row/Collapsible (promoted flat), Tabs (promoted flat),
+/// and arbitrary nesting of layout fields.
+fn collect_update_params(
+    fields: &[crate::core::field::FieldDefinition],
+    data: &HashMap<String, String>,
+    locale_ctx: &Option<&LocaleContext>,
+    set_clauses: &mut Vec<String>,
+    params: &mut Vec<Box<dyn rusqlite::types::ToSql>>,
+    idx: &mut usize,
+) {
+    for field in fields {
+        match field.field_type {
+            FieldType::Group => {
+                for sub in &field.fields {
+                    let data_key = format!("{}__{}", field.name, sub.name);
+                    let col_name = locale_write_column(&data_key, sub, locale_ctx);
+                    if let Some(value) = data.get(&data_key) {
+                        set_clauses.push(format!("{} = ?{}", col_name, *idx));
+                        params.push(coerce_value(&sub.field_type, value));
+                        *idx += 1;
+                    } else if sub.field_type == FieldType::Checkbox {
+                        set_clauses.push(format!("{} = ?{}", col_name, *idx));
+                        params.push(Box::new(0i32));
+                        *idx += 1;
+                    }
+                }
+            }
+            FieldType::Row | FieldType::Collapsible => {
+                collect_update_params(&field.fields, data, locale_ctx, set_clauses, params, idx);
+            }
+            FieldType::Tabs => {
+                for tab in &field.tabs {
+                    collect_update_params(&tab.fields, data, locale_ctx, set_clauses, params, idx);
+                }
+            }
+            _ => {
+                if !field.has_parent_column() {
+                    continue;
+                }
+                let col_name = locale_write_column(&field.name, field, locale_ctx);
+                if let Some(value) = data.get(&field.name) {
+                    set_clauses.push(format!("{} = ?{}", col_name, *idx));
+                    params.push(coerce_value(&field.field_type, value));
+                    *idx += 1;
+                } else if field.field_type == FieldType::Checkbox {
+                    set_clauses.push(format!("{} = ?{}", col_name, *idx));
+                    params.push(Box::new(0i32));
+                    *idx += 1;
+                }
+            }
+        }
+    }
 }
 
 /// Delete a document by ID.
@@ -597,5 +648,316 @@ mod tests {
         let doc = create(&conn, "posts", &def, &data, None).unwrap();
         let val = doc.get("settings__featured").unwrap();
         assert_eq!(val, &serde_json::json!(0));
+    }
+
+    // ── create/update with collapsible fields ───────────────────────────
+
+    #[test]
+    fn create_with_collapsible_fields() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE posts (
+                id TEXT PRIMARY KEY,
+                notes TEXT,
+                footer TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            )"
+        ).unwrap();
+
+        let def = CollectionDefinition {
+            slug: "posts".to_string(),
+            labels: CollectionLabels::default(),
+            timestamps: true,
+            fields: vec![
+                FieldDefinition {
+                    name: "extra".to_string(),
+                    field_type: FieldType::Collapsible,
+                    fields: vec![
+                        FieldDefinition { name: "notes".to_string(), ..Default::default() },
+                        FieldDefinition { name: "footer".to_string(), ..Default::default() },
+                    ],
+                    ..Default::default()
+                },
+            ],
+            admin: CollectionAdmin::default(),
+            hooks: CollectionHooks::default(),
+            auth: None,
+            upload: None,
+            access: CollectionAccess::default(),
+            live: None,
+            versions: None,
+        };
+
+        let mut data = HashMap::new();
+        data.insert("notes".to_string(), "Some notes".to_string());
+        data.insert("footer".to_string(), "Copyright".to_string());
+
+        let doc = create(&conn, "posts", &def, &data, None).unwrap();
+        assert_eq!(doc.get_str("notes"), Some("Some notes"));
+        assert_eq!(doc.get_str("footer"), Some("Copyright"));
+    }
+
+    // ── create/update with tabs fields ──────────────────────────────────
+
+    #[test]
+    fn create_with_tabs_fields() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE posts (
+                id TEXT PRIMARY KEY,
+                body TEXT,
+                slug TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            )"
+        ).unwrap();
+
+        let def = CollectionDefinition {
+            slug: "posts".to_string(),
+            labels: CollectionLabels::default(),
+            timestamps: true,
+            fields: vec![
+                FieldDefinition {
+                    name: "layout".to_string(),
+                    field_type: FieldType::Tabs,
+                    tabs: vec![
+                        FieldTab { label: "Content".to_string(), description: None, fields: vec![
+                            FieldDefinition { name: "body".to_string(), ..Default::default() },
+                        ]},
+                        FieldTab { label: "Meta".to_string(), description: None, fields: vec![
+                            FieldDefinition { name: "slug".to_string(), ..Default::default() },
+                        ]},
+                    ],
+                    ..Default::default()
+                },
+            ],
+            admin: CollectionAdmin::default(),
+            hooks: CollectionHooks::default(),
+            auth: None,
+            upload: None,
+            access: CollectionAccess::default(),
+            live: None,
+            versions: None,
+        };
+
+        let mut data = HashMap::new();
+        data.insert("body".to_string(), "Hello world".to_string());
+        data.insert("slug".to_string(), "hello-world".to_string());
+
+        let doc = create(&conn, "posts", &def, &data, None).unwrap();
+        assert_eq!(doc.get_str("body"), Some("Hello world"));
+        assert_eq!(doc.get_str("slug"), Some("hello-world"));
+    }
+
+    // ── create with tabs containing group (the regression case) ─────────
+
+    #[test]
+    fn create_with_tabs_containing_group() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE posts (
+                id TEXT PRIMARY KEY,
+                social__github TEXT,
+                social__twitter TEXT,
+                body TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            )"
+        ).unwrap();
+
+        let def = CollectionDefinition {
+            slug: "posts".to_string(),
+            labels: CollectionLabels::default(),
+            timestamps: true,
+            fields: vec![
+                FieldDefinition {
+                    name: "layout".to_string(),
+                    field_type: FieldType::Tabs,
+                    tabs: vec![
+                        FieldTab {
+                            label: "Social".to_string(),
+                            description: None,
+                            fields: vec![
+                                FieldDefinition {
+                                    name: "social".to_string(),
+                                    field_type: FieldType::Group,
+                                    fields: vec![
+                                        FieldDefinition { name: "github".to_string(), ..Default::default() },
+                                        FieldDefinition { name: "twitter".to_string(), ..Default::default() },
+                                    ],
+                                    ..Default::default()
+                                },
+                            ],
+                        },
+                        FieldTab {
+                            label: "Content".to_string(),
+                            description: None,
+                            fields: vec![
+                                FieldDefinition { name: "body".to_string(), ..Default::default() },
+                            ],
+                        },
+                    ],
+                    ..Default::default()
+                },
+            ],
+            admin: CollectionAdmin::default(),
+            hooks: CollectionHooks::default(),
+            auth: None,
+            upload: None,
+            access: CollectionAccess::default(),
+            live: None,
+            versions: None,
+        };
+
+        let mut data = HashMap::new();
+        data.insert("social__github".to_string(), "https://github.com".to_string());
+        data.insert("social__twitter".to_string(), "@test".to_string());
+        data.insert("body".to_string(), "Content here".to_string());
+
+        let doc = create(&conn, "posts", &def, &data, None).unwrap();
+        assert_eq!(doc.get_str("social__github"), Some("https://github.com"));
+        assert_eq!(doc.get_str("social__twitter"), Some("@test"));
+        assert_eq!(doc.get_str("body"), Some("Content here"));
+    }
+
+    // ── update with tabs containing group ───────────────────────────────
+
+    #[test]
+    fn update_with_tabs_containing_group() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE posts (
+                id TEXT PRIMARY KEY,
+                social__github TEXT,
+                social__twitter TEXT,
+                body TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            );
+            INSERT INTO posts (id, social__github, social__twitter, body, created_at, updated_at)
+            VALUES ('p1', 'https://github.com', '@old', 'Old body', '2024-01-01', '2024-01-01');"
+        ).unwrap();
+
+        let def = CollectionDefinition {
+            slug: "posts".to_string(),
+            labels: CollectionLabels::default(),
+            timestamps: true,
+            fields: vec![
+                FieldDefinition {
+                    name: "layout".to_string(),
+                    field_type: FieldType::Tabs,
+                    tabs: vec![
+                        FieldTab {
+                            label: "Social".to_string(),
+                            description: None,
+                            fields: vec![
+                                FieldDefinition {
+                                    name: "social".to_string(),
+                                    field_type: FieldType::Group,
+                                    fields: vec![
+                                        FieldDefinition { name: "github".to_string(), ..Default::default() },
+                                        FieldDefinition { name: "twitter".to_string(), ..Default::default() },
+                                    ],
+                                    ..Default::default()
+                                },
+                            ],
+                        },
+                        FieldTab {
+                            label: "Content".to_string(),
+                            description: None,
+                            fields: vec![
+                                FieldDefinition { name: "body".to_string(), ..Default::default() },
+                            ],
+                        },
+                    ],
+                    ..Default::default()
+                },
+            ],
+            admin: CollectionAdmin::default(),
+            hooks: CollectionHooks::default(),
+            auth: None,
+            upload: None,
+            access: CollectionAccess::default(),
+            live: None,
+            versions: None,
+        };
+
+        // Only update twitter, leave github and body untouched
+        let mut data = HashMap::new();
+        data.insert("social__twitter".to_string(), "@new".to_string());
+
+        let doc = update(&conn, "posts", &def, "p1", &data, None).unwrap();
+        assert_eq!(doc.get_str("social__twitter"), Some("@new"));
+        assert_eq!(doc.get_str("social__github"), Some("https://github.com"), "github should be preserved");
+        assert_eq!(doc.get_str("body"), Some("Old body"), "body should be preserved");
+    }
+
+    // ── deeply nested: tabs → collapsible → group ───────────────────────
+
+    #[test]
+    fn create_deeply_nested_tabs_collapsible_group() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE posts (
+                id TEXT PRIMARY KEY,
+                og__image TEXT,
+                canonical TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            )"
+        ).unwrap();
+
+        let def = CollectionDefinition {
+            slug: "posts".to_string(),
+            labels: CollectionLabels::default(),
+            timestamps: true,
+            fields: vec![
+                FieldDefinition {
+                    name: "layout".to_string(),
+                    field_type: FieldType::Tabs,
+                    tabs: vec![
+                        FieldTab {
+                            label: "Advanced".to_string(),
+                            description: None,
+                            fields: vec![
+                                FieldDefinition {
+                                    name: "advanced".to_string(),
+                                    field_type: FieldType::Collapsible,
+                                    fields: vec![
+                                        FieldDefinition {
+                                            name: "og".to_string(),
+                                            field_type: FieldType::Group,
+                                            fields: vec![
+                                                FieldDefinition { name: "image".to_string(), ..Default::default() },
+                                            ],
+                                            ..Default::default()
+                                        },
+                                        FieldDefinition { name: "canonical".to_string(), ..Default::default() },
+                                    ],
+                                    ..Default::default()
+                                },
+                            ],
+                        },
+                    ],
+                    ..Default::default()
+                },
+            ],
+            admin: CollectionAdmin::default(),
+            hooks: CollectionHooks::default(),
+            auth: None,
+            upload: None,
+            access: CollectionAccess::default(),
+            live: None,
+            versions: None,
+        };
+
+        let mut data = HashMap::new();
+        data.insert("og__image".to_string(), "hero.jpg".to_string());
+        data.insert("canonical".to_string(), "https://example.com".to_string());
+
+        let doc = create(&conn, "posts", &def, &data, None).unwrap();
+        assert_eq!(doc.get_str("og__image"), Some("hero.jpg"));
+        assert_eq!(doc.get_str("canonical"), Some("https://example.com"));
     }
 }

@@ -408,13 +408,17 @@ pub async fn create_action(
     };
 
     // Process upload if file present
+    let mut queued_conversions = Vec::new();
     if let Some(f) = file {
         if let Some(ref upload_config) = def.upload {
             match upload::process_upload(
                 &f, upload_config, &state.config_dir, &slug,
                 state.config.upload.max_file_size,
             ) {
-                Ok(processed) => inject_upload_metadata(&mut form_data, &processed),
+                Ok(processed) => {
+                    queued_conversions = processed.queued_conversions.clone();
+                    inject_upload_metadata(&mut form_data, &processed);
+                }
                 Err(e) => {
                     tracing::error!("Upload processing error: {}", e);
                     let mut fields = build_field_contexts(&def.fields, &form_data, &HashMap::new(), true, false);
@@ -489,6 +493,15 @@ pub async fn create_action(
 
     match result {
         Ok(Ok((doc, _req_context))) => {
+            // Enqueue deferred image conversions if any
+            if !queued_conversions.is_empty() {
+                if let Ok(conn) = state.pool.get() {
+                    if let Err(e) = upload::enqueue_conversions(&conn, &slug, &doc.id, &queued_conversions) {
+                        tracing::warn!("Failed to enqueue image conversions: {}", e);
+                    }
+                }
+            }
+
             state.hook_runner.publish_event(
                 &state.event_bus, &def.hooks, def.live.as_ref(),
                 crate::core::event::EventTarget::Collection,
@@ -854,6 +867,7 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
 
     // For upload collections, if a new file was uploaded, process it and delete old files
     let mut old_doc_fields: Option<HashMap<String, serde_json::Value>> = None;
+    let mut queued_conversions = Vec::new();
     if let Some(f) = file {
         if let Some(ref upload_config) = def.upload {
             // Load old document to get old file paths for cleanup
@@ -867,7 +881,10 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
                 &f, upload_config, &state.config_dir, slug,
                 state.config.upload.max_file_size,
             ) {
-                Ok(processed) => inject_upload_metadata(&mut form_data, &processed),
+                Ok(processed) => {
+                    queued_conversions = processed.queued_conversions.clone();
+                    inject_upload_metadata(&mut form_data, &processed);
+                }
                 Err(e) => {
                     tracing::error!("Upload processing error: {}", e);
                     let mut fields = build_field_contexts(&def.fields, &form_data, &HashMap::new(), true, false);
@@ -973,6 +990,15 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
             // If a new file was uploaded and old files exist, clean up old files
             if let Some(old_fields) = old_doc_fields {
                 upload::delete_upload_files(&state.config_dir, &old_fields);
+            }
+
+            // Enqueue deferred image conversions if any
+            if !queued_conversions.is_empty() {
+                if let Ok(conn) = state.pool.get() {
+                    if let Err(e) = upload::enqueue_conversions(&conn, slug, id, &queued_conversions) {
+                        tracing::warn!("Failed to enqueue image conversions: {}", e);
+                    }
+                }
             }
 
             state.hook_runner.publish_event(

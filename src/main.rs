@@ -1,7 +1,7 @@
 //! CLI entrypoint for Crap CMS. Parses flags, loads config, and starts the admin + gRPC servers.
 //!
 //! Subcommands: `serve`, `status`, `user`, `make`, `blueprint`, `db`, `typegen`, `proto`,
-//! `migrate`, `backup`, `export`, `import`, `init`, `templates`.
+//! `migrate`, `backup`, `export`, `import`, `init`, `templates`, `jobs`, `images`.
 //! Running bare `crap-cms` prints help.
 
 use anyhow::{Context, Result};
@@ -9,7 +9,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use crap_cms::commands::{
-    self, BlueprintAction, DbAction, JobsAction, MakeAction, MigrateAction,
+    self, BlueprintAction, DbAction, ImagesAction, JobsAction, MakeAction, MigrateAction,
     TemplatesAction, UserAction,
 };
 
@@ -152,6 +152,12 @@ enum Command {
         #[command(subcommand)]
         action: JobsAction,
     },
+
+    /// Manage image processing queue
+    Images {
+        #[command(subcommand)]
+        action: ImagesAction,
+    },
 }
 
 #[cfg(not(tarpaulin_include))] // binary entrypoint — not unit-testable
@@ -237,6 +243,7 @@ async fn main() -> Result<()> {
         }
         Command::Db { action } => match action {
             DbAction::Console { config } => commands::db::console(&config),
+            DbAction::Cleanup { config, confirm } => commands::db::cleanup(&config, confirm),
         },
         Command::Export { config, collection, output } => {
             commands::export::export(&config, collection, output)
@@ -246,5 +253,6 @@ async fn main() -> Result<()> {
         }
         Command::Templates { action } => commands::templates::run(action),
         Command::Jobs { action } => commands::jobs::run(action),
+        Command::Images { action } => commands::images::run(action),
     }
 }

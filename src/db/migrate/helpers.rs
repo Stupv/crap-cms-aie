@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use crate::config::LocaleConfig;
 
-pub(super) fn table_exists(conn: &rusqlite::Connection, name: &str) -> Result<bool> {
+pub fn table_exists(conn: &rusqlite::Connection, name: &str) -> Result<bool> {
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
         [name],
@@ -14,7 +14,7 @@ pub(super) fn table_exists(conn: &rusqlite::Connection, name: &str) -> Result<bo
     Ok(count > 0)
 }
 
-pub(super) fn get_table_columns(conn: &rusqlite::Connection, table: &str) -> Result<HashSet<String>> {
+pub fn get_table_columns(conn: &rusqlite::Connection, table: &str) -> Result<HashSet<String>> {
     let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", table))?;
     let columns: HashSet<String> = stmt.query_map([], |row| {
         row.get::<_, String>(1)
@@ -35,6 +35,66 @@ pub(super) fn ensure_locale_column(conn: &rusqlite::Connection, table_name: &str
             .with_context(|| format!("Failed to add _locale to {}", table_name))?;
     }
     Ok(())
+}
+
+/// A column specification derived from a field definition.
+/// Used by migration code to generate CREATE TABLE / ALTER TABLE statements.
+pub(super) struct ColumnSpec<'a> {
+    /// The column name (e.g., "title", "social__github")
+    pub col_name: String,
+    /// The field definition this column comes from (used for type, constraints)
+    pub field: &'a crate::core::field::FieldDefinition,
+    /// Whether this column is localized (needs per-locale columns)
+    pub is_localized: bool,
+}
+
+/// Recursively collect column specifications from a field tree.
+/// Handles arbitrary nesting of Group, Row, Collapsible, Tabs.
+pub(super) fn collect_column_specs<'a>(
+    fields: &'a [crate::core::field::FieldDefinition],
+    locale_config: &LocaleConfig,
+) -> Vec<ColumnSpec<'a>> {
+    let mut specs = Vec::new();
+    collect_column_specs_inner(fields, &mut specs, locale_config);
+    specs
+}
+
+fn collect_column_specs_inner<'a>(
+    fields: &'a [crate::core::field::FieldDefinition],
+    specs: &mut Vec<ColumnSpec<'a>>,
+    locale_config: &LocaleConfig,
+) {
+    use crate::core::field::FieldType;
+
+    for field in fields {
+        match field.field_type {
+            FieldType::Group => {
+                for sub in &field.fields {
+                    specs.push(ColumnSpec {
+                        col_name: format!("{}__{}", field.name, sub.name),
+                        field: sub,
+                        is_localized: (field.localized || sub.localized) && locale_config.is_enabled(),
+                    });
+                }
+            }
+            FieldType::Row | FieldType::Collapsible => {
+                collect_column_specs_inner(&field.fields, specs, locale_config);
+            }
+            FieldType::Tabs => {
+                for tab in &field.tabs {
+                    collect_column_specs_inner(&tab.fields, specs, locale_config);
+                }
+            }
+            _ => {
+                if !field.has_parent_column() { continue; }
+                specs.push(ColumnSpec {
+                    col_name: field.name.clone(),
+                    field,
+                    is_localized: field.localized && locale_config.is_enabled(),
+                });
+            }
+        }
+    }
 }
 
 /// Sync join tables for has-many relationships and array fields.

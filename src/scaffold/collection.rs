@@ -8,7 +8,7 @@ use std::path::Path;
 pub const VALID_FIELD_TYPES: &[&str] = &[
     "text", "number", "textarea", "select", "checkbox", "date",
     "email", "json", "richtext", "relationship", "array", "group",
-    "upload", "blocks",
+    "upload", "blocks", "row",
 ];
 
 struct FieldStub {

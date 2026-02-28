@@ -6,6 +6,7 @@ pub mod status;
 pub mod user;
 pub mod make;
 pub mod jobs;
+pub mod images;
 pub mod db;
 pub mod export;
 pub mod templates;
@@ -314,6 +315,15 @@ pub enum DbAction {
         /// Path to the config directory
         config: PathBuf,
     },
+    /// Detect and optionally remove orphan columns not in Lua definitions
+    Cleanup {
+        /// Path to the config directory
+        config: PathBuf,
+
+        /// Actually drop orphan columns (default: dry-run report only)
+        #[arg(long)]
+        confirm: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -389,6 +399,54 @@ pub enum JobsAction {
     Healthcheck {
         /// Path to the config directory
         config: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ImagesAction {
+    /// List image processing queue entries
+    List {
+        /// Path to the config directory
+        config: PathBuf,
+
+        /// Filter by status: pending, processing, completed, failed
+        #[arg(short, long)]
+        status: Option<String>,
+
+        /// Max entries to show
+        #[arg(short, long, default_value = "20")]
+        limit: i64,
+    },
+    /// Show queue statistics by status
+    Stats {
+        /// Path to the config directory
+        config: PathBuf,
+    },
+    /// Retry failed queue entries
+    Retry {
+        /// Path to the config directory
+        config: PathBuf,
+
+        /// Retry a specific entry by ID
+        #[arg(long)]
+        id: Option<String>,
+
+        /// Retry all failed entries
+        #[arg(long)]
+        all: bool,
+
+        /// Confirm retry all (required with --all)
+        #[arg(short = 'y', long)]
+        confirm: bool,
+    },
+    /// Purge old completed/failed entries
+    Purge {
+        /// Path to the config directory
+        config: PathBuf,
+
+        /// Delete entries older than this (e.g., "7d", "24h", "30m")
+        #[arg(long, default_value = "7d")]
+        older_than: String,
     },
 }
 

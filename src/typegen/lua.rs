@@ -161,6 +161,29 @@ fn render_find_overloads(out: &mut String, registry: &Registry) {
 }
 
 fn write_field(out: &mut String, field: &FieldDefinition) {
+    // Row is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Row {
+        for sub in &field.fields {
+            write_field(out, sub);
+        }
+        return;
+    }
+    // Collapsible is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Collapsible {
+        for sub in &field.fields {
+            write_field(out, sub);
+        }
+        return;
+    }
+    // Tabs is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Tabs {
+        for tab in &field.tabs {
+            for sub in &tab.fields {
+                write_field(out, sub);
+            }
+        }
+        return;
+    }
     let lua_type = field_to_lua_type(field);
     let opt = if is_optional(field) { "?" } else { "" };
     writeln!(out, "---@field {}{opt} {lua_type}", field.name).unwrap();
@@ -198,6 +221,9 @@ fn field_to_lua_type(field: &FieldDefinition) -> String {
             format!("crap.array_row.{}[]", pascal)
         }
         FieldType::Group => "table".to_string(),
+        FieldType::Row => "table".to_string(), // layout-only; sub-fields are promoted
+        FieldType::Collapsible => "table".to_string(), // layout-only; sub-fields are promoted
+        FieldType::Tabs => "table".to_string(), // layout-only; sub-fields are promoted
         FieldType::Upload => "string".to_string(),
         FieldType::Blocks => "table[]".to_string(),
     }

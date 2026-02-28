@@ -119,6 +119,7 @@ async fn create_upload(
         Ok(p) => p,
         Err(e) => return json_error(StatusCode::BAD_REQUEST, &e.to_string()),
     };
+    let queued_conversions = processed.queued_conversions.clone();
     inject_upload_metadata(&mut form_data, &processed);
 
     // Strip field-level create-denied fields
@@ -163,6 +164,15 @@ async fn create_upload(
 
     match result {
         Ok(Ok((doc, _req_context))) => {
+            // Enqueue deferred image conversions if any
+            if !queued_conversions.is_empty() {
+                if let Ok(conn) = state.pool.get() {
+                    if let Err(e) = upload::enqueue_conversions(&conn, &slug, &doc.id, &queued_conversions) {
+                        tracing::warn!("Failed to enqueue image conversions: {}", e);
+                    }
+                }
+            }
+
             let edited_by = auth_user.as_ref().map(|au| EventUser {
                 id: au.claims.sub.clone(),
                 email: au.claims.email.clone(),
@@ -242,13 +252,17 @@ async fn update_upload(
     }
 
     // Process upload if a new file was provided
+    let mut queued_conversions = Vec::new();
     if let Some(f) = file {
         if let Some(ref upload_config) = def.upload {
             match upload::process_upload(
                 &f, upload_config, &state.config_dir, &slug,
                 state.config.upload.max_file_size,
             ) {
-                Ok(processed) => inject_upload_metadata(&mut form_data, &processed),
+                Ok(processed) => {
+                    queued_conversions = processed.queued_conversions.clone();
+                    inject_upload_metadata(&mut form_data, &processed);
+                }
                 Err(e) => return json_error(StatusCode::BAD_REQUEST, &e.to_string()),
             }
         }
@@ -297,6 +311,15 @@ async fn update_upload(
             // Clean up old files on success
             if let Some(old_fields) = old_doc_fields {
                 upload::delete_upload_files(&state.config_dir, &old_fields);
+            }
+
+            // Enqueue deferred image conversions if any
+            if !queued_conversions.is_empty() {
+                if let Ok(conn) = state.pool.get() {
+                    if let Err(e) = upload::enqueue_conversions(&conn, &slug, &id, &queued_conversions) {
+                        tracing::warn!("Failed to enqueue image conversions: {}", e);
+                    }
+                }
             }
 
             let edited_by = auth_user.as_ref().map(|au| EventUser {

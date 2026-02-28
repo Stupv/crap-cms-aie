@@ -11,6 +11,7 @@ use crate::core::SharedRegistry;
 use crate::core::job::JobDefinition;
 use crate::db::DbPool;
 use crate::db::query::jobs as job_query;
+use crate::db::query::images as image_query;
 use crate::hooks::lifecycle::HookRunner;
 
 /// Start the scheduler background loop. Runs until the task is cancelled.
@@ -34,11 +35,13 @@ pub async fn start(
     let poll_interval = tokio::time::Duration::from_secs(config.poll_interval);
     let cron_interval = tokio::time::Duration::from_secs(config.cron_interval);
     let heartbeat_interval = tokio::time::Duration::from_secs(config.heartbeat_interval);
-    let auto_purge_secs = config.auto_purge_seconds();
+    let auto_purge_secs = config.auto_purge;
 
     let mut poll_ticker = tokio::time::interval(poll_interval);
     let mut cron_ticker = tokio::time::interval(cron_interval);
     let mut heartbeat_ticker = tokio::time::interval(heartbeat_interval);
+    // Image processing queue uses the same poll interval as jobs
+    let mut image_ticker = tokio::time::interval(poll_interval);
 
     // Track running job IDs for heartbeat updates
     let running_jobs: Arc<std::sync::Mutex<Vec<String>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -105,8 +108,72 @@ pub async fn start(
                     }
                 }
             }
+            _ = image_ticker.tick() => {
+                // Process pending image format conversions
+                let pool = pool.clone();
+                let batch_size = config.image_queue_batch_size;
+                tokio::spawn(async move {
+                    if let Err(e) = process_image_queue(&pool, batch_size).await {
+                        tracing::error!("Image queue error: {}", e);
+                    }
+                });
+            }
         }
     }
+}
+
+/// Process pending image format conversions from the queue.
+#[cfg(not(tarpaulin_include))]
+async fn process_image_queue(pool: &DbPool, batch_size: usize) -> Result<()> {
+    let conn = pool.get().context("Image queue: failed to get DB connection")?;
+    let entries = image_query::claim_pending_images(&conn, batch_size)?;
+    drop(conn);
+
+    for entry in entries {
+        let pool_inner = pool.clone();
+        let entry_id = entry.id.clone();
+
+        // Process in a blocking task (image encoding is CPU-bound)
+        let result = tokio::task::spawn_blocking(move || {
+            let pool = pool_inner;
+            crate::core::upload::process_image_entry(
+                &entry.source_path,
+                &entry.target_path,
+                &entry.format,
+                entry.quality,
+            )?;
+
+            // Update the document's format URL column
+            let conn = pool.get().context("Image queue: failed to get DB connection")?;
+            conn.execute(
+                &format!(
+                    "UPDATE \"{}\" SET \"{}\" = ?1 WHERE id = ?2",
+                    entry.collection, entry.url_column
+                ),
+                rusqlite::params![entry.url_value, entry.document_id],
+            ).context("Image queue: failed to update document")?;
+
+            Ok::<(), anyhow::Error>(())
+        }).await;
+
+        let conn = pool.get().context("Image queue: failed to get DB connection")?;
+        match result {
+            Ok(Ok(())) => {
+                image_query::complete_image_entry(&conn, &entry_id)?;
+                tracing::debug!("Image conversion completed: {}", entry_id);
+            }
+            Ok(Err(e)) => {
+                tracing::warn!("Image conversion failed: {}: {}", entry_id, e);
+                image_query::fail_image_entry(&conn, &entry_id, &e.to_string())?;
+            }
+            Err(e) => {
+                tracing::error!("Image conversion panicked: {}: {}", entry_id, e);
+                image_query::fail_image_entry(&conn, &entry_id, &format!("panic: {}", e))?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Poll for pending jobs and execute them.

@@ -11,6 +11,10 @@ crap.collections.define("media", {
             { name = "card", width = 640, height = 480, fit = "cover" },
             { name = "hero", width = 1920, height = 1080, fit = "cover" },
         },
+        format_options = {
+            webp = { quality = 80 },
+            avif = { quality = 60, queue = true },  -- AVIF processed in background
+        },
         admin_thumbnail = "thumbnail",
     },
     admin = {

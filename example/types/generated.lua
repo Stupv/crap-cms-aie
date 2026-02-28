@@ -54,12 +54,18 @@
 ---@field thumbnail_url? string
 ---@field thumbnail_width? number
 ---@field thumbnail_height? number
+---@field thumbnail_webp_url? string
+---@field thumbnail_avif_url? string
 ---@field card_url? string
 ---@field card_width? number
 ---@field card_height? number
+---@field card_webp_url? string
+---@field card_avif_url? string
 ---@field hero_url? string
 ---@field hero_width? number
 ---@field hero_height? number
+---@field hero_webp_url? string
+---@field hero_avif_url? string
 ---@field alt string
 ---@field caption? string
 
@@ -74,12 +80,18 @@
 ---@field thumbnail_url? string
 ---@field thumbnail_width? number
 ---@field thumbnail_height? number
+---@field thumbnail_webp_url? string
+---@field thumbnail_avif_url? string
 ---@field card_url? string
 ---@field card_width? number
 ---@field card_height? number
+---@field card_webp_url? string
+---@field card_avif_url? string
 ---@field hero_url? string
 ---@field hero_width? number
 ---@field hero_height? number
+---@field hero_webp_url? string
+---@field hero_avif_url? string
 ---@field alt string
 ---@field caption? string
 ---@field created_at? string
@@ -107,12 +119,18 @@
 ---@field thumbnail_url? crap.FilterValue
 ---@field thumbnail_width? crap.FilterValue
 ---@field thumbnail_height? crap.FilterValue
+---@field thumbnail_webp_url? crap.FilterValue
+---@field thumbnail_avif_url? crap.FilterValue
 ---@field card_url? crap.FilterValue
 ---@field card_width? crap.FilterValue
 ---@field card_height? crap.FilterValue
+---@field card_webp_url? crap.FilterValue
+---@field card_avif_url? crap.FilterValue
 ---@field hero_url? crap.FilterValue
 ---@field hero_width? crap.FilterValue
 ---@field hero_height? crap.FilterValue
+---@field hero_webp_url? crap.FilterValue
+---@field hero_avif_url? crap.FilterValue
 ---@field alt? crap.FilterValue
 ---@field caption? crap.FilterValue
 ---@field created_at? crap.FilterValue
@@ -120,7 +138,7 @@
 
 ---@class crap.query.Media
 ---@field filters? crap.filters.Media
----@field order_by? "id"|"-id"|"filename"|"-filename"|"mime_type"|"-mime_type"|"filesize"|"-filesize"|"width"|"-width"|"height"|"-height"|"url"|"-url"|"thumbnail_url"|"-thumbnail_url"|"thumbnail_width"|"-thumbnail_width"|"thumbnail_height"|"-thumbnail_height"|"card_url"|"-card_url"|"card_width"|"-card_width"|"card_height"|"-card_height"|"hero_url"|"-hero_url"|"hero_width"|"-hero_width"|"hero_height"|"-hero_height"|"alt"|"-alt"|"caption"|"-caption"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field order_by? "id"|"-id"|"filename"|"-filename"|"mime_type"|"-mime_type"|"filesize"|"-filesize"|"width"|"-width"|"height"|"-height"|"url"|"-url"|"thumbnail_url"|"-thumbnail_url"|"thumbnail_width"|"-thumbnail_width"|"thumbnail_height"|"-thumbnail_height"|"thumbnail_webp_url"|"-thumbnail_webp_url"|"thumbnail_avif_url"|"-thumbnail_avif_url"|"card_url"|"-card_url"|"card_width"|"-card_width"|"card_height"|"-card_height"|"card_webp_url"|"-card_webp_url"|"card_avif_url"|"-card_avif_url"|"hero_url"|"-hero_url"|"hero_width"|"-hero_width"|"hero_height"|"-hero_height"|"hero_webp_url"|"-hero_webp_url"|"hero_avif_url"|"-hero_avif_url"|"alt"|"-alt"|"caption"|"-caption"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
 ---@field locale? string
@@ -129,14 +147,26 @@
 ---@field title string
 ---@field slug string
 ---@field content? table[]
----@field seo? table
+---@field featured_image? string
+---@field show_title? boolean
+---@field page_template? "default" | "full_width" | "sidebar" | "landing"
+---@field meta_title? string
+---@field meta_description? string
+---@field og_image? string
+---@field no_index? boolean
 
 ---@class crap.doc.Pages
 ---@field id string
 ---@field title string
 ---@field slug string
 ---@field content? table[]
----@field seo? table
+---@field featured_image? string
+---@field show_title? boolean
+---@field page_template? "default" | "full_width" | "sidebar" | "landing"
+---@field meta_title? string
+---@field meta_description? string
+---@field og_image? string
+---@field no_index? boolean
 ---@field created_at? string
 ---@field updated_at? string
 
@@ -155,17 +185,20 @@
 ---@field id? crap.FilterValue
 ---@field title? crap.FilterValue
 ---@field slug? crap.FilterValue
----@field seo__meta_title? crap.FilterValue
----@field seo__meta_description? crap.FilterValue
----@field seo__og_image? crap.FilterValue
----@field seo__no_index? crap.FilterValue
+---@field featured_image? crap.FilterValue
+---@field show_title? crap.FilterValue
+---@field page_template? crap.FilterValue
+---@field meta_title? crap.FilterValue
+---@field meta_description? crap.FilterValue
+---@field og_image? crap.FilterValue
+---@field no_index? crap.FilterValue
 ---@field _status? crap.FilterValue
 ---@field created_at? crap.FilterValue
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Pages
 ---@field filters? crap.filters.Pages
----@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__og_image"|"-seo__og_image"|"seo__no_index"|"-seo__no_index"|"_status"|"-_status"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"featured_image"|"-featured_image"|"show_title"|"-show_title"|"page_template"|"-page_template"|"meta_title"|"-meta_title"|"meta_description"|"-meta_description"|"og_image"|"-og_image"|"no_index"|"-no_index"|"_status"|"-_status"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
 ---@field locale? string
@@ -179,6 +212,7 @@
 ---@field content? table[]
 ---@field post_type "article" | "link" | "video"
 ---@field external_url? string
+---@field hide_from_feed? boolean
 ---@field category? string
 ---@field tags? string[]
 ---@field published_at? string
@@ -194,6 +228,7 @@
 ---@field content? table[]
 ---@field post_type "article" | "link" | "video"
 ---@field external_url? string
+---@field hide_from_feed? boolean
 ---@field category? string
 ---@field tags? string[]
 ---@field published_at? string
@@ -221,11 +256,11 @@
 ---@field excerpt? crap.FilterValue
 ---@field post_type? crap.FilterValue
 ---@field external_url? crap.FilterValue
+---@field hide_from_feed? crap.FilterValue
 ---@field category? crap.FilterValue
 ---@field published_at? crap.FilterValue
 ---@field seo__meta_title? crap.FilterValue
 ---@field seo__meta_description? crap.FilterValue
----@field seo__og_image? crap.FilterValue
 ---@field seo__no_index? crap.FilterValue
 ---@field _status? crap.FilterValue
 ---@field created_at? crap.FilterValue
@@ -233,7 +268,7 @@
 
 ---@class crap.query.Posts
 ---@field filters? crap.filters.Posts
----@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"author"|"-author"|"featured_image"|"-featured_image"|"excerpt"|"-excerpt"|"post_type"|"-post_type"|"external_url"|"-external_url"|"category"|"-category"|"published_at"|"-published_at"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__og_image"|"-seo__og_image"|"seo__no_index"|"-seo__no_index"|"_status"|"-_status"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"author"|"-author"|"featured_image"|"-featured_image"|"excerpt"|"-excerpt"|"post_type"|"-post_type"|"external_url"|"-external_url"|"hide_from_feed"|"-hide_from_feed"|"category"|"-category"|"published_at"|"-published_at"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"_status"|"-_status"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
 ---@field locale? string
@@ -328,20 +363,22 @@
 ---@field site_name string
 ---@field tagline? string
 ---@field description? string
+---@field social? table
 ---@field logo? string
 ---@field favicon? string
----@field social? table
----@field seo? table
+---@field default_title_suffix? string
+---@field default_og_image? string
 
 ---@class crap.global_doc.SiteSettings
 ---@field id string
 ---@field site_name string
 ---@field tagline? string
 ---@field description? string
+---@field social? table
 ---@field logo? string
 ---@field favicon? string
----@field social? table
----@field seo? table
+---@field default_title_suffix? string
+---@field default_og_image? string
 ---@field created_at? string
 ---@field updated_at? string
 

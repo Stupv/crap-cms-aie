@@ -109,6 +109,17 @@ pub(super) fn prost_value_to_json(v: &prost_types::Value) -> serde_json::Value {
 
 /// Convert a `FieldDefinition` to a protobuf `FieldInfo`, including options, blocks, and relationship metadata.
 pub(super) fn field_def_to_proto(field: &crate::core::field::FieldDefinition) -> content::FieldInfo {
+    // Tabs stores sub-fields in field.tabs[*].fields, not field.fields.
+    // Flatten all tab sub-fields into the proto `fields` list.
+    let sub_fields: Vec<_> = if field.field_type == crate::core::field::FieldType::Tabs {
+        field.tabs.iter()
+            .flat_map(|tab| tab.fields.iter())
+            .map(field_def_to_proto)
+            .collect()
+    } else {
+        field.fields.iter().map(field_def_to_proto).collect()
+    };
+
     content::FieldInfo {
         name: field.name.clone(),
         r#type: field.field_type.as_str().to_string(),
@@ -120,7 +131,7 @@ pub(super) fn field_def_to_proto(field: &crate::core::field::FieldDefinition) ->
             label: o.label.resolve_default().to_string(),
             value: o.value.clone(),
         }).collect(),
-        fields: field.fields.iter().map(field_def_to_proto).collect(),
+        fields: sub_fields,
         relationship_max_depth: field.relationship.as_ref().and_then(|r| r.max_depth),
         blocks: field.blocks.iter().map(|bd| content::BlockInfo {
             block_type: bd.block_type.clone(),

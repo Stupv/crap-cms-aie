@@ -77,6 +77,8 @@ pub fn hook_ctx_to_string_map(
 ) -> HashMap<String, String> {
     let mut map = HashMap::new();
     for (k, v) in &ctx.data {
+        // Row sub-fields are already top-level (no nesting, no prefix) — handled below as regular keys.
+
         // Check if this key is a group field that needs flattening
         let is_group = fields.iter().any(|f| {
             f.name == *k && f.field_type == FieldType::Group

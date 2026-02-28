@@ -14,6 +14,7 @@ use crate::core::SharedRegistry;
 /// and run init.lua. Returns a populated SharedRegistry.
 pub fn init_lua(config_dir: &Path, config: &CrapConfig) -> Result<SharedRegistry> {
     let lua = Lua::new();
+    lua.set_app_data(api::VmLabel("init".to_string()));
     let registry = crate::core::Registry::shared();
 
     // Set up package paths rooted at config dir
@@ -24,26 +25,33 @@ pub fn init_lua(config_dir: &Path, config: &CrapConfig) -> Result<SharedRegistry
 
     // Auto-load collections/*.lua
     let collections_dir = config_dir.join("collections");
-    if collections_dir.exists() {
-        load_lua_dir(&lua, &collections_dir, "collection")?;
-    }
+    let n_collections = if collections_dir.exists() {
+        load_lua_dir(&lua, &collections_dir, "collection")?
+    } else {
+        0
+    };
 
     // Auto-load globals/*.lua
     let globals_dir = config_dir.join("globals");
-    if globals_dir.exists() {
-        load_lua_dir(&lua, &globals_dir, "global")?;
-    }
+    let n_globals = if globals_dir.exists() {
+        load_lua_dir(&lua, &globals_dir, "global")?
+    } else {
+        0
+    };
 
     // Auto-load jobs/*.lua
     let jobs_dir = config_dir.join("jobs");
-    if jobs_dir.exists() {
-        load_lua_dir(&lua, &jobs_dir, "job")?;
-    }
+    let n_jobs = if jobs_dir.exists() {
+        load_lua_dir(&lua, &jobs_dir, "job")?
+    } else {
+        0
+    };
 
     // Execute init.lua if present
     let init_path = config_dir.join("init.lua");
-    if init_path.exists() {
-        tracing::info!("Executing init.lua");
+    let has_init = init_path.exists();
+    if has_init {
+        tracing::debug!("[lua:init] Executing init.lua");
         let code = std::fs::read_to_string(&init_path)
             .with_context(|| format!("Failed to read {}", init_path.display()))?;
         lua.load(&code)
@@ -51,6 +59,12 @@ pub fn init_lua(config_dir: &Path, config: &CrapConfig) -> Result<SharedRegistry
             .exec()
             .with_context(|| "Failed to execute init.lua")?;
     }
+
+    tracing::info!(
+        "Lua init: loaded {} collection(s), {} global(s), {} job(s){}",
+        n_collections, n_globals, n_jobs,
+        if has_init { ", executed init.lua" } else { "" }
+    );
 
     Ok(registry)
 }
@@ -69,7 +83,8 @@ fn setup_package_paths(lua: &Lua, config_dir: &Path) -> Result<()> {
 }
 
 /// Load and execute all `.lua` files in a directory (used for `collections/` and `globals/`).
-pub(crate) fn load_lua_dir(lua: &Lua, dir: &Path, kind: &str) -> Result<()> {
+/// Returns the number of files loaded.
+pub(crate) fn load_lua_dir(lua: &Lua, dir: &Path, kind: &str) -> Result<usize> {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .with_context(|| format!("Failed to read {} directory: {}", kind, dir.display()))?
         .filter_map(|e| e.ok())
@@ -80,13 +95,15 @@ pub(crate) fn load_lua_dir(lua: &Lua, dir: &Path, kind: &str) -> Result<()> {
 
     entries.sort_by_key(|e| e.file_name());
 
+    let count = entries.len();
     for entry in entries {
         let path = entry.path();
         let name = match path.file_name() {
             Some(n) => n.to_string_lossy(),
             None => continue,
         };
-        tracing::info!("Loading {}: {}", kind, name);
+        let label = lua.app_data_ref::<api::VmLabel>().map(|l| l.0.clone()).unwrap_or_else(|| "lua".into());
+        tracing::debug!("[lua:{label}] Loading {kind}: {name}");
 
         let code = std::fs::read_to_string(&path)
             .with_context(|| format!("Failed to read {}", path.display()))?;
@@ -96,5 +113,5 @@ pub(crate) fn load_lua_dir(lua: &Lua, dir: &Path, kind: &str) -> Result<()> {
             .with_context(|| format!("Failed to execute {}", path.display()))?;
     }
 
-    Ok(())
+    Ok(count)
 }

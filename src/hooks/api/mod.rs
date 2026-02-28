@@ -17,6 +17,10 @@ use std::path::Path;
 use crate::config::CrapConfig;
 use crate::core::SharedRegistry;
 
+/// Label stored in `Lua::app_data` to identify which VM is logging.
+/// Init VM uses `"init"`, pool VMs use `"vm-1"`, `"vm-2"`, etc.
+pub struct VmLabel(pub String);
+
 use parse::{parse_collection_definition, parse_global_definition};
 
 /// Register the `crap` global table with sub-tables for collections, globals, log, util,
@@ -142,18 +146,22 @@ fn register_globals(lua: &Lua, crap: &Table, registry: SharedRegistry) -> Result
 }
 
 /// Register `crap.log` — info, warn, error.
+/// Log messages include the VM label (e.g. `[lua:init]`, `[lua:vm-1]`).
 fn register_log(lua: &Lua, crap: &Table) -> Result<()> {
     let log_table = lua.create_table()?;
-    let log_info = lua.create_function(|_, msg: String| {
-        tracing::info!("[lua] {}", msg);
+    let log_info = lua.create_function(|lua, msg: String| {
+        let label = lua.app_data_ref::<VmLabel>().map(|l| l.0.clone()).unwrap_or_else(|| "lua".into());
+        tracing::info!("[lua:{label}] {msg}");
         Ok(())
     })?;
-    let log_warn = lua.create_function(|_, msg: String| {
-        tracing::warn!("[lua] {}", msg);
+    let log_warn = lua.create_function(|lua, msg: String| {
+        let label = lua.app_data_ref::<VmLabel>().map(|l| l.0.clone()).unwrap_or_else(|| "lua".into());
+        tracing::warn!("[lua:{label}] {msg}");
         Ok(())
     })?;
-    let log_error = lua.create_function(|_, msg: String| {
-        tracing::error!("[lua] {}", msg);
+    let log_error = lua.create_function(|lua, msg: String| {
+        let label = lua.app_data_ref::<VmLabel>().map(|l| l.0.clone()).unwrap_or_else(|| "lua".into());
+        tracing::error!("[lua:{label}] {msg}");
         Ok(())
     })?;
     log_table.set("info", log_info)?;
@@ -661,6 +669,25 @@ fn field_config_to_lua(lua: &Lua, f: &crate::core::field::FieldDefinition) -> ml
         tbl.set("blocks", blocks)?;
     }
 
+    // tabs (for Tabs field type)
+    if !f.tabs.is_empty() {
+        let tabs = lua.create_table()?;
+        for (i, tab) in f.tabs.iter().enumerate() {
+            let tt = lua.create_table()?;
+            tt.set("label", tab.label.as_str())?;
+            if let Some(ref desc) = tab.description {
+                tt.set("description", desc.as_str())?;
+            }
+            let tf = lua.create_table()?;
+            for (j, sf) in tab.fields.iter().enumerate() {
+                tf.set(j + 1, field_config_to_lua(lua, sf)?)?;
+            }
+            tt.set("fields", tf)?;
+            tabs.set(i + 1, tt)?;
+        }
+        tbl.set("tabs", tabs)?;
+    }
+
     Ok(tbl)
 }
 
@@ -1083,7 +1110,7 @@ mod tests {
                 }],
                 admin_thumbnail: Some("thumb".to_string()),
                 format_options: crate::core::upload::FormatOptions {
-                    webp: Some(crate::core::upload::FormatQuality { quality: 80 }),
+                    webp: Some(crate::core::upload::FormatQuality { quality: 80, queue: false }),
                     avif: None,
                 },
             }),

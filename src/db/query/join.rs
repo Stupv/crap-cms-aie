@@ -242,7 +242,7 @@ pub fn find_array_rows(
                     // Composite sub-fields store JSON in TEXT columns —
                     // attempt to parse so nested data comes back structured.
                     match sf.field_type {
-                        FieldType::Array | FieldType::Blocks | FieldType::Group | FieldType::Json => {
+                        FieldType::Array | FieldType::Blocks | FieldType::Group | FieldType::Row | FieldType::Collapsible | FieldType::Tabs | FieldType::Json => {
                             serde_json::from_str(&s).unwrap_or(serde_json::Value::String(s))
                         }
                         _ => serde_json::Value::String(s),
@@ -433,6 +433,10 @@ pub fn hydrate_document(
                 if !group_obj.is_empty() {
                     doc.fields.insert(field.name.clone(), serde_json::Value::Object(group_obj));
                 }
+            }
+            FieldType::Row | FieldType::Collapsible | FieldType::Tabs => {
+                // Row/Collapsible/Tabs sub-fields are already top-level columns — no reconstruction needed.
+                // They stay as flat fields in doc.fields with their own names.
             }
             FieldType::Blocks => {
                 let mut rows = find_block_rows(conn, slug, &field.name, &doc.id, locale_ref)?;

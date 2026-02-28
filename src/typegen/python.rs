@@ -105,6 +105,29 @@ fn render_global(out: &mut String, global: &GlobalDefinition) {
 }
 
 fn write_field(out: &mut String, field: &FieldDefinition) {
+    // Row is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Row {
+        for sub in &field.fields {
+            write_field(out, sub);
+        }
+        return;
+    }
+    // Collapsible is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Collapsible {
+        for sub in &field.fields {
+            write_field(out, sub);
+        }
+        return;
+    }
+    // Tabs is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Tabs {
+        for tab in &field.tabs {
+            for sub in &tab.fields {
+                write_field(out, sub);
+            }
+        }
+        return;
+    }
     let py_type = field_to_py(field);
     if is_optional(field) {
         writeln!(out, "    {}: Optional[{}] = None", field.name, py_type).unwrap();
@@ -129,6 +152,9 @@ fn field_to_py(field: &FieldDefinition) -> String {
         }
         FieldType::Array => "list[dict]".to_string(),
         FieldType::Group => "dict".to_string(),
+        FieldType::Row => "dict".to_string(), // layout-only; sub-fields are promoted
+        FieldType::Collapsible => "dict".to_string(), // layout-only; sub-fields are promoted
+        FieldType::Tabs => "dict".to_string(), // layout-only; sub-fields are promoted
         FieldType::Blocks => "list[dict]".to_string(),
     }
 }

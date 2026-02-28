@@ -56,6 +56,15 @@ pub enum FieldType {
     Group,
     Upload,
     Blocks,
+    /// Layout-only row container. Sub-fields are promoted to parent-level columns
+    /// (no prefix, unlike Group). Used only for horizontal layout in the admin UI.
+    Row,
+    /// Layout-only collapsible container. Sub-fields are promoted to parent-level columns
+    /// (no prefix, like Row). Used for a collapsible section in the admin UI.
+    Collapsible,
+    /// Layout-only tabbed container. Sub-fields (across all tabs) are promoted to
+    /// parent-level columns (no prefix, like Row). Used for tabbed sections in the admin UI.
+    Tabs,
 }
 
 /// Configuration for relationship fields (target collection, cardinality, depth cap).
@@ -86,6 +95,9 @@ impl FieldType {
             FieldType::Group => "TEXT", // never used — sub-fields get prefixed columns
             FieldType::Upload => "TEXT",
             FieldType::Blocks => "TEXT", // never used — blocks use join tables
+            FieldType::Row => "TEXT", // never used — sub-fields are promoted to parent
+            FieldType::Collapsible => "TEXT", // never used — sub-fields are promoted to parent
+            FieldType::Tabs => "TEXT", // never used — sub-fields are promoted to parent
         }
     }
 
@@ -106,6 +118,9 @@ impl FieldType {
             "group" => FieldType::Group,
             "upload" => FieldType::Upload,
             "blocks" => FieldType::Blocks,
+            "row" => FieldType::Row,
+            "collapsible" => FieldType::Collapsible,
+            "tabs" => FieldType::Tabs,
             other => {
                 tracing::warn!("Unknown field type '{}', defaulting to Text", other);
                 FieldType::Text
@@ -129,6 +144,9 @@ impl FieldType {
             FieldType::Group => "group",
             FieldType::Upload => "upload",
             FieldType::Blocks => "blocks",
+            FieldType::Row => "row",
+            FieldType::Collapsible => "collapsible",
+            FieldType::Tabs => "tabs",
         }
     }
 }
@@ -138,6 +156,17 @@ impl FieldType {
 pub struct SelectOption {
     pub label: LocalizedString,
     pub value: String,
+}
+
+/// A single tab within a Tabs layout field.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FieldTab {
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub fields: Vec<FieldDefinition>,
 }
 
 /// A block type definition for Blocks fields.
@@ -262,6 +291,8 @@ pub struct FieldDefinition {
     #[serde(default)]
     pub blocks: Vec<BlockDefinition>,
     #[serde(default)]
+    pub tabs: Vec<FieldTab>,
+    #[serde(default)]
     pub localized: bool,
     /// For date fields: controls the HTML input type and storage format.
     /// Valid values: "dayOnly" (default), "dayAndTime", "timeOnly", "monthOnly".
@@ -291,6 +322,7 @@ impl Default for FieldDefinition {
             relationship: None,
             fields: Vec::new(),
             blocks: Vec::new(),
+            tabs: Vec::new(),
             localized: false,
             picker_appearance: None,
             min_rows: None,
@@ -301,12 +333,15 @@ impl Default for FieldDefinition {
 
 impl FieldDefinition {
     /// Whether this field has a column on the parent table.
-    /// False for Array, Group, Blocks, and has-many Relationship (they use join tables or prefixed columns).
+    /// False for Array, Group, Row, Blocks, and has-many Relationship (they use join tables or prefixed/promoted columns).
     pub fn has_parent_column(&self) -> bool {
         match self.field_type {
             FieldType::Array => false,
             FieldType::Group => false, // sub-fields get prefixed columns instead
-            FieldType::Blocks => false, // uses a join table
+            FieldType::Row => false,         // sub-fields promoted to parent level (no prefix)
+            FieldType::Collapsible => false, // sub-fields promoted to parent level (no prefix)
+            FieldType::Tabs => false,        // sub-fields promoted to parent level (no prefix)
+            FieldType::Blocks => false,      // uses a join table
             FieldType::Relationship => {
                 match &self.relationship {
                     Some(rc) => !rc.has_many,
@@ -370,6 +405,7 @@ mod tests {
             FieldType::Email, FieldType::Json, FieldType::Richtext,
             FieldType::Relationship, FieldType::Array,
             FieldType::Group, FieldType::Upload, FieldType::Blocks,
+            FieldType::Row, FieldType::Collapsible, FieldType::Tabs,
         ];
         for ft in &types {
             assert_eq!(FieldType::from_str(ft.as_str()), *ft);
@@ -443,6 +479,42 @@ mod tests {
     }
 
     #[test]
+    fn has_parent_column_row_false() {
+        let f = FieldDefinition { field_type: FieldType::Row, ..Default::default() };
+        assert!(!f.has_parent_column(), "Row should not have parent column");
+    }
+
+    #[test]
+    fn row_from_str() {
+        assert_eq!(FieldType::from_str("row"), FieldType::Row);
+        assert_eq!(FieldType::Row.as_str(), "row");
+    }
+
+    #[test]
+    fn collapsible_from_str() {
+        assert_eq!(FieldType::from_str("collapsible"), FieldType::Collapsible);
+        assert_eq!(FieldType::Collapsible.as_str(), "collapsible");
+    }
+
+    #[test]
+    fn tabs_from_str() {
+        assert_eq!(FieldType::from_str("tabs"), FieldType::Tabs);
+        assert_eq!(FieldType::Tabs.as_str(), "tabs");
+    }
+
+    #[test]
+    fn has_parent_column_collapsible_false() {
+        let f = FieldDefinition { field_type: FieldType::Collapsible, ..Default::default() };
+        assert!(!f.has_parent_column(), "Collapsible should not have parent column");
+    }
+
+    #[test]
+    fn has_parent_column_tabs_false() {
+        let f = FieldDefinition { field_type: FieldType::Tabs, ..Default::default() };
+        assert!(!f.has_parent_column(), "Tabs should not have parent column");
+    }
+
+    #[test]
     fn has_parent_column_relationship_has_one() {
         let f = FieldDefinition {
             field_type: FieldType::Relationship,
@@ -513,6 +585,7 @@ mod tests {
         assert!(f.relationship.is_none());
         assert!(f.fields.is_empty());
         assert!(f.blocks.is_empty());
+        assert!(f.tabs.is_empty());
         assert!(f.min_rows.is_none());
         assert!(f.max_rows.is_none());
     }

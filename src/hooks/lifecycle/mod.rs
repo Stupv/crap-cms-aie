@@ -107,6 +107,10 @@ pub(super) struct HookDepth(pub(super) u32);
 /// Max allowed hook depth, read from config and stored in Lua `app_data`.
 pub(super) struct MaxHookDepth(pub(super) u32);
 
+/// Whether the system is in default-deny mode for access control.
+/// Stored in Lua `app_data` so access checks can read it without signature changes.
+pub(super) struct DefaultDeny(pub(super) bool);
+
 /// Thread-safe hook runner with a pool of Lua VMs for concurrent execution.
 #[derive(Clone)]
 pub struct HookRunner {
@@ -119,8 +123,10 @@ fn create_lua_vm(
     config_dir: &Path,
     registry: SharedRegistry,
     config: &CrapConfig,
+    vm_index: usize,
 ) -> Result<Lua> {
     let lua = Lua::new();
+    lua.set_app_data(crate::hooks::api::VmLabel(format!("vm-{}", vm_index)));
 
     // Set up package paths
     let config_str = config_dir.to_string_lossy();
@@ -143,24 +149,26 @@ fn create_lua_vm(
     // Initialize hook depth tracking
     lua.set_app_data(HookDepth(0));
     lua.set_app_data(MaxHookDepth(config.hooks.max_depth));
+    lua.set_app_data(DefaultDeny(config.access.default_deny));
 
     // Auto-load collections/*.lua, globals/*.lua, and jobs/*.lua
     let collections_dir = config_dir.join("collections");
     if collections_dir.exists() {
-        crate::hooks::load_lua_dir(&lua, &collections_dir, "collection")?;
+        let _ = crate::hooks::load_lua_dir(&lua, &collections_dir, "collection")?;
     }
     let globals_dir = config_dir.join("globals");
     if globals_dir.exists() {
-        crate::hooks::load_lua_dir(&lua, &globals_dir, "global")?;
+        let _ = crate::hooks::load_lua_dir(&lua, &globals_dir, "global")?;
     }
     let jobs_dir = config_dir.join("jobs");
     if jobs_dir.exists() {
-        crate::hooks::load_lua_dir(&lua, &jobs_dir, "job")?;
+        let _ = crate::hooks::load_lua_dir(&lua, &jobs_dir, "job")?;
     }
 
     // Execute init.lua so crap.hooks.register() calls take effect in this VM
     let init_path = config_dir.join("init.lua");
     if init_path.exists() {
+        tracing::debug!("[lua:vm-{vm_index}] Executing init.lua");
         let code = std::fs::read_to_string(&init_path)
             .with_context(|| format!("Failed to read {}", init_path.display()))?;
         lua.load(&code)
@@ -180,8 +188,8 @@ impl HookRunner {
         tracing::info!("HookRunner: creating pool of {} Lua VMs", pool_size);
 
         let mut vms = Vec::with_capacity(pool_size);
-        for _ in 0..pool_size {
-            vms.push(create_lua_vm(config_dir, registry.clone(), config)?);
+        for i in 0..pool_size {
+            vms.push(create_lua_vm(config_dir, registry.clone(), config, i + 1)?);
         }
 
         Ok(Self {

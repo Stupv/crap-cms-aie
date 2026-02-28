@@ -40,6 +40,7 @@ pub struct ContentService {
     locale_config: LocaleConfig,
     config_dir: std::path::PathBuf,
     login_limiter: std::sync::Arc<LoginRateLimiter>,
+    reset_token_expiry: u64,
 }
 
 /// Untestable as unit: helper methods require full pool + registry + hook_runner.
@@ -61,6 +62,7 @@ impl ContentService {
         locale_config: LocaleConfig,
         config_dir: std::path::PathBuf,
         login_limiter: std::sync::Arc<LoginRateLimiter>,
+        reset_token_expiry: u64,
     ) -> Self {
         Self {
             pool,
@@ -76,6 +78,7 @@ impl ContentService {
             locale_config,
             config_dir,
             login_limiter,
+            reset_token_expiry,
         }
     }
 

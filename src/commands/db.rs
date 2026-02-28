@@ -1,6 +1,7 @@
-//! `migrate`, `db console`, and `backup` commands.
+//! `migrate`, `db console`, `backup`, and `db cleanup` commands.
 
 use anyhow::{Context, Result};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 /// Handle the `migrate` subcommand.
@@ -235,6 +236,7 @@ pub fn backup(
 
     // Write manifest.json
     let manifest = serde_json::json!({
+        "crap_version": env!("CARGO_PKG_VERSION"),
         "timestamp": chrono::Local::now().to_rfc3339(),
         "db_size": db_size,
         "uploads_size": uploads_size,
@@ -248,4 +250,347 @@ pub fn backup(
 
     println!("\nBackup complete: {}", backup_dir.display());
     Ok(())
+}
+
+/// Detect and optionally remove orphan columns not present in Lua definitions.
+///
+/// Orphan columns are columns that exist in a collection table but do not correspond
+/// to any field in the current Lua definition. System columns (`_`-prefixed) are
+/// always kept. Because Lua definitions include plugin-added fields (plugins run
+/// during `init_lua`), plugin columns are never flagged as orphans.
+///
+/// By default runs in dry-run mode (report only). Pass `confirm = true` to actually
+/// drop orphan columns.
+#[cfg(not(tarpaulin_include))]
+pub fn cleanup(config_dir: &Path, confirm: bool) -> Result<()> {
+    let config_dir = config_dir.canonicalize().unwrap_or_else(|_| config_dir.to_path_buf());
+
+    let cfg = crate::config::CrapConfig::load(&config_dir)
+        .context("Failed to load config")?;
+    let registry = crate::hooks::init_lua(&config_dir, &cfg)
+        .context("Failed to initialize Lua VM")?;
+    let pool = crate::db::pool::create_pool(&config_dir, &cfg)
+        .context("Failed to create database pool")?;
+
+    crate::db::migrate::sync_all(&pool, &registry, &cfg.locale)
+        .context("Failed to sync database schema")?;
+
+    let reg = registry.read()
+        .map_err(|e| anyhow::anyhow!("Registry lock poisoned: {}", e))?;
+
+    let conn = pool.get().context("Failed to get database connection")?;
+
+    let orphans = find_orphan_columns(&conn, &reg, &cfg.locale)?;
+
+    if orphans.is_empty() {
+        println!("No orphan columns found. All columns match Lua definitions.");
+        return Ok(());
+    }
+
+    println!("Orphan columns (not in Lua definitions):\n");
+    for (table, cols) in &orphans {
+        for col in cols {
+            println!("  {}.{}", table, col);
+        }
+    }
+
+    let total: usize = orphans.iter().map(|(_, cols)| cols.len()).sum();
+    println!("\n{} orphan column(s) found.", total);
+
+    if !confirm {
+        println!("\nThis is a dry run. Pass --confirm to drop these columns.");
+        println!("Note: dropping columns is irreversible. Back up your database first.");
+        return Ok(());
+    }
+
+    // SQLite supports DROP COLUMN since 3.35.0 (2021-03-12).
+    // Check version first.
+    let version: String = conn.query_row("SELECT sqlite_version()", [], |row| row.get(0))?;
+    let parts: Vec<u32> = version.split('.').filter_map(|s| s.parse().ok()).collect();
+    if parts.len() >= 2 && (parts[0] < 3 || (parts[0] == 3 && parts[1] < 35)) {
+        anyhow::bail!(
+            "SQLite {} does not support DROP COLUMN (requires 3.35.0+). \
+             Consider recreating the table manually.",
+            version
+        );
+    }
+
+    for (table, cols) in &orphans {
+        for col in cols {
+            let sql = format!("ALTER TABLE {} DROP COLUMN {}", table, col);
+            conn.execute(&sql, [])
+                .with_context(|| format!("Failed to drop column {}.{}", table, col))?;
+            println!("Dropped: {}.{}", table, col);
+        }
+    }
+
+    println!("\n{} column(s) dropped.", total);
+    Ok(())
+}
+
+/// Find orphan columns across all collection tables.
+///
+/// Returns a vec of (table_name, vec_of_orphan_column_names).
+/// System columns (`_`-prefixed, `id`, `created_at`, `updated_at`) are excluded.
+/// Plugin columns are NOT orphans because plugins run during `init_lua` and their
+/// fields are included in the registry definitions.
+pub fn find_orphan_columns(
+    conn: &rusqlite::Connection,
+    reg: &crate::core::Registry,
+    locale_config: &crate::config::LocaleConfig,
+) -> Result<Vec<(String, Vec<String>)>> {
+    use crate::core::field::FieldType;
+
+    let mut results = Vec::new();
+
+    let mut slugs: Vec<_> = reg.collections.keys().collect();
+    slugs.sort();
+
+    for slug in slugs {
+        let def = &reg.collections[slug];
+
+        // Get actual DB columns
+        let existing = crate::db::migrate::helpers::get_table_columns(conn, slug)?;
+        if existing.is_empty() {
+            continue; // table doesn't exist yet
+        }
+
+        // Build expected column names from Lua definition
+        let mut expected: HashSet<String> = HashSet::new();
+        expected.insert("id".to_string());
+
+        for field in &def.fields {
+            if field.field_type == FieldType::Group {
+                for sub in &field.fields {
+                    let base = format!("{}__{}", field.name, sub.name);
+                    let is_localized = (field.localized || sub.localized) && locale_config.is_enabled();
+                    if is_localized {
+                        for locale in &locale_config.locales {
+                            expected.insert(format!("{}__{}", base, locale));
+                        }
+                    } else {
+                        expected.insert(base);
+                    }
+                }
+                continue;
+            }
+            if field.field_type == FieldType::Row || field.field_type == FieldType::Collapsible {
+                for sub in &field.fields {
+                    let is_localized = sub.localized && locale_config.is_enabled();
+                    if is_localized {
+                        for locale in &locale_config.locales {
+                            expected.insert(format!("{}__{}", sub.name, locale));
+                        }
+                    } else {
+                        expected.insert(sub.name.clone());
+                    }
+                }
+                continue;
+            }
+            if field.field_type == FieldType::Tabs {
+                for tab in &field.tabs {
+                    for sub in &tab.fields {
+                        let is_localized = sub.localized && locale_config.is_enabled();
+                        if is_localized {
+                            for locale in &locale_config.locales {
+                                expected.insert(format!("{}__{}", sub.name, locale));
+                            }
+                        } else {
+                            expected.insert(sub.name.clone());
+                        }
+                    }
+                }
+                continue;
+            }
+            if !field.has_parent_column() {
+                continue;
+            }
+            if field.localized && locale_config.is_enabled() {
+                for locale in &locale_config.locales {
+                    expected.insert(format!("{}__{}", field.name, locale));
+                }
+            } else {
+                expected.insert(field.name.clone());
+            }
+        }
+
+        if def.timestamps {
+            expected.insert("created_at".to_string());
+            expected.insert("updated_at".to_string());
+        }
+
+        // Find orphans: columns in DB but not in expected, excluding system columns
+        let mut orphan_cols: Vec<String> = existing.iter()
+            .filter(|col| {
+                !expected.contains(*col)
+                    && !col.starts_with('_')  // system columns: _password_hash, _locked, etc.
+            })
+            .cloned()
+            .collect();
+
+        if !orphan_cols.is_empty() {
+            orphan_cols.sort();
+            results.push((slug.clone(), orphan_cols));
+        }
+    }
+
+    Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::LocaleConfig;
+    use crate::core::collection::*;
+    use crate::core::field::{FieldDefinition, FieldType};
+    use crate::core::Registry;
+
+    fn no_locale() -> LocaleConfig {
+        LocaleConfig::default()
+    }
+
+    fn locale_en_de() -> LocaleConfig {
+        LocaleConfig {
+            default_locale: "en".to_string(),
+            locales: vec!["en".to_string(), "de".to_string()],
+            fallback: true,
+        }
+    }
+
+    fn simple_collection(slug: &str, fields: Vec<FieldDefinition>) -> CollectionDefinition {
+        CollectionDefinition {
+            slug: slug.to_string(),
+            labels: CollectionLabels::default(),
+            timestamps: true,
+            fields,
+            admin: CollectionAdmin::default(),
+            hooks: CollectionHooks::default(),
+            auth: None,
+            upload: None,
+            access: CollectionAccess::default(),
+            live: None,
+            versions: None,
+        }
+    }
+
+    fn text_field(name: &str) -> FieldDefinition {
+        FieldDefinition {
+            name: name.to_string(),
+            field_type: FieldType::Text,
+            ..Default::default()
+        }
+    }
+
+    fn make_conn() -> rusqlite::Connection {
+        rusqlite::Connection::open_in_memory().unwrap()
+    }
+
+    #[test]
+    fn no_orphans_when_columns_match() {
+        let conn = make_conn();
+        conn.execute("CREATE TABLE posts (id TEXT, title TEXT, created_at TEXT, updated_at TEXT)", []).unwrap();
+
+        let mut reg = Registry::default();
+        reg.collections.insert("posts".to_string(), simple_collection("posts", vec![text_field("title")]));
+
+        let orphans = find_orphan_columns(&conn, &reg, &no_locale()).unwrap();
+        assert!(orphans.is_empty());
+    }
+
+    #[test]
+    fn detects_orphan_column() {
+        let conn = make_conn();
+        conn.execute("CREATE TABLE posts (id TEXT, title TEXT, old_field TEXT, created_at TEXT, updated_at TEXT)", []).unwrap();
+
+        let mut reg = Registry::default();
+        reg.collections.insert("posts".to_string(), simple_collection("posts", vec![text_field("title")]));
+
+        let orphans = find_orphan_columns(&conn, &reg, &no_locale()).unwrap();
+        assert_eq!(orphans.len(), 1);
+        assert_eq!(orphans[0].0, "posts");
+        assert_eq!(orphans[0].1, vec!["old_field"]);
+    }
+
+    #[test]
+    fn system_columns_not_orphans() {
+        let conn = make_conn();
+        conn.execute(
+            "CREATE TABLE users (id TEXT, email TEXT, _password_hash TEXT, _locked INTEGER, created_at TEXT, updated_at TEXT)",
+            [],
+        ).unwrap();
+
+        let mut reg = Registry::default();
+        reg.collections.insert("users".to_string(), simple_collection("users", vec![text_field("email")]));
+
+        let orphans = find_orphan_columns(&conn, &reg, &no_locale()).unwrap();
+        assert!(orphans.is_empty(), "system columns should not be flagged");
+    }
+
+    #[test]
+    fn group_fields_not_orphans() {
+        let conn = make_conn();
+        conn.execute(
+            "CREATE TABLE posts (id TEXT, seo__meta_title TEXT, seo__meta_desc TEXT, created_at TEXT, updated_at TEXT)",
+            [],
+        ).unwrap();
+
+        let mut reg = Registry::default();
+        reg.collections.insert("posts".to_string(), simple_collection("posts", vec![
+            FieldDefinition {
+                name: "seo".to_string(),
+                field_type: FieldType::Group,
+                fields: vec![text_field("meta_title"), text_field("meta_desc")],
+                ..Default::default()
+            },
+        ]));
+
+        let orphans = find_orphan_columns(&conn, &reg, &no_locale()).unwrap();
+        assert!(orphans.is_empty(), "group fields should not be flagged");
+    }
+
+    #[test]
+    fn localized_columns_not_orphans() {
+        let conn = make_conn();
+        conn.execute(
+            "CREATE TABLE posts (id TEXT, title__en TEXT, title__de TEXT, created_at TEXT, updated_at TEXT)",
+            [],
+        ).unwrap();
+
+        let mut reg = Registry::default();
+        reg.collections.insert("posts".to_string(), simple_collection("posts", vec![
+            FieldDefinition {
+                name: "title".to_string(),
+                field_type: FieldType::Text,
+                localized: true,
+                ..Default::default()
+            },
+        ]));
+
+        let orphans = find_orphan_columns(&conn, &reg, &locale_en_de()).unwrap();
+        assert!(orphans.is_empty());
+    }
+
+    #[test]
+    fn detects_orphan_among_valid_columns() {
+        let conn = make_conn();
+        conn.execute(
+            "CREATE TABLE posts (id TEXT, title TEXT, removed_field TEXT, seo__meta TEXT, created_at TEXT, updated_at TEXT)",
+            [],
+        ).unwrap();
+
+        let mut reg = Registry::default();
+        reg.collections.insert("posts".to_string(), simple_collection("posts", vec![
+            text_field("title"),
+            FieldDefinition {
+                name: "seo".to_string(),
+                field_type: FieldType::Group,
+                fields: vec![text_field("meta")],
+                ..Default::default()
+            },
+        ]));
+
+        let orphans = find_orphan_columns(&conn, &reg, &no_locale()).unwrap();
+        assert_eq!(orphans.len(), 1);
+        assert_eq!(orphans[0].1, vec!["removed_field"]);
+    }
 }

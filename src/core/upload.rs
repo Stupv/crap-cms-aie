@@ -73,10 +73,14 @@ pub struct FormatOptions {
     pub avif: Option<FormatQuality>,
 }
 
-/// Quality setting for a converted image format (0-100).
+/// Quality and processing settings for a converted image format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormatQuality {
     pub quality: u8,
+    /// When true, this format's conversion is deferred to the background image processing
+    /// queue instead of happening synchronously during upload. Default: false.
+    #[serde(default)]
+    pub queue: bool,
 }
 
 /// How an image is resized to fit the target dimensions.
@@ -97,6 +101,17 @@ pub struct UploadedFile {
     pub data: Vec<u8>,
 }
 
+/// A deferred format conversion to be inserted into the image processing queue.
+#[derive(Debug, Clone)]
+pub struct QueuedConversion {
+    pub source_path: String,
+    pub target_path: String,
+    pub format: String,
+    pub quality: u8,
+    pub url_column: String,
+    pub url_value: String,
+}
+
 /// Result of processing an upload (original + generated sizes/formats).
 #[derive(Debug)]
 pub struct ProcessedUpload {
@@ -107,6 +122,8 @@ pub struct ProcessedUpload {
     pub height: Option<u32>,
     pub url: String,
     pub sizes: HashMap<String, SizeResult>,
+    /// Format conversions deferred to the background queue (when per-format `queue = true`).
+    pub queued_conversions: Vec<QueuedConversion>,
 }
 
 /// Output metadata for one generated image size.
@@ -218,6 +235,7 @@ pub fn process_upload(
     let mut width = None;
     let mut height = None;
     let mut sizes = HashMap::new();
+    let mut queued_conversions = Vec::new();
 
     if is_image {
         // Load image for processing
@@ -240,7 +258,7 @@ pub fn process_upload(
             let size_path = upload_dir.join(&size_filename);
             resized.save(&size_path)
                 .with_context(|| format!("Failed to save resized image: {}", size_path.display()))?;
-            guard.push(size_path);
+            guard.push(size_path.clone());
 
             let size_url = format!("/uploads/{}/{}", collection_slug, size_filename);
             let mut formats = HashMap::new();
@@ -249,22 +267,44 @@ pub fn process_upload(
             if let Some(ref webp_opts) = upload_config.format_options.webp {
                 let webp_filename = format!("{}_{}.webp", stem, size_def.name);
                 let webp_path = upload_dir.join(&webp_filename);
-                save_webp(&resized, &webp_path, webp_opts.quality)?;
-                guard.push(webp_path);
-                formats.insert("webp".to_string(), FormatResult {
-                    url: format!("/uploads/{}/{}", collection_slug, webp_filename),
-                });
+                let webp_url = format!("/uploads/{}/{}", collection_slug, webp_filename);
+
+                if webp_opts.queue {
+                    queued_conversions.push(QueuedConversion {
+                        source_path: size_path.to_string_lossy().to_string(),
+                        target_path: webp_path.to_string_lossy().to_string(),
+                        format: "webp".to_string(),
+                        quality: webp_opts.quality,
+                        url_column: format!("{}_webp_url", size_def.name),
+                        url_value: webp_url,
+                    });
+                } else {
+                    save_webp(&resized, &webp_path, webp_opts.quality)?;
+                    guard.push(webp_path);
+                    formats.insert("webp".to_string(), FormatResult { url: webp_url });
+                }
             }
 
             // AVIF variant
             if let Some(ref avif_opts) = upload_config.format_options.avif {
                 let avif_filename = format!("{}_{}.avif", stem, size_def.name);
                 let avif_path = upload_dir.join(&avif_filename);
-                save_avif(&resized, &avif_path, avif_opts.quality)?;
-                guard.push(avif_path);
-                formats.insert("avif".to_string(), FormatResult {
-                    url: format!("/uploads/{}/{}", collection_slug, avif_filename),
-                });
+                let avif_url = format!("/uploads/{}/{}", collection_slug, avif_filename);
+
+                if avif_opts.queue {
+                    queued_conversions.push(QueuedConversion {
+                        source_path: size_path.to_string_lossy().to_string(),
+                        target_path: avif_path.to_string_lossy().to_string(),
+                        format: "avif".to_string(),
+                        quality: avif_opts.quality,
+                        url_column: format!("{}_avif_url", size_def.name),
+                        url_value: avif_url,
+                    });
+                } else {
+                    save_avif(&resized, &avif_path, avif_opts.quality)?;
+                    guard.push(avif_path);
+                    formats.insert("avif".to_string(), FormatResult { url: avif_url });
+                }
             }
 
             sizes.insert(size_def.name.clone(), SizeResult {
@@ -285,6 +325,7 @@ pub fn process_upload(
         height,
         url,
         sizes,
+        queued_conversions,
     })
 }
 
@@ -471,6 +512,55 @@ pub fn delete_upload_files(
     }
 }
 
+/// Insert queued format conversions into the image processing queue.
+/// Called after document creation, when the document ID is known.
+pub fn enqueue_conversions(
+    conn: &rusqlite::Connection,
+    collection: &str,
+    document_id: &str,
+    conversions: &[QueuedConversion],
+) -> anyhow::Result<()> {
+    use crate::db::query::images::insert_image_queue_entry;
+    for c in conversions {
+        insert_image_queue_entry(
+            conn, collection, document_id,
+            &c.source_path, &c.target_path, &c.format, c.quality,
+            &c.url_column, &c.url_value,
+        )?;
+    }
+    Ok(())
+}
+
+/// Process a single image queue entry: read source, convert to target format, save to disk.
+/// Returns Ok(()) on success, Err on failure.
+pub fn process_image_entry(
+    source_path: &str,
+    target_path: &str,
+    format: &str,
+    quality: u8,
+) -> anyhow::Result<()> {
+    let source = std::path::Path::new(source_path);
+    if !source.exists() {
+        anyhow::bail!("Source image not found: {}", source_path);
+    }
+
+    let img = image::open(source)
+        .with_context(|| format!("Failed to decode image: {}", source_path))?;
+
+    let target = std::path::Path::new(target_path);
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    match format {
+        "webp" => save_webp(&img, target, quality)?,
+        "avif" => save_avif(&img, target, quality)?,
+        _ => anyhow::bail!("Unsupported format: {}", format),
+    }
+
+    Ok(())
+}
+
 /// Format a file size in human-readable form.
 pub fn format_filesize(bytes: u64) -> String {
     if bytes < 1024 {
@@ -545,7 +635,7 @@ mod tests {
                 ImageSize { name: "card".into(), width: 640, height: 480, fit: ImageFit::Cover },
             ],
             format_options: FormatOptions {
-                webp: Some(FormatQuality { quality: 80 }),
+                webp: Some(FormatQuality { quality: 80, queue: false }),
                 avif: None,
             },
             ..Default::default()
@@ -966,7 +1056,7 @@ mod tests {
                 ImageSize { name: "small".into(), width: 30, height: 30, fit: ImageFit::Cover },
             ],
             format_options: FormatOptions {
-                webp: Some(FormatQuality { quality: 80 }),
+                webp: Some(FormatQuality { quality: 80, queue: false }),
                 avif: None,
             },
             ..Default::default()
@@ -995,7 +1085,7 @@ mod tests {
             ],
             format_options: FormatOptions {
                 webp: None,
-                avif: Some(FormatQuality { quality: 50 }),
+                avif: Some(FormatQuality { quality: 50, queue: false }),
             },
             ..Default::default()
         };
@@ -1022,8 +1112,8 @@ mod tests {
                 ImageSize { name: "icon".into(), width: 20, height: 20, fit: ImageFit::Fill },
             ],
             format_options: FormatOptions {
-                webp: Some(FormatQuality { quality: 80 }),
-                avif: Some(FormatQuality { quality: 50 }),
+                webp: Some(FormatQuality { quality: 80, queue: false }),
+                avif: Some(FormatQuality { quality: 50, queue: false }),
             },
             ..Default::default()
         };
@@ -1088,6 +1178,7 @@ mod tests {
             height: Some(600),
             url: "/uploads/media/abc_photo.png".into(),
             sizes: HashMap::new(),
+            queued_conversions: Vec::new(),
         };
         let mut form_data = HashMap::new();
         inject_upload_metadata(&mut form_data, &processed);
@@ -1110,6 +1201,7 @@ mod tests {
             height: None,
             url: "/uploads/docs/doc.pdf".into(),
             sizes: HashMap::new(),
+            queued_conversions: Vec::new(),
         };
         let mut form_data = HashMap::new();
         inject_upload_metadata(&mut form_data, &processed);
@@ -1139,6 +1231,7 @@ mod tests {
             height: Some(600),
             url: "/uploads/m/img.png".into(),
             sizes,
+            queued_conversions: Vec::new(),
         };
         let mut form_data = HashMap::new();
         inject_upload_metadata(&mut form_data, &processed);
@@ -1247,7 +1340,7 @@ mod tests {
             ],
             format_options: FormatOptions {
                 webp: None,
-                avif: Some(FormatQuality { quality: 50 }),
+                avif: Some(FormatQuality { quality: 50, queue: false }),
             },
             ..Default::default()
         };
@@ -1282,8 +1375,8 @@ mod tests {
                 ImageSize { name: "thumb".into(), width: 100, height: 100, fit: ImageFit::Cover },
             ],
             format_options: FormatOptions {
-                webp: Some(FormatQuality { quality: 80 }),
-                avif: Some(FormatQuality { quality: 50 }),
+                webp: Some(FormatQuality { quality: 80, queue: false }),
+                avif: Some(FormatQuality { quality: 50, queue: false }),
             },
             ..Default::default()
         };
@@ -1396,5 +1489,112 @@ mod tests {
         let result = resize_image(&img, &size);
         assert_eq!(result.width(), 100);
         assert_eq!(result.height(), 50);
+    }
+
+    #[test]
+    fn process_upload_queue_mode_defers_format_conversion() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let png_data = create_test_png(80, 80);
+        let file = UploadedFile {
+            filename: "photo.png".into(),
+            content_type: "image/png".into(),
+            data: png_data,
+        };
+        let config = CollectionUpload {
+            enabled: true,
+            image_sizes: vec![
+                ImageSize { name: "small".into(), width: 30, height: 30, fit: ImageFit::Cover },
+            ],
+            format_options: FormatOptions {
+                webp: Some(FormatQuality { quality: 80, queue: true }),
+                avif: Some(FormatQuality { quality: 50, queue: true }),
+            },
+            ..Default::default()
+        };
+        let result = process_upload(&file, &config, tmp.path(), "media", 50 * 1024 * 1024)
+            .expect("should succeed");
+
+        // Sizes should be created but format variants should NOT exist on disk
+        let small = &result.sizes["small"];
+        assert!(small.formats.is_empty(), "No format variants should be created in queue mode");
+        assert!(!small.url.is_empty());
+
+        // Should have queued conversions instead
+        assert_eq!(result.queued_conversions.len(), 2);
+        let formats: Vec<&str> = result.queued_conversions.iter().map(|q| q.format.as_str()).collect();
+        assert!(formats.contains(&"webp"));
+        assert!(formats.contains(&"avif"));
+
+        // Verify source paths point to the sized image
+        for q in &result.queued_conversions {
+            assert!(q.source_path.contains("_small.png"), "Source should be the sized image");
+            assert!(!q.url_value.is_empty());
+            assert!(!q.url_column.is_empty());
+        }
+    }
+
+    #[test]
+    fn process_image_entry_converts_webp() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let png_data = create_test_png(30, 30);
+        let source = tmp.path().join("source.png");
+        std::fs::write(&source, &png_data).unwrap();
+
+        // Save the source as a proper image file first
+        let img = image::load_from_memory(&png_data).unwrap();
+        img.save(&source).unwrap();
+
+        let target = tmp.path().join("output.webp");
+        process_image_entry(
+            source.to_str().unwrap(),
+            target.to_str().unwrap(),
+            "webp",
+            80,
+        ).expect("WebP conversion should succeed");
+
+        assert!(target.exists(), "WebP file should be created");
+        assert!(target.metadata().unwrap().len() > 0);
+    }
+
+    #[test]
+    fn process_image_entry_converts_avif() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let png_data = create_test_png(30, 30);
+        let source = tmp.path().join("source.png");
+        let img = image::load_from_memory(&png_data).unwrap();
+        img.save(&source).unwrap();
+
+        let target = tmp.path().join("output.avif");
+        process_image_entry(
+            source.to_str().unwrap(),
+            target.to_str().unwrap(),
+            "avif",
+            50,
+        ).expect("AVIF conversion should succeed");
+
+        assert!(target.exists(), "AVIF file should be created");
+    }
+
+    #[test]
+    fn process_image_entry_missing_source_fails() {
+        let result = process_image_entry("/nonexistent/file.png", "/tmp/out.webp", "webp", 80);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn process_image_entry_unknown_format_fails() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let png_data = create_test_png(10, 10);
+        let source = tmp.path().join("source.png");
+        let img = image::load_from_memory(&png_data).unwrap();
+        img.save(&source).unwrap();
+
+        let result = process_image_entry(
+            source.to_str().unwrap(),
+            tmp.path().join("out.xyz").to_str().unwrap(),
+            "xyz",
+            80,
+        );
+        assert!(result.is_err());
     }
 }

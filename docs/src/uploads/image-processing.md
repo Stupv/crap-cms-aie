@@ -50,6 +50,36 @@ format_options = {
 
 Format variants are generated for each image size, not for the original. This keeps original files untouched.
 
+### Background Queue
+
+By default, format conversion happens synchronously during upload. For large images or slow formats like AVIF, you can defer conversion to a background queue:
+
+```lua
+format_options = {
+    webp = { quality = 80 },
+    avif = { quality = 60, queue = true },  -- processed in background
+}
+```
+
+When `queue = true`:
+
+1. The upload completes immediately without generating that format variant
+2. A queue entry is inserted into the `_crap_image_queue` table
+3. The scheduler picks up pending entries and processes them in the background
+4. Once complete, the document's URL column is updated with the new file path
+
+This is useful for AVIF which is significantly slower to encode than WebP. The `queue` option is per-format — you can queue AVIF while keeping WebP synchronous.
+
+Use the [`images` CLI command](../cli/flags.md#images--manage-image-processing-queue) to inspect and manage the queue:
+
+```bash
+crap-cms images stats ./my-project       # counts by status
+crap-cms images list ./my-project        # list recent entries
+crap-cms images list ./my-project -s failed  # show only failed
+crap-cms images retry ./my-project --all -y  # retry all failed
+crap-cms images purge ./my-project --older-than 7d  # clean up old entries
+```
+
 ## Processing Pipeline
 
 For each uploaded image:

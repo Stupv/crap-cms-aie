@@ -5,7 +5,7 @@
 crap.log.info("Six Seven blog initializing...")
 
 -- Plugins (run after collection definitions are loaded)
-require("plugins.seo").install()
+require("plugins.seo").install({ exclude = { "pages" } })
 
 -- Global hook: log all content changes
 crap.hooks.register("after_change", function(context)

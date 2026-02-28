@@ -140,7 +140,7 @@ pub fn build_router(state: AdminState, has_auth: bool) -> Router {
         .nest("/api", upload_api)
         .nest_service("/static", static_assets::overlay_service(config_dir))
         .route("/uploads/{collection_slug}/{filename}", get(uploads::serve_upload))
-        .layer(DefaultBodyLimit::max(100 * 1024 * 1024))
+        .layer(DefaultBodyLimit::max((state.config.upload.max_file_size + 1024 * 1024) as usize))
         .layer(middleware::from_fn(csrf_middleware));
 
     // Add CORS layer if configured (runs before CSRF in request processing)

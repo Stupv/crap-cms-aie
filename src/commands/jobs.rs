@@ -150,9 +150,9 @@ pub fn run(action: super::JobsAction) -> Result<()> {
             let pool = crate::db::pool::create_pool(&config_dir, &cfg)?;
 
             // Parse duration string
-            let secs = parse_duration_string(&older_than)
+            let secs = crate::config::parse_duration_string(&older_than)
                 .ok_or_else(|| anyhow::anyhow!(
-                    "Invalid duration '{}'. Use format like '7d' (days), '24h' (hours), '30m' (minutes)",
+                    "Invalid duration '{}'. Use format like '7d' (days), '24h' (hours), '30m' (minutes), '60s' (seconds)",
                     older_than
                 ))?;
 
@@ -233,55 +233,4 @@ pub fn run(action: super::JobsAction) -> Result<()> {
     }
 }
 
-/// Parse a duration string like "7d", "24h", "30m" into seconds.
-pub(crate) fn parse_duration_string(s: &str) -> Option<u64> {
-    let s = s.trim();
-    if s.is_empty() {
-        return None;
-    }
-    let (num_str, suffix) = s.split_at(s.len().saturating_sub(1));
-    let num: u64 = num_str.parse().ok()?;
-    match suffix {
-        "d" => Some(num * 86400),
-        "h" => Some(num * 3600),
-        "m" => Some(num * 60),
-        _ => None,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_duration_days() {
-        assert_eq!(parse_duration_string("7d"), Some(7 * 86400));
-        assert_eq!(parse_duration_string("1d"), Some(86400));
-        assert_eq!(parse_duration_string("30d"), Some(30 * 86400));
-    }
-
-    #[test]
-    fn parse_duration_hours() {
-        assert_eq!(parse_duration_string("24h"), Some(24 * 3600));
-        assert_eq!(parse_duration_string("1h"), Some(3600));
-    }
-
-    #[test]
-    fn parse_duration_minutes() {
-        assert_eq!(parse_duration_string("30m"), Some(30 * 60));
-        assert_eq!(parse_duration_string("1m"), Some(60));
-    }
-
-    #[test]
-    fn parse_duration_invalid() {
-        assert_eq!(parse_duration_string(""), None);
-        assert_eq!(parse_duration_string("abc"), None);
-        assert_eq!(parse_duration_string("7s"), None);
-        assert_eq!(parse_duration_string("d"), None);
-    }
-
-    #[test]
-    fn parse_duration_whitespace() {
-        assert_eq!(parse_duration_string("  7d  "), Some(7 * 86400));
-    }
-}
+// parse_duration_string moved to crate::config — tests are there

@@ -148,14 +148,34 @@ crap.collections.define("posts", {
 				position = "sidebar",
 			},
 		},
+		-- Collapsible: groups publishing options in a toggleable section
 		{
-			name = "external_url",
-			type = "text",
+			name = "publishing_options",
+			type = "collapsible",
 			admin = {
-				label = "External URL",
-				placeholder = "https://example.com",
-				description = "URL for link/video posts (shown only for non-article types)",
-				condition = "hooks.posts.show_media_url",
+				label = "Publishing Options",
+				collapsed = true,
+			},
+			fields = {
+				{
+					name = "external_url",
+					type = "text",
+					admin = {
+						label = "External URL",
+						placeholder = "https://example.com",
+						description = "URL for link/video posts (shown only for non-article types)",
+						condition = "hooks.posts.show_media_url",
+					},
+				},
+				{
+					name = "hide_from_feed",
+					type = "checkbox",
+					default_value = false,
+					admin = {
+						label = "Hide from Feed",
+						description = "Exclude this post from RSS feeds and listing pages",
+					},
+				},
 			},
 		},
 		{
@@ -190,54 +210,7 @@ crap.collections.define("posts", {
 				position = "sidebar",
 			},
 		},
-		-- SEO group
-		{
-			name = "seo",
-			type = "group",
-			admin = {
-				label = "SEO",
-				description = "Search engine optimization settings",
-				collapsed = true,
-			},
-			fields = {
-				{
-					name = "meta_title",
-					type = "text",
-					admin = {
-						label = "Meta Title",
-						description = "Override the default page title for search engines",
-						placeholder = "Custom SEO title...",
-					},
-				},
-				{
-					name = "meta_description",
-					type = "textarea",
-					admin = {
-						label = "Meta Description",
-						description = "Appears in search result snippets (max 160 chars)",
-						placeholder = "Describe this page for search engines...",
-					},
-				},
-				{
-					name = "og_image",
-					type = "upload",
-					relationship = { collection = "media" },
-					admin = {
-						label = "Social Image",
-						description = "Image shown when shared on social media (1200x630 recommended)",
-					},
-				},
-				{
-					name = "no_index",
-					type = "checkbox",
-					default_value = false,
-					admin = {
-						label = "No Index",
-						description = "Hide this page from search engines",
-					},
-				},
-			},
-		},
+		-- SEO fields are added automatically by plugins/seo.lua
 	},
 	hooks = {
 		before_change = { "hooks.set_published_at" },

@@ -61,38 +61,7 @@ pub fn update_global(
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
     let mut idx = 1;
 
-    for field in &def.fields {
-        // Group fields expand sub-fields as prefixed columns (same as collections)
-        if field.field_type == FieldType::Group {
-            for sub in &field.fields {
-                let data_key = format!("{}__{}", field.name, sub.name);
-                let col_name = locale_write_column(&data_key, sub, &locale_ctx);
-                if let Some(value) = data.get(&data_key) {
-                    set_clauses.push(format!("{} = ?{}", col_name, idx));
-                    params.push(coerce_value(&sub.field_type, value));
-                    idx += 1;
-                } else if sub.field_type == FieldType::Checkbox {
-                    set_clauses.push(format!("{} = ?{}", col_name, idx));
-                    params.push(Box::new(0i32));
-                    idx += 1;
-                }
-            }
-            continue;
-        }
-        if !field.has_parent_column() {
-            continue;
-        }
-        let col_name = locale_write_column(&field.name, field, &locale_ctx);
-        if let Some(value) = data.get(&field.name) {
-            set_clauses.push(format!("{} = ?{}", col_name, idx));
-            params.push(coerce_value(&field.field_type, value));
-            idx += 1;
-        } else if field.field_type == FieldType::Checkbox {
-            set_clauses.push(format!("{} = ?{}", col_name, idx));
-            params.push(Box::new(0i32));
-            idx += 1;
-        }
-    }
+    collect_update_params(&def.fields, data, &locale_ctx, &mut set_clauses, &mut params, &mut idx);
 
     set_clauses.push(format!("updated_at = ?{}", idx));
     params.push(Box::new(now));
@@ -115,21 +84,66 @@ pub fn update_global(
     get_global(conn, slug, def, locale_ctx)
 }
 
+/// Recursively collect SET clauses + params from a field list.
+/// Handles Group (prefixed), Row/Collapsible (promoted flat), Tabs (promoted flat),
+/// and arbitrary nesting of layout fields.
+fn collect_update_params(
+    fields: &[crate::core::field::FieldDefinition],
+    data: &HashMap<String, String>,
+    locale_ctx: &Option<&LocaleContext>,
+    set_clauses: &mut Vec<String>,
+    params: &mut Vec<Box<dyn rusqlite::types::ToSql>>,
+    idx: &mut usize,
+) {
+    for field in fields {
+        match field.field_type {
+            FieldType::Group => {
+                for sub in &field.fields {
+                    let data_key = format!("{}__{}", field.name, sub.name);
+                    let col_name = locale_write_column(&data_key, sub, locale_ctx);
+                    if let Some(value) = data.get(&data_key) {
+                        set_clauses.push(format!("{} = ?{}", col_name, *idx));
+                        params.push(coerce_value(&sub.field_type, value));
+                        *idx += 1;
+                    } else if sub.field_type == FieldType::Checkbox {
+                        set_clauses.push(format!("{} = ?{}", col_name, *idx));
+                        params.push(Box::new(0i32));
+                        *idx += 1;
+                    }
+                }
+            }
+            FieldType::Row | FieldType::Collapsible => {
+                // Promoted flat — recurse into sub-fields
+                collect_update_params(&field.fields, data, locale_ctx, set_clauses, params, idx);
+            }
+            FieldType::Tabs => {
+                // Promoted flat — recurse into each tab's sub-fields
+                for tab in &field.tabs {
+                    collect_update_params(&tab.fields, data, locale_ctx, set_clauses, params, idx);
+                }
+            }
+            _ => {
+                if !field.has_parent_column() {
+                    continue;
+                }
+                let col_name = locale_write_column(&field.name, field, locale_ctx);
+                if let Some(value) = data.get(&field.name) {
+                    set_clauses.push(format!("{} = ?{}", col_name, *idx));
+                    params.push(coerce_value(&field.field_type, value));
+                    *idx += 1;
+                } else if field.field_type == FieldType::Checkbox {
+                    set_clauses.push(format!("{} = ?{}", col_name, *idx));
+                    params.push(Box::new(0i32));
+                    *idx += 1;
+                }
+            }
+        }
+    }
+}
+
 fn get_global_column_names(def: &GlobalDefinition) -> Vec<String> {
     let mut names = vec!["id".to_string()];
-    for field in &def.fields {
-        // Group fields expand sub-fields as prefixed columns (same as collections)
-        if field.field_type == FieldType::Group {
-            for sub in &field.fields {
-                names.push(format!("{}__{}", field.name, sub.name));
-            }
-            continue;
-        }
-        if !field.has_parent_column() {
-            continue;
-        }
-        names.push(field.name.clone());
-    }
+    super::collect_column_names(&def.fields, &mut names);
     if def.has_drafts() {
         names.push("_status".to_string());
     }
@@ -139,14 +153,12 @@ fn get_global_column_names(def: &GlobalDefinition) -> Vec<String> {
 }
 
 /// Build SELECT columns for globals with locale support.
-/// Group fields are expanded into `field__subfield` sub-columns (same as collections).
+/// Uses the shared recursive logic from mod.rs.
 fn get_global_locale_columns(def: &GlobalDefinition, ctx: &LocaleContext) -> (Vec<String>, Vec<String>) {
-    // Reuse the shared logic from mod.rs — same expansion as collections
     let (mut select_exprs, mut result_names) = super::get_locale_select_columns(&def.fields, true, ctx);
 
     // Insert _status before timestamps if present
     if def.has_drafts() {
-        // Timestamps are the last 2 entries; insert _status before them
         let ts_pos = select_exprs.len() - 2;
         select_exprs.insert(ts_pos, "_status".to_string());
         result_names.insert(ts_pos, "_status".to_string());

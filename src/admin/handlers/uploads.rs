@@ -12,6 +12,10 @@ use crate::core::auth;
 use crate::db::query::AccessResult;
 
 /// Serve an uploaded file, checking collection read access if configured.
+///
+/// Supports content negotiation for images: if the browser Accept header includes
+/// `image/avif` or `image/webp`, and a variant file exists on disk, the more
+/// efficient format is served instead of the original.
 pub async fn serve_upload(
     State(state): State<AdminState>,
     Path((collection_slug, filename)): Path<(String, String)>,
@@ -25,6 +29,14 @@ pub async fn serve_upload(
     {
         return StatusCode::NOT_FOUND.into_response();
     }
+
+    // Parse Accept header for content negotiation
+    let accept = request.headers()
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let accepts_avif = accept.contains("image/avif");
+    let accepts_webp = accept.contains("image/webp");
 
     // Look up collection access.read
     let access_read = {
@@ -68,11 +80,17 @@ pub async fn serve_upload(
         }
 
         // Serve with private cache headers
-        return serve_file(&state, &collection_slug, &filename, "private, no-store").await;
+        return serve_file(
+            &state, &collection_slug, &filename,
+            "private, no-store", accepts_avif, accepts_webp,
+        ).await;
     }
 
     // Public: no access.read set
-    serve_file(&state, &collection_slug, &filename, "public, max-age=31536000, immutable").await
+    serve_file(
+        &state, &collection_slug, &filename,
+        "public, max-age=31536000, immutable", accepts_avif, accepts_webp,
+    ).await
 }
 
 fn extract_auth_user(
@@ -115,27 +133,134 @@ async fn serve_file(
     collection_slug: &str,
     filename: &str,
     cache_control: &str,
+    accepts_avif: bool,
+    accepts_webp: bool,
 ) -> Response {
-    let file_path = state.config_dir.join("uploads").join(collection_slug).join(filename);
+    let upload_dir = state.config_dir.join("uploads").join(collection_slug);
 
+    // Content negotiation: try serving a more efficient format variant
+    for (variant_name, variant_mime) in negotiate_variants(filename, accepts_avif, accepts_webp) {
+        let variant_path = upload_dir.join(&variant_name);
+        if let Ok(bytes) = tokio::fs::read(&variant_path).await {
+            return serve_bytes(bytes, variant_mime, cache_control, true);
+        }
+    }
+
+    // Serve the original file
+    let file_path = upload_dir.join(filename);
     let bytes = match tokio::fs::read(&file_path).await {
         Ok(b) => b,
         Err(_) => return StatusCode::NOT_FOUND.into_response(),
     };
 
+    let requested_mime = mime_guess::from_path(filename)
+        .first_or_octet_stream()
+        .to_string();
+    // Always set Vary: Accept for images so caches don't serve the wrong format
+    let is_image = requested_mime.starts_with("image/");
+    serve_bytes(bytes, &requested_mime, cache_control, is_image)
+}
+
+/// Given a filename and accepted formats, return candidate variant filenames to try.
+/// Returns `(variant_filename, mime_type)` pairs in preference order (AVIF first, then WebP).
+/// Only returns candidates for image files.
+fn negotiate_variants(filename: &str, accepts_avif: bool, accepts_webp: bool) -> Vec<(String, &'static str)> {
     let mime = mime_guess::from_path(filename)
         .first_or_octet_stream()
         .to_string();
 
-    let len = bytes.len();
+    if !mime.starts_with("image/") {
+        return Vec::new();
+    }
 
-    (
-        StatusCode::OK,
-        [
-            (header::CONTENT_TYPE, mime),
-            (header::CONTENT_LENGTH, len.to_string()),
-            (header::CACHE_CONTROL, cache_control.to_string()),
-        ],
-        bytes,
-    ).into_response()
+    let stem = match filename.rfind('.') {
+        Some(pos) if pos > 0 => &filename[..pos],
+        _ => return Vec::new(),
+    };
+
+    let mut variants = Vec::new();
+    if accepts_avif {
+        variants.push((format!("{}.avif", stem), "image/avif"));
+    }
+    if accepts_webp {
+        variants.push((format!("{}.webp", stem), "image/webp"));
+    }
+    variants
+}
+
+fn serve_bytes(bytes: Vec<u8>, content_type: &str, cache_control: &str, varied: bool) -> Response {
+    let len = bytes.len();
+    let mut builder = axum::http::Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CONTENT_LENGTH, len.to_string())
+        .header(header::CACHE_CONTROL, cache_control);
+
+    // Vary: Accept tells caches that the response depends on the Accept header
+    if varied {
+        builder = builder.header(header::VARY, "Accept");
+    }
+
+    builder.body(axum::body::Body::from(bytes))
+        .unwrap()
+        .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn negotiate_no_accept_returns_empty() {
+        let variants = negotiate_variants("photo.jpg", false, false);
+        assert!(variants.is_empty());
+    }
+
+    #[test]
+    fn negotiate_avif_for_image() {
+        let variants = negotiate_variants("photo.jpg", true, false);
+        assert_eq!(variants.len(), 1);
+        assert_eq!(variants[0], ("photo.avif".to_string(), "image/avif"));
+    }
+
+    #[test]
+    fn negotiate_webp_for_image() {
+        let variants = negotiate_variants("photo.jpg", false, true);
+        assert_eq!(variants.len(), 1);
+        assert_eq!(variants[0], ("photo.webp".to_string(), "image/webp"));
+    }
+
+    #[test]
+    fn negotiate_prefers_avif_over_webp() {
+        let variants = negotiate_variants("photo.jpg", true, true);
+        assert_eq!(variants.len(), 2);
+        assert_eq!(variants[0].1, "image/avif");
+        assert_eq!(variants[1].1, "image/webp");
+    }
+
+    #[test]
+    fn negotiate_non_image_returns_empty() {
+        let variants = negotiate_variants("document.pdf", true, true);
+        assert!(variants.is_empty());
+    }
+
+    #[test]
+    fn negotiate_no_extension_returns_empty() {
+        let variants = negotiate_variants("noext", true, true);
+        assert!(variants.is_empty());
+    }
+
+    #[test]
+    fn negotiate_preserves_stem_with_underscores() {
+        let variants = negotiate_variants("abc123_photo_thumbnail.jpg", true, true);
+        assert_eq!(variants[0].0, "abc123_photo_thumbnail.avif");
+        assert_eq!(variants[1].0, "abc123_photo_thumbnail.webp");
+    }
+
+    #[test]
+    fn negotiate_png_image() {
+        let variants = negotiate_variants("icon.png", false, true);
+        assert_eq!(variants.len(), 1);
+        assert_eq!(variants[0], ("icon.webp".to_string(), "image/webp"));
+    }
 }

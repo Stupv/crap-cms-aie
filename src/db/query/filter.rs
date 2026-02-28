@@ -349,9 +349,13 @@ fn walk_block_fields(
                 json_path_parts.clear();
                 current_fields = field_def.fields.iter().collect();
             }
-            FieldType::Group => {
+            FieldType::Group | FieldType::Row | FieldType::Collapsible => {
                 json_path_parts.push(seg.to_string());
                 current_fields = field_def.fields.iter().collect();
+            }
+            FieldType::Tabs => {
+                json_path_parts.push(seg.to_string());
+                current_fields = field_def.tabs.iter().flat_map(|t| t.fields.iter()).collect();
             }
             _ => {
                 // Scalar leaf
@@ -560,6 +564,28 @@ pub fn resolve_filter_column(field_name: &str, def: &CollectionDefinition, local
                         let sub_name = &field_name[prefix.len()..];
                         for sub in &field.fields {
                             if sub.name == sub_name && (field.localized || sub.localized) {
+                                let locale = match &ctx.mode {
+                                    LocaleMode::Single(l) => l.as_str(),
+                                    _ => ctx.config.default_locale.as_str(),
+                                };
+                                return format!("{}__{}", field_name, locale);
+                            }
+                        }
+                    }
+                } else if field.field_type == FieldType::Row || field.field_type == FieldType::Collapsible {
+                    for sub in &field.fields {
+                        if sub.name == field_name && sub.localized {
+                            let locale = match &ctx.mode {
+                                LocaleMode::Single(l) => l.as_str(),
+                                _ => ctx.config.default_locale.as_str(),
+                            };
+                            return format!("{}__{}", field_name, locale);
+                        }
+                    }
+                } else if field.field_type == FieldType::Tabs {
+                    for tab in &field.tabs {
+                        for sub in &tab.fields {
+                            if sub.name == field_name && sub.localized {
                                 let locale = match &ctx.mode {
                                     LocaleMode::Single(l) => l.as_str(),
                                     _ => ctx.config.default_locale.as_str(),

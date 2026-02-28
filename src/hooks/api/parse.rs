@@ -95,6 +95,7 @@ pub fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Re
                 fields: Vec::new(),
                 blocks: Vec::new(),
                 localized: false,
+                tabs: Vec::new(),
                 picker_appearance: None,
                 min_rows: None,
                 max_rows: None,
@@ -280,7 +281,14 @@ fn parse_collection_upload(config: &Table) -> Option<CollectionUpload> {
                 Vec::new()
             };
 
-            let max_file_size = tbl.get::<Option<u64>>("max_file_size").ok().flatten();
+            let max_file_size = match tbl.get::<mlua::Value>("max_file_size") {
+                Ok(mlua::Value::Integer(n)) => Some(n as u64),
+                Ok(mlua::Value::String(s)) => {
+                    let text = s.to_str().ok().map(|s| s.to_string());
+                    text.and_then(|t| crate::config::parse_filesize_string(&t))
+                }
+                _ => None,
+            };
 
             let image_sizes = if let Ok(sizes_tbl) = get_table(&tbl, "image_sizes") {
                 parse_image_sizes(&sizes_tbl)
@@ -336,12 +344,14 @@ fn parse_format_options(tbl: &Table) -> FormatOptions {
 
     let webp = get_table(&fo_tbl, "webp").ok().map(|t| {
         let quality = t.get::<u8>("quality").unwrap_or(80);
-        FormatQuality { quality }
+        let queue = get_bool(&t, "queue", false);
+        FormatQuality { quality, queue }
     });
 
     let avif = get_table(&fo_tbl, "avif").ok().map(|t| {
         let quality = t.get::<u8>("quality").unwrap_or(60);
-        FormatQuality { quality }
+        let queue = get_bool(&t, "queue", false);
+        FormatQuality { quality, queue }
     });
 
     FormatOptions { webp, avif }
@@ -363,6 +373,7 @@ fn hidden_text_field(name: &str) -> FieldDefinition {
         relationship: None,
         fields: Vec::new(),
         blocks: Vec::new(),
+        tabs: Vec::new(),
         localized: false,
         picker_appearance: None,
         min_rows: None,
@@ -386,6 +397,7 @@ fn hidden_number_field(name: &str) -> FieldDefinition {
         relationship: None,
         fields: Vec::new(),
         blocks: Vec::new(),
+        tabs: Vec::new(),
         localized: false,
         picker_appearance: None,
         min_rows: None,
@@ -411,6 +423,7 @@ fn inject_upload_fields(fields: &mut Vec<FieldDefinition>, upload: &CollectionUp
             relationship: None,
             fields: Vec::new(),
             blocks: Vec::new(),
+            tabs: Vec::new(),
             localized: false,
             picker_appearance: None,
             min_rows: None,
@@ -544,8 +557,8 @@ fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
             None
         };
 
-        // Parse sub-fields for Array and Group types (recursive)
-        let sub_fields = if field_type == FieldType::Array || field_type == FieldType::Group {
+        // Parse sub-fields for Array, Group, Row, and Collapsible types (recursive)
+        let sub_fields = if field_type == FieldType::Array || field_type == FieldType::Group || field_type == FieldType::Row || field_type == FieldType::Collapsible {
             if let Ok(sub_fields_tbl) = get_table(&field_tbl, "fields") {
                 parse_fields(&sub_fields_tbl)?
             } else {
@@ -575,6 +588,17 @@ fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
             Vec::new()
         };
 
+        // Parse tab definitions for Tabs type
+        let tab_defs = if field_type == FieldType::Tabs {
+            if let Ok(tabs_tbl) = get_table(&field_tbl, "tabs") {
+                parse_tab_definitions(&tabs_tbl)?
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+
         let min_rows = field_tbl.get::<Option<usize>>("min_rows").ok().flatten();
         let max_rows = field_tbl.get::<Option<usize>>("max_rows").ok().flatten();
 
@@ -592,6 +616,7 @@ fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
             relationship,
             fields: sub_fields,
             blocks: block_defs,
+            tabs: tab_defs,
             localized,
             picker_appearance,
             min_rows,
@@ -669,6 +694,22 @@ fn parse_block_definitions(blocks_tbl: &Table) -> Result<Vec<crate::core::field:
         });
     }
     Ok(blocks)
+}
+
+fn parse_tab_definitions(tabs_tbl: &Table) -> Result<Vec<crate::core::field::FieldTab>> {
+    let mut tabs = Vec::new();
+    for entry in tabs_tbl.clone().sequence_values::<Table>() {
+        let tab_tbl = entry?;
+        let label = get_string(&tab_tbl, "label").unwrap_or_default();
+        let description = get_string(&tab_tbl, "description");
+        let fields = if let Ok(fields_tbl) = get_table(&tab_tbl, "fields") {
+            parse_fields(&fields_tbl)?
+        } else {
+            Vec::new()
+        };
+        tabs.push(crate::core::field::FieldTab { label, description, fields });
+    }
+    Ok(tabs)
 }
 
 // --- Helper functions ---
@@ -1240,8 +1281,8 @@ mod tests {
                 },
             ],
             format_options: crate::core::upload::FormatOptions {
-                webp: Some(crate::core::upload::FormatQuality { quality: 80 }),
-                avif: Some(crate::core::upload::FormatQuality { quality: 60 }),
+                webp: Some(crate::core::upload::FormatQuality { quality: 80, queue: false }),
+                avif: Some(crate::core::upload::FormatQuality { quality: 60, queue: false }),
             },
             ..Default::default()
         };

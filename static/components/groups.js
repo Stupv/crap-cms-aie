@@ -13,11 +13,14 @@
 export function toggleGroup(btn) {
   const fieldset = btn.closest('[data-collapsible]');
   if (!fieldset) return;
-  fieldset.classList.toggle('form__group--collapsed');
+  const cls = fieldset.classList.contains('form__collapsible')
+    ? 'form__collapsible--collapsed'
+    : 'form__group--collapsed';
+  fieldset.classList.toggle(cls);
   const name = fieldset.getAttribute('data-group-name');
   if (name) {
     const key = 'crap-group-' + name;
-    if (fieldset.classList.contains('form__group--collapsed')) {
+    if (fieldset.classList.contains(cls)) {
       localStorage.setItem(key, '1');
     } else {
       localStorage.removeItem(key);
@@ -35,12 +38,15 @@ function restoreGroupStates() {
       if (!name) return;
       const key = 'crap-group-' + name;
       const stored = localStorage.getItem(key);
+      const cls = fieldset.classList.contains('form__collapsible')
+        ? 'form__collapsible--collapsed'
+        : 'form__group--collapsed';
       if (stored === '1') {
-        fieldset.classList.add('form__group--collapsed');
+        fieldset.classList.add(cls);
       } else if (stored === null) {
         // No override stored — keep the server-rendered default
       } else {
-        fieldset.classList.remove('form__group--collapsed');
+        fieldset.classList.remove(cls);
       }
     }
   );

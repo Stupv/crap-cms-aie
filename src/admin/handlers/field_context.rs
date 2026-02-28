@@ -150,6 +150,68 @@ fn build_single_field_context(
                 ctx["collapsed"] = serde_json::json!(true);
             }
         }
+        FieldType::Row => {
+            // Row is a layout-only container; sub-fields are promoted to top level.
+            // Top-level row promotes sub-fields to the same level as the parent,
+            // so we delegate to build_single_field_context with the same prefix.
+            // This correctly handles Group (double-underscore), Collapsible, etc.
+            let sub_fields: Vec<_> = if name_prefix.is_empty() {
+                field.fields.iter().map(|sf| {
+                    build_single_field_context(sf, values, errors, "", non_default_locale, depth + 1)
+                }).collect()
+            } else {
+                // Nested row: use bracketed naming via recursion
+                field.fields.iter().map(|sf| {
+                    build_single_field_context(sf, values, errors, &full_name, non_default_locale, depth + 1)
+                }).collect()
+            };
+            ctx["sub_fields"] = serde_json::json!(sub_fields);
+        }
+        FieldType::Collapsible => {
+            // Collapsible is a layout-only container like Row but with a toggle header.
+            // Top-level collapsible promotes sub-fields to the same level as the parent,
+            // so we delegate to build_single_field_context with the same prefix.
+            // This correctly handles Group (double-underscore), Row, etc.
+            let sub_fields: Vec<_> = if name_prefix.is_empty() {
+                field.fields.iter().map(|sf| {
+                    build_single_field_context(sf, values, errors, "", non_default_locale, depth + 1)
+                }).collect()
+            } else {
+                field.fields.iter().map(|sf| {
+                    build_single_field_context(sf, values, errors, &full_name, non_default_locale, depth + 1)
+                }).collect()
+            };
+            ctx["sub_fields"] = serde_json::json!(sub_fields);
+            if field.admin.collapsed {
+                ctx["collapsed"] = serde_json::json!(true);
+            }
+        }
+        FieldType::Tabs => {
+            // Tabs is a layout-only container with multiple tab panels.
+            // Top-level tabs promote sub-fields to the same level as the parent,
+            // so we delegate to build_single_field_context with the same prefix.
+            // This correctly handles Group (double-underscore), Row, Collapsible, etc.
+            let tabs_ctx: Vec<_> = field.tabs.iter().map(|tab| {
+                let tab_sub_fields: Vec<_> = if name_prefix.is_empty() {
+                    tab.fields.iter().map(|sf| {
+                        build_single_field_context(sf, values, errors, "", non_default_locale, depth + 1)
+                    }).collect()
+                } else {
+                    tab.fields.iter().map(|sf| {
+                        build_single_field_context(sf, values, errors, &full_name, non_default_locale, depth + 1)
+                    }).collect()
+                };
+                let mut tab_ctx = serde_json::json!({
+                    "label": &tab.label,
+                    "sub_fields": tab_sub_fields,
+                });
+                if let Some(ref desc) = tab.description {
+                    tab_ctx["description"] = serde_json::json!(desc);
+                }
+                tab_ctx
+            }).collect();
+            ctx["tabs"] = serde_json::json!(tabs_ctx);
+        }
         FieldType::Date => {
             let appearance = field.picker_appearance.as_deref().unwrap_or("dayOnly");
             ctx["picker_appearance"] = serde_json::json!(appearance);
@@ -287,6 +349,37 @@ fn apply_field_type_extras(
             if sf.admin.collapsed {
                 sub_ctx["collapsed"] = serde_json::json!(true);
             }
+        }
+        FieldType::Row => {
+            let sub_fields: Vec<_> = sf.fields.iter().map(|nested| {
+                build_single_field_context(nested, values, errors, name_prefix, non_default_locale, depth + 1)
+            }).collect();
+            sub_ctx["sub_fields"] = serde_json::json!(sub_fields);
+        }
+        FieldType::Collapsible => {
+            let sub_fields: Vec<_> = sf.fields.iter().map(|nested| {
+                build_single_field_context(nested, values, errors, name_prefix, non_default_locale, depth + 1)
+            }).collect();
+            sub_ctx["sub_fields"] = serde_json::json!(sub_fields);
+            if sf.admin.collapsed {
+                sub_ctx["collapsed"] = serde_json::json!(true);
+            }
+        }
+        FieldType::Tabs => {
+            let tabs_ctx: Vec<_> = sf.tabs.iter().map(|tab| {
+                let tab_sub_fields: Vec<_> = tab.fields.iter().map(|nested| {
+                    build_single_field_context(nested, values, errors, name_prefix, non_default_locale, depth + 1)
+                }).collect();
+                let mut tab_ctx = serde_json::json!({
+                    "label": &tab.label,
+                    "sub_fields": tab_sub_fields,
+                });
+                if let Some(ref desc) = tab.description {
+                    tab_ctx["description"] = serde_json::json!(desc);
+                }
+                tab_ctx
+            }).collect();
+            sub_ctx["tabs"] = serde_json::json!(tabs_ctx);
         }
         FieldType::Blocks => {
             let block_defs: Vec<_> = sf.blocks.iter().map(|bd| {
@@ -435,7 +528,7 @@ fn build_enriched_sub_field_context(
             serde_json::Value::Null => String::new(),
             other => {
                 match sf.field_type {
-                    FieldType::Array | FieldType::Blocks | FieldType::Group => String::new(),
+                    FieldType::Array | FieldType::Blocks | FieldType::Group | FieldType::Row | FieldType::Collapsible | FieldType::Tabs => String::new(),
                     _ => other.to_string(),
                 }
             }
@@ -673,6 +766,101 @@ fn build_enriched_sub_field_context(
             if sf.admin.collapsed {
                 sub_ctx["collapsed"] = serde_json::json!(true);
             }
+        }
+        FieldType::Row | FieldType::Collapsible => {
+            // Nested row/collapsible: sub-fields are stored as keys in the same row object
+            let row_obj = match raw_value {
+                Some(serde_json::Value::Object(_)) => raw_value,
+                _ => None,
+            };
+            let nested_sub_fields: Vec<_> = sf.fields.iter().map(|nested_sf| {
+                let nested_raw = row_obj
+                    .and_then(|v| v.as_object())
+                    .and_then(|m| m.get(&nested_sf.name));
+                let nested_name = format!("{}[{}]", indexed_name, nested_sf.name);
+                let nested_val = nested_raw
+                    .map(|v| match v {
+                        serde_json::Value::String(s) => s.clone(),
+                        serde_json::Value::Null => String::new(),
+                        other => other.to_string(),
+                    })
+                    .unwrap_or_default();
+                let nested_label = nested_sf.admin.label.as_ref()
+                    .map(|ls| ls.resolve_default().to_string())
+                    .unwrap_or_else(|| auto_label_from_name(&nested_sf.name));
+                let mut nested_ctx = serde_json::json!({
+                    "name": nested_name,
+                    "field_type": nested_sf.field_type.as_str(),
+                    "label": nested_label,
+                    "value": nested_val,
+                    "required": nested_sf.required,
+                    "readonly": nested_sf.admin.readonly || locale_locked,
+                    "locale_locked": locale_locked,
+                    "placeholder": nested_sf.admin.placeholder.as_ref().map(|ls| ls.resolve_default()),
+                    "description": nested_sf.admin.description.as_ref().map(|ls| ls.resolve_default()),
+                });
+                apply_field_type_extras(
+                    nested_sf, &nested_val, &mut nested_ctx,
+                    &HashMap::new(), &HashMap::new(), &nested_name,
+                    non_default_locale, depth + 1,
+                );
+                nested_ctx
+            }).collect();
+            sub_ctx["sub_fields"] = serde_json::json!(nested_sub_fields);
+            if sf.field_type == FieldType::Collapsible && sf.admin.collapsed {
+                sub_ctx["collapsed"] = serde_json::json!(true);
+            }
+        }
+        FieldType::Tabs => {
+            // Nested tabs: iterate tabs, each with sub-fields from the row object
+            let row_obj = match raw_value {
+                Some(serde_json::Value::Object(_)) => raw_value,
+                _ => None,
+            };
+            let tabs_ctx: Vec<_> = sf.tabs.iter().map(|tab| {
+                let tab_sub_fields: Vec<_> = tab.fields.iter().map(|nested_sf| {
+                    let nested_raw = row_obj
+                        .and_then(|v| v.as_object())
+                        .and_then(|m| m.get(&nested_sf.name));
+                    let nested_name = format!("{}[{}]", indexed_name, nested_sf.name);
+                    let nested_val = nested_raw
+                        .map(|v| match v {
+                            serde_json::Value::String(s) => s.clone(),
+                            serde_json::Value::Null => String::new(),
+                            other => other.to_string(),
+                        })
+                        .unwrap_or_default();
+                    let nested_label = nested_sf.admin.label.as_ref()
+                        .map(|ls| ls.resolve_default().to_string())
+                        .unwrap_or_else(|| auto_label_from_name(&nested_sf.name));
+                    let mut nested_ctx = serde_json::json!({
+                        "name": nested_name,
+                        "field_type": nested_sf.field_type.as_str(),
+                        "label": nested_label,
+                        "value": nested_val,
+                        "required": nested_sf.required,
+                        "readonly": nested_sf.admin.readonly || locale_locked,
+                        "locale_locked": locale_locked,
+                        "placeholder": nested_sf.admin.placeholder.as_ref().map(|ls| ls.resolve_default()),
+                        "description": nested_sf.admin.description.as_ref().map(|ls| ls.resolve_default()),
+                    });
+                    apply_field_type_extras(
+                        nested_sf, &nested_val, &mut nested_ctx,
+                        &HashMap::new(), &HashMap::new(), &nested_name,
+                        non_default_locale, depth + 1,
+                    );
+                    nested_ctx
+                }).collect();
+                let mut tab_ctx = serde_json::json!({
+                    "label": &tab.label,
+                    "sub_fields": tab_sub_fields,
+                });
+                if let Some(ref desc) = tab.description {
+                    tab_ctx["description"] = serde_json::json!(desc);
+                }
+                tab_ctx
+            }).collect();
+            sub_ctx["tabs"] = serde_json::json!(tabs_ctx);
         }
         _ => {}
     }

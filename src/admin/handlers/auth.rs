@@ -246,6 +246,7 @@ pub async fn forgot_password_action(
             let email_config = state.config.email.clone();
             let admin_port = state.config.server.admin_port;
             let host = state.config.server.host.clone();
+            let reset_expiry = state.config.auth.reset_token_expiry;
 
             // Load email renderer (we do this on the main thread since it's cheap)
             let email_renderer = state.email_renderer.clone();
@@ -270,7 +271,7 @@ pub async fn forgot_password_action(
 
                 // Generate reset token (nanoid)
                 let token = nanoid::nanoid!();
-                let exp = chrono::Utc::now().timestamp() + 3600; // 1 hour
+                let exp = chrono::Utc::now().timestamp() + reset_expiry as i64;
 
                 if let Err(e) = query::set_reset_token(&conn, &slug, &user.id, &token, exp) {
                     tracing::error!("Failed to set reset token: {}", e);
@@ -287,7 +288,7 @@ pub async fn forgot_password_action(
 
                 let html = match email_renderer.render("password_reset", &serde_json::json!({
                     "reset_url": reset_url,
-                    "expiry_minutes": 60,
+                    "expiry_minutes": reset_expiry / 60,
                     "from_name": email_config.from_name,
                 })) {
                     Ok(h) => h,

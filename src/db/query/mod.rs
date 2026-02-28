@@ -10,6 +10,7 @@ pub mod filter;
 pub mod global;
 pub mod versions;
 pub mod jobs;
+pub mod images;
 
 use anyhow::{Result, bail};
 use std::collections::HashSet;
@@ -223,15 +224,7 @@ pub(crate) fn validate_filter_field(field: &str, exact_columns: &HashSet<String>
 /// Get column names for a collection (id + field columns + timestamps).
 pub fn get_column_names(def: &CollectionDefinition) -> Vec<String> {
     let mut names = vec!["id".to_string()];
-    for field in &def.fields {
-        if field.field_type == FieldType::Group {
-            for sub in &field.fields {
-                names.push(format!("{}__{}", field.name, sub.name));
-            }
-        } else if field.has_parent_column() {
-            names.push(field.name.clone());
-        }
-    }
+    collect_column_names(&def.fields, &mut names);
     if def.has_drafts() {
         names.push("_status".to_string());
     }
@@ -240,6 +233,32 @@ pub fn get_column_names(def: &CollectionDefinition) -> Vec<String> {
         names.push("updated_at".to_string());
     }
     names
+}
+
+/// Recursively collect column names from a field tree.
+pub(super) fn collect_column_names(fields: &[FieldDefinition], names: &mut Vec<String>) {
+    for field in fields {
+        match field.field_type {
+            FieldType::Group => {
+                for sub in &field.fields {
+                    names.push(format!("{}__{}", field.name, sub.name));
+                }
+            }
+            FieldType::Row | FieldType::Collapsible => {
+                collect_column_names(&field.fields, names);
+            }
+            FieldType::Tabs => {
+                for tab in &field.tabs {
+                    collect_column_names(&tab.fields, names);
+                }
+            }
+            _ => {
+                if field.has_parent_column() {
+                    names.push(field.name.clone());
+                }
+            }
+        }
+    }
 }
 
 /// Get locale-aware SELECT expressions and result column names for a collection.
@@ -254,27 +273,7 @@ pub fn get_locale_select_columns(
     let mut select_exprs = vec!["id".to_string()];
     let mut result_names = vec!["id".to_string()];
 
-    for field in fields {
-        if field.field_type == FieldType::Group {
-            for sub in &field.fields {
-                let base = format!("{}__{}", field.name, sub.name);
-                let is_localized = (field.localized || sub.localized) && locale_ctx.config.is_enabled();
-                if is_localized {
-                    add_locale_columns(&mut select_exprs, &mut result_names, &base, locale_ctx);
-                } else {
-                    select_exprs.push(base.clone());
-                    result_names.push(base);
-                }
-            }
-        } else if field.has_parent_column() {
-            if field.localized && locale_ctx.config.is_enabled() {
-                add_locale_columns(&mut select_exprs, &mut result_names, &field.name, locale_ctx);
-            } else {
-                select_exprs.push(field.name.clone());
-                result_names.push(field.name.clone());
-            }
-        }
-    }
+    collect_locale_columns(fields, &mut select_exprs, &mut result_names, locale_ctx);
 
     if timestamps {
         select_exprs.push("created_at".to_string());
@@ -284,6 +283,48 @@ pub fn get_locale_select_columns(
     }
 
     (select_exprs, result_names)
+}
+
+/// Recursively collect locale-aware SELECT columns from a field tree.
+fn collect_locale_columns(
+    fields: &[FieldDefinition],
+    select_exprs: &mut Vec<String>,
+    result_names: &mut Vec<String>,
+    locale_ctx: &LocaleContext,
+) {
+    for field in fields {
+        match field.field_type {
+            FieldType::Group => {
+                for sub in &field.fields {
+                    let base = format!("{}__{}", field.name, sub.name);
+                    let is_localized = (field.localized || sub.localized) && locale_ctx.config.is_enabled();
+                    if is_localized {
+                        add_locale_columns(select_exprs, result_names, &base, locale_ctx);
+                    } else {
+                        select_exprs.push(base.clone());
+                        result_names.push(base);
+                    }
+                }
+            }
+            FieldType::Row | FieldType::Collapsible => {
+                collect_locale_columns(&field.fields, select_exprs, result_names, locale_ctx);
+            }
+            FieldType::Tabs => {
+                for tab in &field.tabs {
+                    collect_locale_columns(&tab.fields, select_exprs, result_names, locale_ctx);
+                }
+            }
+            _ => {
+                if !field.has_parent_column() { continue; }
+                if field.localized && locale_ctx.config.is_enabled() {
+                    add_locale_columns(select_exprs, result_names, &field.name, locale_ctx);
+                } else {
+                    select_exprs.push(field.name.clone());
+                    result_names.push(field.name.clone());
+                }
+            }
+        }
+    }
 }
 
 /// Add SELECT expressions for a localized field based on the locale mode.
@@ -342,6 +383,38 @@ pub(crate) fn group_locale_fields(doc: &mut Document, fields: &[FieldDefinition]
                     }
                 }
             }
+        } else if field.field_type == FieldType::Row || field.field_type == FieldType::Collapsible {
+            for sub in &field.fields {
+                if sub.localized && locale_config.is_enabled() {
+                    let mut locale_map = serde_json::Map::new();
+                    for locale in &locale_config.locales {
+                        let col = format!("{}__{}", sub.name, locale);
+                        if let Some(val) = doc.fields.remove(&col) {
+                            locale_map.insert(locale.clone(), val);
+                        }
+                    }
+                    if !locale_map.is_empty() {
+                        doc.fields.insert(sub.name.clone(), serde_json::Value::Object(locale_map));
+                    }
+                }
+            }
+        } else if field.field_type == FieldType::Tabs {
+            for tab in &field.tabs {
+                for sub in &tab.fields {
+                    if sub.localized && locale_config.is_enabled() {
+                        let mut locale_map = serde_json::Map::new();
+                        for locale in &locale_config.locales {
+                            let col = format!("{}__{}", sub.name, locale);
+                            if let Some(val) = doc.fields.remove(&col) {
+                                locale_map.insert(locale.clone(), val);
+                            }
+                        }
+                        if !locale_map.is_empty() {
+                            doc.fields.insert(sub.name.clone(), serde_json::Value::Object(locale_map));
+                        }
+                    }
+                }
+            }
         } else if field.has_parent_column() && field.localized && locale_config.is_enabled() {
             let mut locale_map = serde_json::Map::new();
             for locale in &locale_config.locales {
@@ -365,6 +438,16 @@ pub(crate) fn get_valid_filter_columns(def: &CollectionDefinition, locale_ctx: O
         if field.field_type == FieldType::Group {
             for sub in &field.fields {
                 valid.insert(format!("{}__{}", field.name, sub.name));
+            }
+        } else if field.field_type == FieldType::Row || field.field_type == FieldType::Collapsible {
+            for sub in &field.fields {
+                valid.insert(sub.name.clone());
+            }
+        } else if field.field_type == FieldType::Tabs {
+            for tab in &field.tabs {
+                for sub in &tab.fields {
+                    valid.insert(sub.name.clone());
+                }
             }
         } else if field.has_parent_column() {
             valid.insert(field.name.clone());
@@ -958,5 +1041,177 @@ mod tests {
             other => panic!("Expected normalized date string, got {:?}", other),
         };
         assert_eq!(text, "2026-03-15T12:00:00.000Z");
+    }
+
+    // ── get_column_names with layout fields ─────────────────────────────────
+
+    use crate::core::field::FieldTab;
+
+    fn make_row_field(name: &str, sub_fields: Vec<FieldDefinition>) -> FieldDefinition {
+        FieldDefinition {
+            name: name.to_string(),
+            field_type: FieldType::Row,
+            fields: sub_fields,
+            ..Default::default()
+        }
+    }
+
+    fn make_collapsible_field(name: &str, sub_fields: Vec<FieldDefinition>) -> FieldDefinition {
+        FieldDefinition {
+            name: name.to_string(),
+            field_type: FieldType::Collapsible,
+            fields: sub_fields,
+            ..Default::default()
+        }
+    }
+
+    fn make_tabs_field(name: &str, tabs: Vec<FieldTab>) -> FieldDefinition {
+        FieldDefinition {
+            name: name.to_string(),
+            field_type: FieldType::Tabs,
+            tabs,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn get_column_names_with_row() {
+        let def = make_collection_def("posts", vec![
+            make_row_field("layout", vec![
+                make_field("first_name", FieldType::Text),
+                make_field("last_name", FieldType::Text),
+            ]),
+        ], true);
+        let names = get_column_names(&def);
+        assert_eq!(names, vec!["id", "first_name", "last_name", "created_at", "updated_at"]);
+    }
+
+    #[test]
+    fn get_column_names_with_collapsible() {
+        let def = make_collection_def("posts", vec![
+            make_collapsible_field("extra", vec![
+                make_field("notes", FieldType::Textarea),
+            ]),
+        ], true);
+        let names = get_column_names(&def);
+        assert_eq!(names, vec!["id", "notes", "created_at", "updated_at"]);
+    }
+
+    #[test]
+    fn get_column_names_with_tabs() {
+        let def = make_collection_def("posts", vec![
+            make_tabs_field("layout", vec![
+                FieldTab { label: "Content".to_string(), description: None, fields: vec![make_field("body", FieldType::Textarea)] },
+                FieldTab { label: "Meta".to_string(), description: None, fields: vec![make_field("slug", FieldType::Text)] },
+            ]),
+        ], true);
+        let names = get_column_names(&def);
+        assert_eq!(names, vec!["id", "body", "slug", "created_at", "updated_at"]);
+    }
+
+    #[test]
+    fn get_column_names_tabs_containing_group() {
+        let def = make_collection_def("posts", vec![
+            make_tabs_field("layout", vec![
+                FieldTab {
+                    label: "Social".to_string(),
+                    description: None,
+                    fields: vec![
+                        make_group_field("social", vec![
+                            make_field("github", FieldType::Text),
+                            make_field("twitter", FieldType::Text),
+                        ]),
+                    ],
+                },
+                FieldTab {
+                    label: "Content".to_string(),
+                    description: None,
+                    fields: vec![make_field("body", FieldType::Textarea)],
+                },
+            ]),
+        ], true);
+        let names = get_column_names(&def);
+        assert_eq!(names, vec!["id", "social__github", "social__twitter", "body", "created_at", "updated_at"]);
+    }
+
+    #[test]
+    fn get_column_names_collapsible_containing_group() {
+        let def = make_collection_def("posts", vec![
+            make_collapsible_field("extra", vec![
+                make_group_field("seo", vec![
+                    make_field("title", FieldType::Text),
+                ]),
+                make_field("notes", FieldType::Textarea),
+            ]),
+        ], true);
+        let names = get_column_names(&def);
+        assert_eq!(names, vec!["id", "seo__title", "notes", "created_at", "updated_at"]);
+    }
+
+    #[test]
+    fn get_column_names_deeply_nested_tabs_collapsible_group() {
+        let def = make_collection_def("posts", vec![
+            make_tabs_field("layout", vec![
+                FieldTab {
+                    label: "Advanced".to_string(),
+                    description: None,
+                    fields: vec![
+                        make_collapsible_field("advanced", vec![
+                            make_group_field("og", vec![
+                                make_field("image", FieldType::Text),
+                            ]),
+                            make_field("canonical", FieldType::Text),
+                        ]),
+                    ],
+                },
+            ]),
+        ], false);
+        let names = get_column_names(&def);
+        assert_eq!(names, vec!["id", "og__image", "canonical"]);
+    }
+
+    // ── get_locale_select_columns with layout fields ────────────────────────
+
+    #[test]
+    fn get_locale_select_columns_tabs_with_group() {
+        let fields = vec![
+            make_tabs_field("layout", vec![
+                FieldTab {
+                    label: "Social".to_string(),
+                    description: None,
+                    fields: vec![
+                        make_group_field("social", vec![
+                            make_field("github", FieldType::Text),
+                        ]),
+                    ],
+                },
+            ]),
+        ];
+        let locale_cfg = make_locale_config();
+        let ctx = LocaleContext { mode: LocaleMode::Default, config: locale_cfg };
+        let (exprs, names) = get_locale_select_columns(&fields, false, &ctx);
+        assert!(exprs.contains(&"social__github".to_string()), "Group inside Tabs should appear in SELECT");
+        assert!(names.contains(&"social__github".to_string()));
+    }
+
+    #[test]
+    fn get_locale_select_columns_tabs_with_localized_field() {
+        let fields = vec![
+            make_tabs_field("layout", vec![
+                FieldTab {
+                    label: "Content".to_string(),
+                    description: None,
+                    fields: vec![
+                        make_localized_field("title", FieldType::Text),
+                    ],
+                },
+            ]),
+        ];
+        let locale_cfg = make_locale_config();
+        let ctx = LocaleContext { mode: LocaleMode::Single("de".to_string()), config: locale_cfg };
+        let (exprs, names) = get_locale_select_columns(&fields, false, &ctx);
+        // Should produce COALESCE for fallback
+        assert!(exprs.iter().any(|e| e.contains("title__de")), "Localized field in Tabs should have locale column");
+        assert!(names.contains(&"title".to_string()));
     }
 }

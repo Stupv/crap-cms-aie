@@ -165,6 +165,101 @@ input[type="checkbox"]:disabled {
   cursor: not-allowed;
 }
 
+/* Row fields (horizontal layout) */
+.form__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-md, var(--space-md));
+}
+
+/* ── Collapsible ──────────────────────────────────────────────── */
+
+.form__collapsible {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0;
+  margin: 0;
+}
+
+.form__collapsible-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.form__collapsible-toggle:hover {
+  background: var(--surface-hover);
+}
+
+.form__collapsible-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  padding: var(--space-md) var(--space-md) var(--space-md);
+}
+
+.form__collapsible--collapsed .form__collapsible-body {
+  display: none;
+}
+
+.form__collapsible--collapsed .form__group-chevron {
+  transform: rotate(-90deg);
+}
+
+/* ── Tabs ─────────────────────────────────────────────────────── */
+
+.form__tabs-nav {
+  display: flex;
+  border-bottom: 2px solid var(--border-color);
+  gap: 0;
+}
+
+.form__tabs-tab {
+  background: none;
+  border: none;
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.form__tabs-tab:hover {
+  color: var(--text-primary);
+}
+
+.form__tabs-tab--active {
+  border-bottom-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.form__tabs-panel {
+  padding-top: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.form__tabs-panel--hidden {
+  display: none;
+}
+
+.form__tabs-description {
+  margin-bottom: 0;
+}
+
 /* Group fields (collapsible) */
 .form__group {
   border: 1px solid var(--border-color-hover);
@@ -210,7 +305,7 @@ input[type="checkbox"]:disabled {
 .form__group-body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
+  gap: var(--space-lg);
   margin-top: var(--space-md);
   margin-bottom: var(--space-xs);
 }
@@ -391,9 +486,9 @@ input[type="checkbox"]:disabled {
 
 .form__array-row-fields {
   display: flex;
-  gap: var(--space-sm);
-  flex-wrap: wrap;
-  padding: var(--space-sm) var(--space-md);
+  flex-direction: column;
+  gap: var(--space-lg);
+  padding: var(--space-md) var(--space-md);
   padding-top: 0;
 }
 

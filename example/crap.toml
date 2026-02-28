@@ -7,15 +7,19 @@ host = "0.0.0.0"
 
 [database]
 path = "data/crap.db"
+# pool_max_size = 16       # max connections in the pool
+# busy_timeout_ms = 30000  # SQLite busy timeout in milliseconds
 
 [admin]
 dev_mode = true
 
 [auth]
-# secret = "your-secret-here"   # omit to auto-generate (persisted to data/.jwt_secret)
-# token_expiry = 7200           # seconds, default 2 hours
+# secret = "${JWT_SECRET:-}"    # omit or empty to auto-generate (persisted to data/.jwt_secret)
+# token_expiry = "2h"           # accepts integer seconds or "2h", "30m", etc.
 # max_login_attempts = 5        # failed attempts before lockout
-# login_lockout_seconds = 300   # lockout duration after max attempts
+# login_lockout_seconds = "5m"  # lockout duration after max attempts
+# reset_token_expiry = "1h"     # password reset token expiry
+# Env vars: use ${VAR} or ${VAR:-default} in any string value
 
 [live]
 enabled = true                # enable SSE + gRPC Subscribe for live mutation events
@@ -27,21 +31,40 @@ enabled = true                # enable SSE + gRPC Subscribe for live mutation ev
 # max_depth = 3                 # max hook recursion depth (CRUD → hook → CRUD chains)
 
 # [jobs]
-# max_concurrent = 10       # max concurrent job executions
-# poll_interval = 1         # seconds between polling for pending jobs
-# cron_interval = 60        # seconds between cron schedule checks
-# heartbeat_interval = 10   # seconds between heartbeat updates
-# auto_purge = "7d"         # purge completed/failed runs older than this
+# max_concurrent = 10         # max concurrent job executions
+# poll_interval = "1s"        # polling interval (accepts seconds or "1s", "5s")
+# cron_interval = "1m"        # cron schedule check interval
+# heartbeat_interval = "10s"  # heartbeat update interval
+# auto_purge = "7d"           # purge completed/failed runs older than this
+# image_queue_batch_size = 10 # pending image conversions per poll
 
 [locale]
 default_locale = "en"         # default locale for content
 locales = ["en", "de"]        # supported locales (empty = disabled)
 fallback = true               # fall back to default locale if field is empty
 
+# [depth]
+# default_depth = 1          # population depth for FindByID (Find defaults to 0)
+# max_depth = 10             # hard cap on relationship population depth
+
+# [upload]
+# max_file_size = "50MB"     # accepts bytes (52428800) or "50MB", "1GB", etc.
+
+# [email]
+# smtp_host = ""             # SMTP hostname. Empty = email disabled (no-op)
+# smtp_port = 587            # SMTP port (587 for STARTTLS)
+# smtp_user = ""
+# smtp_pass = "${SMTP_PASSWORD:-}"
+# from_address = "noreply@example.com"
+# from_name = "Crap CMS"
+
+# [access]
+# default_deny = false       # true = deny all operations without explicit access functions
+
 # [cors]
 # allowed_origins = ["https://example.com"]  # empty = CORS disabled (default)
 # allowed_methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
 # allowed_headers = ["Content-Type", "Authorization"]
 # exposed_headers = []
-# max_age_seconds = 3600
+# max_age_seconds = "1h"     # accepts integer seconds or "1h", "30m", etc.
 # allow_credentials = false

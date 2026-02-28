@@ -319,6 +319,26 @@ crap-cms db console <CONFIG>
 
 Opens an interactive `sqlite3` session on the project database.
 
+#### `db cleanup`
+
+```bash
+crap-cms db cleanup <CONFIG> [--confirm]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--confirm` | Actually drop orphan columns (default: dry-run report only) |
+
+Detects columns in collection tables that don't correspond to any field in the current Lua definitions. System columns (`_`-prefixed like `_password_hash`, `_locked`) are always kept. Plugin columns are safe because plugins run during schema loading — their fields are part of the live definitions.
+
+```bash
+# Dry run — show orphans without removing them
+crap-cms db cleanup ./my-project
+
+# Actually drop orphan columns
+crap-cms db cleanup ./my-project --confirm
+```
+
 ### `export` — Export collection data
 
 ```bash
@@ -329,6 +349,8 @@ crap-cms export <CONFIG> [-c <COLLECTION>] [-o <FILE>]
 |------|-------|-------------|
 | `--collection` | `-c` | Export only this collection (default: all) |
 | `--output` | `-o` | Output file (default: stdout) |
+
+Export includes `crap_version` and `exported_at` metadata in the JSON envelope. On import, a version mismatch produces a warning (but does not abort).
 
 ```bash
 crap-cms export ./my-project
@@ -517,6 +539,60 @@ crap-cms jobs status ./my-project
 crap-cms jobs status ./my-project --id abc123
 crap-cms jobs purge ./my-project --older-than 30d
 crap-cms jobs healthcheck ./my-project
+```
+
+### `images` — Manage image processing queue
+
+Inspect and manage the background image format conversion queue. See [Image Processing](../uploads/image-processing.md) for how to enable queued conversion.
+
+#### `images list`
+
+```bash
+crap-cms images list <CONFIG> [-s <STATUS>] [-l <LIMIT>]
+```
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--status` | `-s` | — | Filter by status: `pending`, `processing`, `completed`, `failed` |
+| `--limit` | `-l` | `20` | Max entries to show |
+
+#### `images stats`
+
+```bash
+crap-cms images stats <CONFIG>
+```
+
+Shows counts by status (pending, processing, completed, failed) and total.
+
+#### `images retry`
+
+```bash
+crap-cms images retry <CONFIG> [--id <ID>] [--all] [-y]
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--id` | — | Retry a specific failed entry by ID |
+| `--all` | — | Retry all failed entries |
+| `--confirm` | `-y` | Required with `--all` |
+
+#### `images purge`
+
+```bash
+crap-cms images purge <CONFIG> [--older-than <DURATION>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--older-than` | `7d` | Delete completed/failed entries older than this. Supports `Nd`, `Nh`, `Nm`, `Ns` formats. |
+
+```bash
+crap-cms images list ./my-project
+crap-cms images list ./my-project -s failed
+crap-cms images stats ./my-project
+crap-cms images retry ./my-project --id abc123
+crap-cms images retry ./my-project --all -y
+crap-cms images purge ./my-project --older-than 30d
 ```
 
 ## Environment Variables

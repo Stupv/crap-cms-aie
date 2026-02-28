@@ -49,13 +49,18 @@ local seo_fields = {
 
 --- Install the SEO plugin. Adds SEO fields to all content collections.
 --- Skips upload collections and auth collections.
---- @param opts? { collections?: string[] }  Optional: limit to specific collection slugs.
+--- @param opts? { collections?: string[], exclude?: string[] }  Optional: limit to specific collection slugs, or exclude specific ones.
 function M.install(opts)
     local only = opts and opts.collections
+    local exclude = opts and opts.exclude
 
     for slug, def in pairs(crap.collections.config.list()) do
         -- Skip upload and auth collections
         if not def.upload and not def.auth then
+            -- If an exclude list was provided, skip matching slugs
+            if exclude and crap.util.includes(exclude, slug) then
+                goto continue
+            end
             -- If a whitelist was provided, check it
             if not only or crap.util.includes(only, slug) then
                 -- Don't add if an "seo" field already exists
@@ -73,6 +78,7 @@ function M.install(opts)
                     crap.log.info("seo: added SEO fields to " .. slug)
                 end
             end
+            ::continue::
         end
     end
 end

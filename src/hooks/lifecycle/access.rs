@@ -8,6 +8,7 @@ use crate::core::Document;
 use crate::core::field::FieldDefinition;
 use crate::db::query::{AccessResult, Filter, FilterClause, FilterOp};
 
+use super::DefaultDeny;
 use super::crud::{document_to_lua_table, lua_parse_filter_op};
 use super::resolve_hook_function;
 
@@ -23,7 +24,13 @@ pub(crate) fn check_access_with_lua(
 ) -> Result<AccessResult> {
     let func_ref = match access_ref {
         Some(r) => r,
-        None => return Ok(AccessResult::Allowed),
+        None => {
+            // No access function configured — check if default-deny is enabled
+            let deny = lua.app_data_ref::<DefaultDeny>()
+                .map(|d| d.0)
+                .unwrap_or(false);
+            return Ok(if deny { AccessResult::Denied } else { AccessResult::Allowed });
+        }
     };
 
     let func = resolve_hook_function(lua, func_ref)?;
@@ -252,7 +259,33 @@ mod tests {
     #[test]
     fn access_none_ref_returns_allowed() {
         let lua = setup_lua();
+        // No DefaultDeny in app_data = defaults to allow
         let result = check_access_with_lua(&lua, None, None, None, None).unwrap();
+        assert!(matches!(result, AccessResult::Allowed));
+    }
+
+    #[test]
+    fn access_none_ref_default_deny_false_returns_allowed() {
+        let lua = setup_lua();
+        lua.set_app_data(DefaultDeny(false));
+        let result = check_access_with_lua(&lua, None, None, None, None).unwrap();
+        assert!(matches!(result, AccessResult::Allowed));
+    }
+
+    #[test]
+    fn access_none_ref_default_deny_true_returns_denied() {
+        let lua = setup_lua();
+        lua.set_app_data(DefaultDeny(true));
+        let result = check_access_with_lua(&lua, None, None, None, None).unwrap();
+        assert!(matches!(result, AccessResult::Denied));
+    }
+
+    #[test]
+    fn access_explicit_allow_overrides_default_deny() {
+        let lua = setup_lua();
+        lua.set_app_data(DefaultDeny(true));
+        // When an access function IS defined and returns true, default-deny doesn't matter
+        let result = check_access_with_lua(&lua, Some("test_access.allow"), None, None, None).unwrap();
         assert!(matches!(result, AccessResult::Allowed));
     }
 

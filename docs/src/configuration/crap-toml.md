@@ -10,6 +10,63 @@ If `crap.toml` does not exist in the config directory, all defaults apply.
 |-------|------|---------|-------------|
 | `crap_version` | string | — | Expected CMS version. If set, a warning is logged on startup when the running binary doesn't match. Supports exact (`"0.1.0"`) or prefix (`"0.1"`) matching. |
 
+## Environment Variable Substitution
+
+String values in `crap.toml` can reference environment variables using `${VAR}` syntax:
+
+```toml
+[auth]
+secret = "${JWT_SECRET}"
+
+[database]
+path = "${DB_PATH:-data/crap.db}"
+
+[email]
+smtp_pass = "${SMTP_PASSWORD}"
+```
+
+- `${VAR}` — replaced with the value of `VAR`. Startup fails if `VAR` is not set.
+- `${VAR:-default}` — replaced with `VAR` if set and non-empty, otherwise uses `default`.
+
+Substitution only applies to string values — `${VAR}` patterns in comments are safely ignored.
+
+This allows keeping secrets out of config files and varying configuration across environments.
+
+## Duration Values
+
+Most time-related fields accept **both** an integer (seconds) and a human-readable string:
+
+```toml
+# These are equivalent:
+token_expiry = 7200
+token_expiry = "2h"
+
+# Supported suffixes: s (seconds), m (minutes), h (hours), d (days)
+poll_interval = "5s"
+login_lockout_seconds = "5m"
+auto_purge = "7d"
+```
+
+Fields that support this: `token_expiry`, `login_lockout_seconds`, `reset_token_expiry`, `max_age_seconds`, `poll_interval`, `cron_interval`, `heartbeat_interval`, `auto_purge`.
+
+## File Size Values
+
+File size fields accept **both** an integer (bytes) and a human-readable string:
+
+```toml
+# These are equivalent:
+max_file_size = 52428800
+max_file_size = "50MB"
+
+# Supported suffixes (case-insensitive, 1024-based):
+# B (bytes), KB (kilobytes), MB (megabytes), GB (gigabytes)
+max_file_size = "500B"
+max_file_size = "100KB"
+max_file_size = "1GB"
+```
+
+Fields that support this: `max_file_size` (global and per-collection).
+
 ## Full Reference
 
 ```toml
@@ -23,22 +80,25 @@ host = "0.0.0.0"        # Bind address
 
 [database]
 path = "data/crap.db"   # Relative to config dir, or absolute
+pool_max_size = 16       # Max connections in the pool
+busy_timeout_ms = 30000  # SQLite busy timeout in milliseconds (30s)
 
 [admin]
 dev_mode = false         # Reload templates per-request (enable in development)
 
 [auth]
 secret = ""              # JWT signing key. Empty = auto-generated and persisted to data/.jwt_secret
-token_expiry = 7200      # Default token expiry in seconds (2 hours)
+token_expiry = "2h"      # Default token expiry (accepts integer seconds or "2h", "30m", etc.)
 max_login_attempts = 5   # Failed attempts before temporary lockout
-login_lockout_seconds = 300  # Lockout duration in seconds after max attempts
+login_lockout_seconds = "5m"  # Lockout duration after max attempts
+reset_token_expiry = "1h"    # Password reset token expiry
 
 [depth]
 default_depth = 1        # Default population depth for FindByID (Find always defaults to 0)
 max_depth = 10           # Hard cap on population depth (prevents abuse)
 
 [upload]
-max_file_size = 52428800 # Global max file size in bytes (50 MB)
+max_file_size = "50MB"   # Global max file size (accepts bytes or "50MB", "1GB", etc.)
 
 [email]
 smtp_host = ""           # SMTP server hostname. Empty = email disabled (no-op)
@@ -63,11 +123,15 @@ locales = ["en", "de"]   # Supported locales (empty = disabled)
 fallback = true          # Fall back to default locale if field is NULL
 
 [jobs]
-max_concurrent = 10      # Max concurrent job executions across all queues
-poll_interval = 1        # How often to poll for pending jobs (seconds)
-cron_interval = 60       # How often to check cron schedules (seconds)
-heartbeat_interval = 10  # How often running jobs update their heartbeat (seconds)
-auto_purge = "7d"        # Auto-purge completed/failed runs older than this. Empty = disabled
+max_concurrent = 10          # Max concurrent job executions across all queues
+poll_interval = "1s"         # How often to poll for pending jobs
+cron_interval = "1m"         # How often to check cron schedules
+heartbeat_interval = "10s"   # How often running jobs update their heartbeat
+auto_purge = "7d"            # Auto-purge completed/failed runs older than this
+image_queue_batch_size = 10  # Pending image conversions to process per poll
+
+[access]
+default_deny = false     # When true, deny all operations without explicit access functions
 
 [cors]
 allowed_origins = []     # Origins allowed for CORS. Empty = CORS disabled (default)
@@ -75,7 +139,7 @@ allowed_origins = []     # Origins allowed for CORS. Empty = CORS disabled (defa
 allowed_methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
 allowed_headers = ["Content-Type", "Authorization"]
 exposed_headers = []     # Response headers exposed to the browser
-max_age_seconds = 3600   # How long browsers cache preflight results (1 hour)
+max_age_seconds = "1h"   # How long browsers cache preflight results
 allow_credentials = false # Allow cookies/Authorization. Cannot use with ["*"] origins
 ```
 
@@ -94,6 +158,8 @@ allow_credentials = false # Allow cookies/Authorization. Cannot use with ["*"] o
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `path` | string | `"data/crap.db"` | SQLite database path. Relative paths are resolved from the config directory. Absolute paths are used as-is. |
+| `pool_max_size` | integer | `16` | Maximum number of connections in the SQLite connection pool. |
+| `busy_timeout_ms` | integer | `30000` | SQLite busy timeout in milliseconds. Controls how long a connection waits for locks before returning SQLITE_BUSY. |
 
 ### `[admin]`
 
@@ -106,9 +172,10 @@ allow_credentials = false # Allow cookies/Authorization. Cannot use with ["*"] o
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `secret` | string | `""` (empty) | JWT signing secret. If empty, a random secret is auto-generated and **persisted to `data/.jwt_secret`** so tokens survive restarts. Set explicitly if you prefer to manage the secret yourself. |
-| `token_expiry` | integer | `7200` | Default JWT token lifetime in seconds. Can be overridden per auth collection. |
+| `token_expiry` | integer/string | `7200` (`"2h"`) | Default JWT token lifetime. Accepts seconds (integer) or human-readable (`"2h"`, `"30m"`). Can be overridden per auth collection. |
 | `max_login_attempts` | integer | `5` | Maximum failed login attempts before temporary lockout. Tracked per email address. |
-| `login_lockout_seconds` | integer | `300` | Duration of lockout in seconds after `max_login_attempts` is reached. |
+| `login_lockout_seconds` | integer/string | `300` (`"5m"`) | Duration of lockout after `max_login_attempts` is reached. Accepts seconds or human-readable. |
+| `reset_token_expiry` | integer/string | `3600` (`"1h"`) | Password reset token expiry. The "Forgot password" email link expires after this duration. Accepts seconds or human-readable. |
 
 ### `[depth]`
 
@@ -121,7 +188,7 @@ allow_credentials = false # Allow cookies/Authorization. Cannot use with ["*"] o
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `max_file_size` | integer | `52428800` | Global maximum file size in bytes (50 MB). Per-collection `max_file_size` overrides this. |
+| `max_file_size` | integer/string | `52428800` (`"50MB"`) | Global maximum file size. Accepts bytes (integer) or human-readable (`"50MB"`, `"1GB"`). Per-collection `max_file_size` overrides this. Also sets the HTTP body limit (with 1MB overhead for multipart encoding). |
 
 ### `[email]`
 
@@ -166,10 +233,19 @@ See [Live Updates](../live-updates/overview.md) for full documentation.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `max_concurrent` | integer | `10` | Maximum concurrent job executions across all queues. |
-| `poll_interval` | integer | `1` | How often to poll for pending jobs, in seconds. |
-| `cron_interval` | integer | `60` | How often to evaluate cron schedules, in seconds. |
-| `heartbeat_interval` | integer | `10` | How often running jobs update their heartbeat, in seconds. Used to detect stale jobs. |
-| `auto_purge` | string | `"7d"` | Auto-purge completed/failed runs older than this duration. Supports `Nd` (days), `Nh` (hours), `Nm` (minutes). Empty string disables auto-purge. |
+| `poll_interval` | integer/string | `1` (`"1s"`) | How often to poll for pending jobs. Accepts seconds or human-readable. |
+| `cron_interval` | integer/string | `60` (`"1m"`) | How often to evaluate cron schedules. Accepts seconds or human-readable. |
+| `heartbeat_interval` | integer/string | `10` (`"10s"`) | How often running jobs update their heartbeat. Used to detect stale jobs. Accepts seconds or human-readable. |
+| `auto_purge` | integer/string | `"7d"` | Auto-purge completed/failed runs older than this duration. Accepts seconds or human-readable (`"7d"`, `"24h"`, `"30m"`, `"3600"`). Absent = 7 days default. |
+| `image_queue_batch_size` | integer | `10` | Number of pending image format conversions to claim per scheduler poll cycle. Increase for higher throughput on capable hardware. |
+
+### `[access]`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `default_deny` | boolean | `false` | When `true`, collections and globals without an explicit access function deny all operations. When `false` (default), missing access functions allow all operations. |
+
+Enable this to enforce a "secure by default" posture — every collection must explicitly declare its access rules. Without it, collections without access functions are open to any authenticated (or anonymous) user.
 
 ### `[cors]`
 
@@ -179,7 +255,7 @@ See [Live Updates](../live-updates/overview.md) for full documentation.
 | `allowed_methods` | string[] | `["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]` | HTTP methods allowed in CORS preflight. |
 | `allowed_headers` | string[] | `["Content-Type", "Authorization"]` | Request headers allowed in CORS requests. |
 | `exposed_headers` | string[] | `[]` (empty) | Response headers the browser is allowed to access. |
-| `max_age_seconds` | integer | `3600` | How long (in seconds) browsers may cache preflight results. |
+| `max_age_seconds` | integer/string | `3600` (`"1h"`) | How long browsers may cache preflight results. Accepts seconds or human-readable. |
 | `allow_credentials` | boolean | `false` | Allow credentials (cookies, `Authorization` header). **Cannot be used with `allowed_origins = ["*"]`** — if both are set, credentials are ignored with a warning. |
 
 When CORS is enabled, the layer is added to both the admin UI (Axum) and gRPC API (Tonic) servers. CORS runs before CSRF middleware, so preflight `OPTIONS` requests get CORS headers without triggering CSRF validation.
@@ -207,16 +283,16 @@ dev_mode = false
 
 [auth]
 secret = "a-very-long-random-string-for-jwt-signing"
-token_expiry = 86400  # 24 hours
+token_expiry = "24h"
 max_login_attempts = 10
-login_lockout_seconds = 600
+login_lockout_seconds = "10m"
 
 [depth]
 default_depth = 1
 max_depth = 5
 
 [upload]
-max_file_size = 104857600  # 100 MB
+max_file_size = "100MB"
 
 [email]
 smtp_host = "smtp.example.com"

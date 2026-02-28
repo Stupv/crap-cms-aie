@@ -177,6 +177,7 @@ fn setup_service(
         config.locale.clone(),
         tmp.path().to_path_buf(),
         std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
+        config.auth.reset_token_expiry,
     );
 
     TestSetup { _tmp: tmp, service, pool: db_pool }
@@ -2051,6 +2052,7 @@ fn setup_service_with_hook(
         config.locale.clone(),
         tmp.path().to_path_buf(),
         std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
+        config.auth.reset_token_expiry,
     );
 
     TestSetup { _tmp: tmp, service, pool: db_pool }
@@ -2481,6 +2483,7 @@ return M
         config.email.clone(), email_renderer, config.server.clone(), None, config.locale.clone(),
         tmp.path().to_path_buf(),
         std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
+        config.auth.reset_token_expiry,
     );
     let ts = TestSetup { _tmp: tmp, service, pool: db_pool };
 
@@ -2593,6 +2596,7 @@ return M
         config.email.clone(), email_renderer, config.server.clone(), None, config.locale.clone(),
         tmp.path().to_path_buf(),
         std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
+        config.auth.reset_token_expiry,
     );
     let ts = TestSetup { _tmp: tmp, service, pool: db_pool };
 
@@ -2684,6 +2688,7 @@ return M
         config.email.clone(), email_renderer, config.server.clone(), None, config.locale.clone(),
         tmp.path().to_path_buf(),
         std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
+        config.auth.reset_token_expiry,
     );
     let ts = TestSetup { _tmp: tmp, service, pool: db_pool };
 
@@ -2790,6 +2795,7 @@ return M
         config.email.clone(), email_renderer, config.server.clone(), None, config.locale.clone(),
         tmp.path().to_path_buf(),
         std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
+        config.auth.reset_token_expiry,
     );
     let ts = TestSetup { _tmp: tmp, service, pool: db_pool };
 
@@ -2887,6 +2893,7 @@ return M
         config.email.clone(), email_renderer, config.server.clone(), None, config.locale.clone(),
         tmp.path().to_path_buf(),
         std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
+        config.auth.reset_token_expiry,
     );
     let ts = TestSetup { _tmp: tmp, service, pool: db_pool };
 
@@ -3000,6 +3007,7 @@ fn setup_service_with_locale(
         config.locale.clone(),
         tmp.path().to_path_buf(),
         std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
+        config.auth.reset_token_expiry,
     );
 
     TestSetup { _tmp: tmp, service, pool: db_pool }

@@ -190,6 +190,7 @@ impl ContentService {
         let email_config = self.email_config.clone();
         let email_renderer = self.email_renderer.clone();
         let server_config = self.server_config.clone();
+        let reset_expiry = self.reset_token_expiry;
 
         // Fire and forget -- always return success
         tokio::task::spawn_blocking(move || {
@@ -205,7 +206,7 @@ impl ContentService {
             };
 
             let token = nanoid::nanoid!();
-            let exp = chrono::Utc::now().timestamp() + 3600;
+            let exp = chrono::Utc::now().timestamp() + reset_expiry as i64;
 
             if let Err(e) = query::set_reset_token(&conn, &slug, &user.id, &token, exp) {
                 tracing::error!("Failed to set reset token: {}", e);
@@ -221,7 +222,7 @@ impl ContentService {
 
             let html = match email_renderer.render("password_reset", &serde_json::json!({
                 "reset_url": reset_url,
-                "expiry_minutes": 60,
+                "expiry_minutes": reset_expiry / 60,
                 "from_name": email_config.from_name,
             })) {
                 Ok(h) => h,

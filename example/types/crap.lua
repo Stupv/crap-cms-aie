@@ -32,6 +32,9 @@ crap = {}
 --- | "array"        # Repeatable sub-fields
 --- | "group"        # Visual grouping (no extra table)
 --- | "blocks"       # Flexible content blocks
+--- | "row"          # Layout-only horizontal grouping (no prefix)
+--- | "collapsible"  # Layout-only collapsible section (no prefix)
+--- | "tabs"         # Layout-only tabbed container (no prefix)
 --- | "point"        # GeoJSON point [lng, lat]
 
 --- A string that can be plain or per-locale.
@@ -95,6 +98,11 @@ crap = {}
 --- (crap.collections.find/create/update/delete) via the parent transaction.
 --- after_change and after_read field hooks do NOT have CRUD access (fire-and-forget).
 
+--- @class crap.FieldTab
+--- @field label       string                    Tab label displayed in the tab bar (required).
+--- @field description? string                   Help text shown inside the tab panel.
+--- @field fields      crap.FieldDefinition[]    Fields within this tab.
+
 --- @class crap.BlockDefinition
 --- @field type         string                    Block type identifier (required).
 --- @field label?       crap.LocalizedString      Display label for the block type (defaults to type name).
@@ -117,8 +125,9 @@ crap = {}
 --- @field relationship? crap.RelationshipConfig  Relationship config (preferred syntax).
 --- @field relation_to?  string            Target collection (legacy flat syntax).
 --- @field has_many?     boolean           Many-to-many relationship (legacy flat syntax, default: false).
---- @field fields?       crap.FieldDefinition[] Sub-fields for "array" / "group" types.
+--- @field fields?       crap.FieldDefinition[] Sub-fields for "array", "group", "row", and "collapsible" types.
 --- @field blocks?       crap.BlockDefinition[] Block type definitions for "blocks" type.
+--- @field tabs?         crap.FieldTab[]        Tab definitions for "tabs" type. Each tab has a label and fields.
 --- @field admin?        crap.FieldAdmin   Admin UI display options.
 --- @field access?       crap.FieldAccess  Field-level access control (read/create/update).
 --- @field picker_appearance? crap.PickerAppearance  For "date" fields: controls HTML input type and storage format. "dayOnly" (default) = date picker, stored as `YYYY-MM-DDT12:00:00.000Z`. "dayAndTime" = datetime-local picker, stored as full ISO 8601 UTC. "timeOnly" = time picker, stored as `HH:MM`. "monthOnly" = month picker, stored as `YYYY-MM`.
@@ -180,6 +189,7 @@ crap = {}
 
 --- @class crap.FormatQuality
 --- @field quality integer  Encoding quality 1-100.
+--- @field queue?  boolean  Defer conversion to background queue (default: false).
 
 --- @class crap.FormatOptions
 --- @field webp? crap.FormatQuality  Auto-generate WebP variant for each size.
@@ -187,7 +197,7 @@ crap = {}
 
 --- @class crap.CollectionUpload
 --- @field mime_types?      string[]            MIME type allowlist with glob support (e.g., "image/*"). Empty = any type.
---- @field max_file_size?   integer             Max file size in bytes (overrides global default).
+--- @field max_file_size?   integer|string       Max file size — bytes (integer) or human-readable ("10MB", "1GB"). Overrides global default.
 --- @field image_sizes?     crap.ImageSize[]    Resize definitions for image uploads.
 --- @field admin_thumbnail? string              Name of image_size to show in admin list.
 --- @field format_options?  crap.FormatOptions  Auto-generate format variants for each size.

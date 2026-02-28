@@ -9,7 +9,7 @@ crap.collections.define("media", {
     labels = { singular = "Media", plural = "Media" },
     upload = {
         mime_types = { "image/*" },
-        max_file_size = 10485760,  -- 10 MB
+        max_file_size = "10MB",    -- accepts bytes or "10MB", "1GB", etc.
         image_sizes = {
             { name = "thumbnail", width = 300, height = 300, fit = "cover" },
             { name = "card", width = 640, height = 480, fit = "cover" },
@@ -31,7 +31,7 @@ crap.collections.define("media", {
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `mime_types` | string[] | `{}` (any) | MIME type allowlist. Supports glob patterns (`"image/*"`). Empty = allow all. |
-| `max_file_size` | integer | global default | Max file size in bytes. Overrides `[upload] max_file_size` in `crap.toml`. |
+| `max_file_size` | integer/string | global default | Max file size. Accepts bytes (integer) or human-readable (`"10MB"`, `"1GB"`). Overrides `[upload] max_file_size` in `crap.toml`. |
 | `image_sizes` | ImageSize[] | `{}` | Resize definitions for image uploads. See [Image Processing](image-processing.md). |
 | `admin_thumbnail` | string | `nil` | Name of an `image_sizes` entry to use as thumbnail in admin lists. |
 | `format_options` | table | `{}` | Auto-generate format variants. See [Image Processing](image-processing.md). |
@@ -121,6 +121,18 @@ Empty `mime_types` array also accepts any file.
 ## Error Cleanup
 
 If an error occurs during upload processing (e.g., image resize fails partway through), all files written so far are automatically cleaned up. This prevents orphaned files from accumulating on disk.
+
+## Content Negotiation
+
+When serving image files, the upload handler performs automatic content negotiation based on the browser's `Accept` header. If a modern format variant exists on disk, it is served instead of the original:
+
+1. **AVIF** — served if the client sends `Accept: image/avif` and a `.avif` variant exists
+2. **WebP** — served if the client sends `Accept: image/webp` and a `.webp` variant exists
+3. **Original** — served if no matching variant exists
+
+AVIF is preferred over WebP when both are accepted. The response includes a `Vary: Accept` header so caches store format-specific versions correctly.
+
+This works for all image URLs (`/uploads/...`) including originals and resized variants. Non-image files (PDFs, etc.) are always served as-is.
 
 ## File Deletion
 

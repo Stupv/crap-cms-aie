@@ -57,7 +57,11 @@ pub fn export(
         collections_data.insert(slug.clone(), serde_json::Value::Array(docs_json));
     }
 
-    let output_json = serde_json::json!({ "collections": collections_data });
+    let output_json = serde_json::json!({
+        "crap_version": env!("CARGO_PKG_VERSION"),
+        "exported_at": chrono::Utc::now().to_rfc3339(),
+        "collections": collections_data,
+    });
 
     match output {
         Some(path) => {
@@ -89,6 +93,14 @@ pub fn import(
         .with_context(|| format!("Failed to read {}", file.display()))?;
     let data: serde_json::Value = serde_json::from_str(&content)
         .context("Failed to parse JSON")?;
+
+    // Check version compatibility
+    if let Some(export_version) = data.get("crap_version").and_then(|v| v.as_str()) {
+        let current = env!("CARGO_PKG_VERSION");
+        if let Some(warning) = crate::config::CrapConfig::check_version_against(Some(export_version), current) {
+            eprintln!("Warning: {}", warning.replace("config requires", "export file was created with"));
+        }
+    }
 
     let collections_obj = data.get("collections")
         .and_then(|v| v.as_object())
@@ -187,6 +199,40 @@ pub fn import(
                             };
                             parent_cols.push(col_name);
                             parent_vals.push(str_val);
+                        }
+                    }
+                }
+
+                // Handle row/collapsible sub-fields (they use parent columns with no prefix)
+                if field.field_type == crate::core::field::FieldType::Row
+                    || field.field_type == crate::core::field::FieldType::Collapsible
+                {
+                    for sub in &field.fields {
+                        if let Some(val) = doc_obj.get(&sub.name) {
+                            let str_val = match val {
+                                serde_json::Value::String(s) => s.clone(),
+                                serde_json::Value::Null => continue,
+                                other => other.to_string(),
+                            };
+                            parent_cols.push(sub.name.clone());
+                            parent_vals.push(str_val);
+                        }
+                    }
+                }
+
+                // Handle tabs sub-fields (they use parent columns with no prefix, across all tabs)
+                if field.field_type == crate::core::field::FieldType::Tabs {
+                    for tab in &field.tabs {
+                        for sub in &tab.fields {
+                            if let Some(val) = doc_obj.get(&sub.name) {
+                                let str_val = match val {
+                                    serde_json::Value::String(s) => s.clone(),
+                                    serde_json::Value::Null => continue,
+                                    other => other.to_string(),
+                                };
+                                parent_cols.push(sub.name.clone());
+                                parent_vals.push(str_val);
+                            }
                         }
                     }
                 }

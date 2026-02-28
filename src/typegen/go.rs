@@ -73,6 +73,29 @@ fn write_field(out: &mut String, field: &FieldDefinition) {
 }
 
 fn write_field_with_context(out: &mut String, field: &FieldDefinition, parent_pascal: &str) {
+    // Row is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Row {
+        for sub in &field.fields {
+            write_field_with_context(out, sub, parent_pascal);
+        }
+        return;
+    }
+    // Collapsible is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Collapsible {
+        for sub in &field.fields {
+            write_field_with_context(out, sub, parent_pascal);
+        }
+        return;
+    }
+    // Tabs is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Tabs {
+        for tab in &field.tabs {
+            for sub in &tab.fields {
+                write_field_with_context(out, sub, parent_pascal);
+            }
+        }
+        return;
+    }
     let go_name = to_pascal_case(&field.name);
     let (go_type, omitempty) = field_to_go(field, parent_pascal);
     let tag = if omitempty {
@@ -119,6 +142,9 @@ fn field_to_go(field: &FieldDefinition, parent_pascal: &str) -> (String, bool) {
             }
         }
         FieldType::Group => ("map[string]interface{}".to_string(), true),
+        FieldType::Row => ("map[string]interface{}".to_string(), true), // layout-only; sub-fields are promoted
+        FieldType::Collapsible => ("map[string]interface{}".to_string(), true), // layout-only; sub-fields are promoted
+        FieldType::Tabs => ("map[string]interface{}".to_string(), true), // layout-only; sub-fields are promoted
         FieldType::Upload => {
             if optional {
                 ("*string".to_string(), true)

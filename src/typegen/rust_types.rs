@@ -80,6 +80,29 @@ fn write_field(out: &mut String, field: &FieldDefinition) {
 }
 
 fn write_field_with_context(out: &mut String, field: &FieldDefinition, parent_pascal: &str) {
+    // Row is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Row {
+        for sub in &field.fields {
+            write_field_with_context(out, sub, parent_pascal);
+        }
+        return;
+    }
+    // Collapsible is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Collapsible {
+        for sub in &field.fields {
+            write_field_with_context(out, sub, parent_pascal);
+        }
+        return;
+    }
+    // Tabs is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Tabs {
+        for tab in &field.tabs {
+            for sub in &tab.fields {
+                write_field_with_context(out, sub, parent_pascal);
+            }
+        }
+        return;
+    }
     let rust_type = field_to_rust(field, parent_pascal);
     if is_optional(field) {
         writeln!(out, "    #[serde(skip_serializing_if = \"Option::is_none\")]").unwrap();
@@ -110,6 +133,9 @@ fn field_to_rust(field: &FieldDefinition, parent_pascal: &str) -> String {
             }
         }
         FieldType::Group => "serde_json::Value".to_string(),
+        FieldType::Row => "serde_json::Value".to_string(), // layout-only; sub-fields are promoted
+        FieldType::Collapsible => "serde_json::Value".to_string(), // layout-only; sub-fields are promoted
+        FieldType::Tabs => "serde_json::Value".to_string(), // layout-only; sub-fields are promoted
         FieldType::Blocks => "Vec<serde_json::Value>".to_string(),
     }
 }

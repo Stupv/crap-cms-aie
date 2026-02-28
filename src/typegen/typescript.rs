@@ -89,12 +89,58 @@ fn render_collection_slug_type(out: &mut String, registry: &Registry) {
 }
 
 fn write_field(out: &mut String, field: &FieldDefinition) {
+    // Row is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Row {
+        for sub in &field.fields {
+            write_field(out, sub);
+        }
+        return;
+    }
+    // Collapsible is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Collapsible {
+        for sub in &field.fields {
+            write_field(out, sub);
+        }
+        return;
+    }
+    // Tabs is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Tabs {
+        for tab in &field.tabs {
+            for sub in &tab.fields {
+                write_field(out, sub);
+            }
+        }
+        return;
+    }
     let ts_type = field_to_ts(field, "");
     let opt = if is_optional(field) { "?" } else { "" };
     writeln!(out, "  {}{}: {};", field.name, opt, ts_type).unwrap();
 }
 
 fn write_field_with_context(out: &mut String, field: &FieldDefinition, parent_pascal: &str) {
+    // Row is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Row {
+        for sub in &field.fields {
+            write_field_with_context(out, sub, parent_pascal);
+        }
+        return;
+    }
+    // Collapsible is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Collapsible {
+        for sub in &field.fields {
+            write_field_with_context(out, sub, parent_pascal);
+        }
+        return;
+    }
+    // Tabs is layout-only — promote sub-fields to parent level (no prefix)
+    if field.field_type == FieldType::Tabs {
+        for tab in &field.tabs {
+            for sub in &tab.fields {
+                write_field_with_context(out, sub, parent_pascal);
+            }
+        }
+        return;
+    }
     let ts_type = field_to_ts(field, parent_pascal);
     let opt = if is_optional(field) { "?" } else { "" };
     writeln!(out, "  {}{}: {};", field.name, opt, ts_type).unwrap();
@@ -131,6 +177,9 @@ fn field_to_ts(field: &FieldDefinition, parent_pascal: &str) -> String {
             }
         }
         FieldType::Group => "Record<string, unknown>".to_string(),
+        FieldType::Row => "Record<string, unknown>".to_string(), // layout-only; sub-fields are promoted
+        FieldType::Collapsible => "Record<string, unknown>".to_string(), // layout-only; sub-fields are promoted
+        FieldType::Tabs => "Record<string, unknown>".to_string(), // layout-only; sub-fields are promoted
         FieldType::Upload => "string".to_string(),
         FieldType::Blocks => "Record<string, unknown>[]".to_string(),
     }

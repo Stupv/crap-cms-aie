@@ -47,7 +47,7 @@ pub async fn start_server(
         pool, registry, hook_runner, jwt_secret, depth_config,
         config.email.clone(), email_renderer, config.server.clone(),
         event_bus, config.locale.clone(), config_dir.to_path_buf(),
-        login_limiter,
+        login_limiter, config.auth.reset_token_expiry,
     );
 
     let reflection_service = tonic_reflection::server::Builder::configure()

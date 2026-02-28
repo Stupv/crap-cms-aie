@@ -41,6 +41,9 @@
 - [Relationship](fields/relationship.md)
 - [Array](fields/array.md)
 - [Group](fields/group.md)
+- [Row](fields/row.md)
+- [Collapsible](fields/collapsible.md)
+- [Tabs](fields/tabs.md)
 - [Upload](fields/upload.md)
 - [Blocks](fields/blocks.md)
 

@@ -41,70 +41,29 @@ pub(super) fn create_collection_table(
 ) -> Result<()> {
     let mut columns = vec!["id TEXT PRIMARY KEY".to_string()];
 
-    for field in &def.fields {
-        // Group fields expand sub-fields as prefixed columns
-        if field.field_type == FieldType::Group {
-            for sub in &field.fields {
-                let base_col_name = format!("{}__{}", field.name, sub.name);
-                let is_localized = (field.localized || sub.localized) && locale_config.is_enabled();
-
-                if is_localized {
-                    for locale in &locale_config.locales {
-                        let col_name = format!("{}__{}", base_col_name, locale);
-                        let mut col = format!("{} {}", col_name, sub.field_type.sqlite_type());
-                        // Required only on default locale (skip NOT NULL for drafts — app-level validation on publish)
-                        if sub.required && *locale == locale_config.default_locale && !def.has_drafts() {
-                            col.push_str(" NOT NULL");
-                        }
-                        if sub.unique {
-                            col.push_str(" UNIQUE");
-                        }
-                        append_default_value(&mut col, &sub.default_value, &sub.field_type);
-                        columns.push(col);
-                    }
-                } else {
-                    let mut col = format!("{} {}", base_col_name, sub.field_type.sqlite_type());
-                    if sub.required && !def.has_drafts() {
-                        col.push_str(" NOT NULL");
-                    }
-                    if sub.unique {
-                        col.push_str(" UNIQUE");
-                    }
-                    append_default_value(&mut col, &sub.default_value, &sub.field_type);
-                    columns.push(col);
-                }
-            }
-            continue;
-        }
-        // Skip fields that use join tables (array, blocks, has-many relationship)
-        if !field.has_parent_column() {
-            continue;
-        }
-
-        if field.localized && locale_config.is_enabled() {
-            // Localized fields get one column per locale
+    for spec in &super::helpers::collect_column_specs(&def.fields, locale_config) {
+        if spec.is_localized {
             for locale in &locale_config.locales {
-                let col_name = format!("{}__{}", field.name, locale);
-                let mut col = format!("{} {}", col_name, field.field_type.sqlite_type());
-                // Required only on default locale (skip NOT NULL for drafts — app-level validation on publish)
-                if field.required && *locale == locale_config.default_locale && !def.has_drafts() {
+                let col_name = format!("{}__{}", spec.col_name, locale);
+                let mut col = format!("{} {}", col_name, spec.field.field_type.sqlite_type());
+                if spec.field.required && *locale == locale_config.default_locale && !def.has_drafts() {
                     col.push_str(" NOT NULL");
                 }
-                if field.unique {
+                if spec.field.unique {
                     col.push_str(" UNIQUE");
                 }
-                append_default_value(&mut col, &field.default_value, &field.field_type);
+                append_default_value(&mut col, &spec.field.default_value, &spec.field.field_type);
                 columns.push(col);
             }
         } else {
-            let mut col = format!("{} {}", field.name, field.field_type.sqlite_type());
-            if field.required && !def.has_drafts() {
+            let mut col = format!("{} {}", spec.col_name, spec.field.field_type.sqlite_type());
+            if spec.field.required && !def.has_drafts() {
                 col.push_str(" NOT NULL");
             }
-            if field.unique {
+            if spec.field.unique {
                 col.push_str(" UNIQUE");
             }
-            append_default_value(&mut col, &field.default_value, &field.field_type);
+            append_default_value(&mut col, &spec.field.default_value, &spec.field.field_type);
             columns.push(col);
         }
     }
@@ -152,60 +111,26 @@ fn alter_collection_table(
     // Get existing columns
     let existing_columns = get_table_columns(conn, slug)?;
 
-    for field in &def.fields {
-        // Group fields expand sub-fields as prefixed columns
-        if field.field_type == FieldType::Group {
-            for sub in &field.fields {
-                let base_col_name = format!("{}__{}", field.name, sub.name);
-                let is_localized = (field.localized || sub.localized) && locale_config.is_enabled();
-
-                if is_localized {
-                    for locale in &locale_config.locales {
-                        let col_name = format!("{}__{}", base_col_name, locale);
-                        if !existing_columns.contains(&col_name) {
-                            let mut col_def = sub.field_type.sqlite_type().to_string();
-                            append_default_value(&mut col_def, &sub.default_value, &sub.field_type);
-                            let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", slug, col_name, col_def);
-                            tracing::info!("Adding column to {}: {}", slug, col_name);
-                            conn.execute(&sql, [])
-                                .with_context(|| format!("Failed to add column {} to {}", col_name, slug))?;
-                        }
-                    }
-                } else if !existing_columns.contains(&base_col_name) {
-                    let mut col_def = sub.field_type.sqlite_type().to_string();
-                    append_default_value(&mut col_def, &sub.default_value, &sub.field_type);
-                    let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", slug, base_col_name, col_def);
-                    tracing::info!("Adding column to {}: {}", slug, base_col_name);
-                    conn.execute(&sql, [])
-                        .with_context(|| format!("Failed to add column {} to {}", base_col_name, slug))?;
-                }
-            }
-            continue;
-        }
-        // Skip fields that use join tables (array, blocks, has-many relationship)
-        if !field.has_parent_column() {
-            continue;
-        }
-
-        if field.localized && locale_config.is_enabled() {
+    for spec in &super::helpers::collect_column_specs(&def.fields, locale_config) {
+        if spec.is_localized {
             for locale in &locale_config.locales {
-                let col_name = format!("{}__{}", field.name, locale);
+                let col_name = format!("{}__{}", spec.col_name, locale);
                 if !existing_columns.contains(&col_name) {
-                    let mut col_def = field.field_type.sqlite_type().to_string();
-                    append_default_value(&mut col_def, &field.default_value, &field.field_type);
+                    let mut col_def = spec.field.field_type.sqlite_type().to_string();
+                    append_default_value(&mut col_def, &spec.field.default_value, &spec.field.field_type);
                     let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", slug, col_name, col_def);
                     tracing::info!("Adding column to {}: {}", slug, col_name);
                     conn.execute(&sql, [])
                         .with_context(|| format!("Failed to add column {} to {}", col_name, slug))?;
                 }
             }
-        } else if !existing_columns.contains(&field.name) {
-            let mut col_def = field.field_type.sqlite_type().to_string();
-            append_default_value(&mut col_def, &field.default_value, &field.field_type);
-            let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", slug, field.name, col_def);
-            tracing::info!("Adding column to {}: {}", slug, field.name);
+        } else if !existing_columns.contains(&spec.col_name) {
+            let mut col_def = spec.field.field_type.sqlite_type().to_string();
+            append_default_value(&mut col_def, &spec.field.default_value, &spec.field.field_type);
+            let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", slug, spec.col_name, col_def);
+            tracing::info!("Adding column to {}: {}", slug, spec.col_name);
             conn.execute(&sql, [])
-                .with_context(|| format!("Failed to add column {} to {}", field.name, slug))?;
+                .with_context(|| format!("Failed to add column {} to {}", spec.col_name, slug))?;
         }
     }
 
@@ -268,6 +193,30 @@ fn alter_collection_table(
                     }
                 } else {
                     field_names.insert(base);
+                }
+            }
+        } else if f.field_type == FieldType::Row || f.field_type == FieldType::Collapsible {
+            for sub in &f.fields {
+                let is_localized = sub.localized && locale_config.is_enabled();
+                if is_localized {
+                    for locale in &locale_config.locales {
+                        field_names.insert(format!("{}__{}", sub.name, locale));
+                    }
+                } else {
+                    field_names.insert(sub.name.clone());
+                }
+            }
+        } else if f.field_type == FieldType::Tabs {
+            for tab in &f.tabs {
+                for sub in &tab.fields {
+                    let is_localized = sub.localized && locale_config.is_enabled();
+                    if is_localized {
+                        for locale in &locale_config.locales {
+                            field_names.insert(format!("{}__{}", sub.name, locale));
+                        }
+                    } else {
+                        field_names.insert(sub.name.clone());
+                    }
                 }
             }
         } else if f.has_parent_column() {
@@ -780,6 +729,52 @@ mod tests {
         assert!(cols.contains("seo__title__de"));
     }
 
+    // ── row fields (no prefix) ─────────────────────────────────────────────
+
+    #[test]
+    fn row_field_promotes_sub_fields_without_prefix() {
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection("posts", vec![
+            FieldDefinition {
+                name: "layout".to_string(),
+                field_type: FieldType::Row,
+                fields: vec![text_field("first_name"), text_field("last_name")],
+                ..Default::default()
+            },
+        ]);
+        create_collection_table(&conn, "posts", &def, &no_locale()).unwrap();
+
+        let cols = get_table_columns(&conn, "posts").unwrap();
+        assert!(cols.contains("first_name"), "Row sub-field should be a top-level column");
+        assert!(cols.contains("last_name"), "Row sub-field should be a top-level column");
+        assert!(!cols.contains("layout"), "Row field itself should not be a column");
+        assert!(!cols.contains("layout__first_name"), "Row should not use prefix");
+    }
+
+    #[test]
+    fn alter_adds_row_sub_fields() {
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def1 = simple_collection("posts", vec![text_field("title")]);
+        create_collection_table(&conn, "posts", &def1, &no_locale()).unwrap();
+
+        let def2 = simple_collection("posts", vec![
+            text_field("title"),
+            FieldDefinition {
+                name: "names".to_string(),
+                field_type: FieldType::Row,
+                fields: vec![text_field("first"), text_field("last")],
+                ..Default::default()
+            },
+        ]);
+        alter_collection_table(&conn, "posts", &def2, &no_locale()).unwrap();
+
+        let cols = get_table_columns(&conn, "posts").unwrap();
+        assert!(cols.contains("first"));
+        assert!(cols.contains("last"));
+    }
+
     // ── append_default_value ──────────────────────────────────────────────
 
     #[test]
@@ -815,5 +810,255 @@ mod tests {
         let mut col = "name TEXT".to_string();
         append_default_value(&mut col, &None, &FieldType::Text);
         assert!(!col.contains("DEFAULT"));
+    }
+
+    // ── collapsible fields (no prefix, same as row) ─────────────────────
+
+    #[test]
+    fn collapsible_field_promotes_sub_fields_without_prefix() {
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection("posts", vec![
+            FieldDefinition {
+                name: "details".to_string(),
+                field_type: FieldType::Collapsible,
+                fields: vec![text_field("summary"), text_field("notes")],
+                ..Default::default()
+            },
+        ]);
+        create_collection_table(&conn, "posts", &def, &no_locale()).unwrap();
+
+        let cols = get_table_columns(&conn, "posts").unwrap();
+        assert!(cols.contains("summary"), "Collapsible sub-field should be promoted");
+        assert!(cols.contains("notes"), "Collapsible sub-field should be promoted");
+        assert!(!cols.contains("details"), "Collapsible container should not be a column");
+        assert!(!cols.contains("details__summary"), "Collapsible should not use prefix");
+    }
+
+    // ── tabs fields (no prefix, same as row) ────────────────────────────
+
+    #[test]
+    fn tabs_field_promotes_sub_fields_without_prefix() {
+        use crate::core::field::FieldTab;
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection("posts", vec![
+            FieldDefinition {
+                name: "layout".to_string(),
+                field_type: FieldType::Tabs,
+                tabs: vec![
+                    FieldTab { label: "Content".to_string(), description: None, fields: vec![text_field("body")] },
+                    FieldTab { label: "SEO".to_string(), description: None, fields: vec![text_field("meta_title")] },
+                ],
+                ..Default::default()
+            },
+        ]);
+        create_collection_table(&conn, "posts", &def, &no_locale()).unwrap();
+
+        let cols = get_table_columns(&conn, "posts").unwrap();
+        assert!(cols.contains("body"), "Tabs sub-field should be promoted");
+        assert!(cols.contains("meta_title"), "Tabs sub-field should be promoted");
+        assert!(!cols.contains("layout"), "Tabs container should not be a column");
+    }
+
+    // ── tabs containing group (the regression case) ─────────────────────
+
+    #[test]
+    fn tabs_containing_group_creates_prefixed_columns() {
+        use crate::core::field::FieldTab;
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection("posts", vec![
+            FieldDefinition {
+                name: "layout".to_string(),
+                field_type: FieldType::Tabs,
+                tabs: vec![
+                    FieldTab {
+                        label: "Social".to_string(),
+                        description: None,
+                        fields: vec![
+                            FieldDefinition {
+                                name: "social".to_string(),
+                                field_type: FieldType::Group,
+                                fields: vec![text_field("github"), text_field("twitter")],
+                                ..Default::default()
+                            },
+                        ],
+                    },
+                    FieldTab {
+                        label: "Content".to_string(),
+                        description: None,
+                        fields: vec![text_field("body")],
+                    },
+                ],
+                ..Default::default()
+            },
+        ]);
+        create_collection_table(&conn, "posts", &def, &no_locale()).unwrap();
+
+        let cols = get_table_columns(&conn, "posts").unwrap();
+        assert!(cols.contains("social__github"), "Group inside Tabs should use group__subfield");
+        assert!(cols.contains("social__twitter"), "Group inside Tabs should use group__subfield");
+        assert!(cols.contains("body"), "Plain field in Tabs should be promoted flat");
+        assert!(!cols.contains("social"), "Group itself should not be a column");
+    }
+
+    // ── collapsible containing group ────────────────────────────────────
+
+    #[test]
+    fn collapsible_containing_group_creates_prefixed_columns() {
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection("posts", vec![
+            FieldDefinition {
+                name: "extra".to_string(),
+                field_type: FieldType::Collapsible,
+                fields: vec![
+                    FieldDefinition {
+                        name: "seo".to_string(),
+                        field_type: FieldType::Group,
+                        fields: vec![text_field("title"), text_field("desc")],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+        ]);
+        create_collection_table(&conn, "posts", &def, &no_locale()).unwrap();
+
+        let cols = get_table_columns(&conn, "posts").unwrap();
+        assert!(cols.contains("seo__title"), "Group inside Collapsible should use group__subfield");
+        assert!(cols.contains("seo__desc"), "Group inside Collapsible should use group__subfield");
+        assert!(!cols.contains("seo"), "Group itself should not be a column");
+    }
+
+    // ── alter adds tabs/collapsible sub-fields ──────────────────────────
+
+    #[test]
+    fn alter_adds_collapsible_sub_fields() {
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def1 = simple_collection("posts", vec![text_field("title")]);
+        create_collection_table(&conn, "posts", &def1, &no_locale()).unwrap();
+
+        let def2 = simple_collection("posts", vec![
+            text_field("title"),
+            FieldDefinition {
+                name: "extra".to_string(),
+                field_type: FieldType::Collapsible,
+                fields: vec![text_field("notes")],
+                ..Default::default()
+            },
+        ]);
+        alter_collection_table(&conn, "posts", &def2, &no_locale()).unwrap();
+
+        let cols = get_table_columns(&conn, "posts").unwrap();
+        assert!(cols.contains("notes"));
+    }
+
+    #[test]
+    fn alter_adds_tabs_sub_fields() {
+        use crate::core::field::FieldTab;
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def1 = simple_collection("posts", vec![text_field("title")]);
+        create_collection_table(&conn, "posts", &def1, &no_locale()).unwrap();
+
+        let def2 = simple_collection("posts", vec![
+            text_field("title"),
+            FieldDefinition {
+                name: "tabs".to_string(),
+                field_type: FieldType::Tabs,
+                tabs: vec![
+                    FieldTab { label: "T1".to_string(), description: None, fields: vec![text_field("body")] },
+                ],
+                ..Default::default()
+            },
+        ]);
+        alter_collection_table(&conn, "posts", &def2, &no_locale()).unwrap();
+
+        let cols = get_table_columns(&conn, "posts").unwrap();
+        assert!(cols.contains("body"));
+    }
+
+    #[test]
+    fn alter_adds_tabs_with_group_sub_fields() {
+        use crate::core::field::FieldTab;
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def1 = simple_collection("posts", vec![text_field("title")]);
+        create_collection_table(&conn, "posts", &def1, &no_locale()).unwrap();
+
+        let def2 = simple_collection("posts", vec![
+            text_field("title"),
+            FieldDefinition {
+                name: "tabs".to_string(),
+                field_type: FieldType::Tabs,
+                tabs: vec![
+                    FieldTab {
+                        label: "SEO".to_string(),
+                        description: None,
+                        fields: vec![
+                            FieldDefinition {
+                                name: "seo".to_string(),
+                                field_type: FieldType::Group,
+                                fields: vec![text_field("og_title"), text_field("og_desc")],
+                                ..Default::default()
+                            },
+                        ],
+                    },
+                ],
+                ..Default::default()
+            },
+        ]);
+        alter_collection_table(&conn, "posts", &def2, &no_locale()).unwrap();
+
+        let cols = get_table_columns(&conn, "posts").unwrap();
+        assert!(cols.contains("seo__og_title"), "ALTER should add Group columns inside Tabs");
+        assert!(cols.contains("seo__og_desc"), "ALTER should add Group columns inside Tabs");
+    }
+
+    // ── deeply nested: tabs → collapsible → group ───────────────────────
+
+    #[test]
+    fn deeply_nested_tabs_collapsible_group() {
+        use crate::core::field::FieldTab;
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection("posts", vec![
+            FieldDefinition {
+                name: "layout".to_string(),
+                field_type: FieldType::Tabs,
+                tabs: vec![
+                    FieldTab {
+                        label: "Advanced".to_string(),
+                        description: None,
+                        fields: vec![
+                            FieldDefinition {
+                                name: "advanced".to_string(),
+                                field_type: FieldType::Collapsible,
+                                fields: vec![
+                                    FieldDefinition {
+                                        name: "og".to_string(),
+                                        field_type: FieldType::Group,
+                                        fields: vec![text_field("image"), text_field("title")],
+                                        ..Default::default()
+                                    },
+                                    text_field("canonical"),
+                                ],
+                                ..Default::default()
+                            },
+                        ],
+                    },
+                ],
+                ..Default::default()
+            },
+        ]);
+        create_collection_table(&conn, "posts", &def, &no_locale()).unwrap();
+
+        let cols = get_table_columns(&conn, "posts").unwrap();
+        assert!(cols.contains("og__image"), "Deeply nested Group inside Collapsible inside Tabs");
+        assert!(cols.contains("og__title"), "Deeply nested Group inside Collapsible inside Tabs");
+        assert!(cols.contains("canonical"), "Plain field in Collapsible inside Tabs");
     }
 }

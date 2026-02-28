@@ -244,6 +244,34 @@ fn extract_snapshot_data(
             }
             continue;
         }
+        // Row/Collapsible fields promote sub-fields as top-level columns (no prefix)
+        if field.field_type == crate::core::field::FieldType::Row
+            || field.field_type == crate::core::field::FieldType::Collapsible
+        {
+            for sub in &field.fields {
+                if sub.localized && locales_enabled {
+                    continue;
+                }
+                if let Some(s) = snapshot_val_to_string(obj.get(&sub.name)) {
+                    data.insert(sub.name.clone(), s);
+                }
+            }
+            continue;
+        }
+        // Tabs fields promote sub-fields from all tabs as top-level columns (no prefix)
+        if field.field_type == crate::core::field::FieldType::Tabs {
+            for tab in &field.tabs {
+                for sub in &tab.fields {
+                    if sub.localized && locales_enabled {
+                        continue;
+                    }
+                    if let Some(s) = snapshot_val_to_string(obj.get(&sub.name)) {
+                        data.insert(sub.name.clone(), s);
+                    }
+                }
+            }
+            continue;
+        }
         if !field.has_parent_column() {
             continue;
         }
@@ -289,6 +317,32 @@ fn restore_locale_and_join_data(
                         val, &base, locale_config,
                         &mut set_clauses, &mut params, &mut idx,
                     );
+                }
+                continue;
+            }
+            // Row/Collapsible fields promote sub-fields as top-level columns (no prefix)
+            if field.field_type == crate::core::field::FieldType::Row
+                || field.field_type == crate::core::field::FieldType::Collapsible
+            {
+                for sub in &field.fields {
+                    if !sub.localized { continue; }
+                    restore_locale_columns(
+                        obj.get(&sub.name), &sub.name, locale_config,
+                        &mut set_clauses, &mut params, &mut idx,
+                    );
+                }
+                continue;
+            }
+            // Tabs fields promote sub-fields from all tabs as top-level columns (no prefix)
+            if field.field_type == crate::core::field::FieldType::Tabs {
+                for tab in &field.tabs {
+                    for sub in &tab.fields {
+                        if !sub.localized { continue; }
+                        restore_locale_columns(
+                            obj.get(&sub.name), &sub.name, locale_config,
+                            &mut set_clauses, &mut params, &mut idx,
+                        );
+                    }
                 }
                 continue;
             }

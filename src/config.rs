@@ -1,8 +1,177 @@
 //! Configuration types loaded from `crap.toml`.
 
 use anyhow::{Context, Result};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+
+/// Parse a human-readable duration string into seconds.
+///
+/// Supports: `"30s"` (seconds), `"30m"` (minutes), `"24h"` (hours), `"7d"` (days).
+/// Returns `None` for empty or invalid input.
+pub(crate) fn parse_duration_string(s: &str) -> Option<u64> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let (num_str, suffix) = s.split_at(s.len().saturating_sub(1));
+    let num: u64 = num_str.parse().ok()?;
+    match suffix {
+        "s" => Some(num),
+        "m" => Some(num * 60),
+        "h" => Some(num * 3600),
+        "d" => Some(num * 86400),
+        _ => None,
+    }
+}
+
+/// Serde deserializer that accepts both an integer (seconds) and a human-readable
+/// duration string (`"30s"`, `"5m"`, `"2h"`, `"7d"`). Used for config fields where
+/// backward compatibility with plain integer seconds is desired.
+mod serde_duration {
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<u64, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum DurationValue {
+            Seconds(u64),
+            Human(String),
+        }
+
+        match DurationValue::deserialize(deserializer)? {
+            DurationValue::Seconds(s) => Ok(s),
+            DurationValue::Human(s) => {
+                super::parse_duration_string(&s).ok_or_else(|| {
+                    serde::de::Error::custom(format!(
+                        "invalid duration '{}': use an integer (seconds) or a string like \"30s\", \"5m\", \"2h\", \"7d\"",
+                        s
+                    ))
+                })
+            }
+        }
+    }
+
+    pub fn serialize<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(*value)
+    }
+}
+
+/// Serde deserializer for optional duration fields. Absent/null → None,
+/// integer (seconds) or human string → Some(seconds).
+mod serde_duration_option {
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum DurationValue {
+            Seconds(u64),
+            Human(String),
+        }
+
+        let opt: Option<DurationValue> = Option::deserialize(deserializer)?;
+        match opt {
+            None => Ok(None),
+            Some(DurationValue::Seconds(s)) => Ok(Some(s)),
+            Some(DurationValue::Human(s)) => {
+                if s.is_empty() {
+                    return Ok(None);
+                }
+                super::parse_duration_string(&s).map(Some).ok_or_else(|| {
+                    serde::de::Error::custom(format!(
+                        "invalid duration '{}': use an integer (seconds) or a string like \"30s\", \"5m\", \"2h\", \"7d\"",
+                        s
+                    ))
+                })
+            }
+        }
+    }
+
+    pub fn serialize<S>(value: &Option<u64>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match value {
+            Some(v) => serializer.serialize_u64(*v),
+            None => serializer.serialize_none(),
+        }
+    }
+}
+
+/// Parse a human-readable file size string into bytes.
+///
+/// Supports: `"500B"` (bytes), `"100KB"` (kilobytes), `"50MB"` (megabytes), `"1GB"` (gigabytes).
+/// Uses 1024-based (binary) units. Case-insensitive.
+/// Returns `None` for empty or invalid input.
+pub(crate) fn parse_filesize_string(s: &str) -> Option<u64> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let upper = s.to_ascii_uppercase();
+    // Try two-char suffix first (KB, MB, GB), then one-char (B)
+    if upper.len() >= 3 {
+        let (num_str, suffix) = upper.split_at(upper.len() - 2);
+        match suffix {
+            "KB" => return num_str.parse::<u64>().ok().map(|n| n * 1024),
+            "MB" => return num_str.parse::<u64>().ok().map(|n| n * 1024 * 1024),
+            "GB" => return num_str.parse::<u64>().ok().map(|n| n * 1024 * 1024 * 1024),
+            _ => {}
+        }
+    }
+    if upper.ends_with('B') {
+        let num_str = &upper[..upper.len() - 1];
+        return num_str.parse::<u64>().ok();
+    }
+    None
+}
+
+/// Serde deserializer that accepts both an integer (bytes) and a human-readable
+/// file size string (`"500B"`, `"100KB"`, `"50MB"`, `"1GB"`). Used for config fields.
+mod serde_filesize {
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<u64, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum FilesizeValue {
+            Bytes(u64),
+            Human(String),
+        }
+
+        match FilesizeValue::deserialize(deserializer)? {
+            FilesizeValue::Bytes(b) => Ok(b),
+            FilesizeValue::Human(s) => {
+                super::parse_filesize_string(&s).ok_or_else(|| {
+                    serde::de::Error::custom(format!(
+                        "invalid file size '{}': use an integer (bytes) or a string like \"500B\", \"100KB\", \"50MB\", \"1GB\"",
+                        s
+                    ))
+                })
+            }
+        }
+    }
+
+    pub fn serialize<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(*value)
+    }
+}
 
 /// Top-level configuration loaded from `crap.toml` in the config directory.
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -22,6 +191,7 @@ pub struct CrapConfig {
     pub locale: LocaleConfig,
     pub jobs: JobsConfig,
     pub cors: CorsConfig,
+    pub access: AccessConfig,
 }
 
 /// Controls relationship population depth defaults and limits.
@@ -49,6 +219,8 @@ impl Default for DepthConfig {
 #[serde(default)]
 pub struct UploadConfig {
     /// Global max file size in bytes. Default: 50MB.
+    /// Accepts integer bytes or human-readable string ("50MB", "1GB").
+    #[serde(with = "serde_filesize")]
     pub max_file_size: u64,
 }
 
@@ -126,15 +298,23 @@ impl LocaleConfig {
 pub struct JobsConfig {
     /// Max concurrent job executions across all queues. Default: 10.
     pub max_concurrent: usize,
-    /// How often to poll for pending jobs, in seconds. Default: 1.
+    /// How often to poll for pending jobs, in seconds. Default: 1s.
+    /// Accepts integer seconds or human-readable string ("1s", "5s").
+    #[serde(with = "serde_duration")]
     pub poll_interval: u64,
-    /// How often to check cron schedules, in seconds. Default: 60.
+    /// How often to check cron schedules, in seconds. Default: 60s.
+    #[serde(with = "serde_duration")]
     pub cron_interval: u64,
-    /// How often to update heartbeat for running jobs, in seconds. Default: 10.
+    /// How often to update heartbeat for running jobs, in seconds. Default: 10s.
+    #[serde(with = "serde_duration")]
     pub heartbeat_interval: u64,
-    /// Auto-purge completed/failed jobs older than this duration string (e.g., "7d").
-    /// Empty string disables auto-purge.
-    pub auto_purge: String,
+    /// Auto-purge completed/failed jobs older than this duration (in seconds).
+    /// Accepts integer seconds or human-readable string ("7d", "24h").
+    /// None disables auto-purge.
+    #[serde(with = "serde_duration_option")]
+    pub auto_purge: Option<u64>,
+    /// Number of pending image conversions to process per scheduler poll. Default: 10.
+    pub image_queue_batch_size: usize,
 }
 
 impl Default for JobsConfig {
@@ -144,26 +324,8 @@ impl Default for JobsConfig {
             poll_interval: 1,
             cron_interval: 60,
             heartbeat_interval: 10,
-            auto_purge: "7d".to_string(),
-        }
-    }
-}
-
-impl JobsConfig {
-    /// Parse the `auto_purge` duration string into seconds.
-    /// Supports "Nd" (days), "Nh" (hours), "Nm" (minutes). Returns None if empty or invalid.
-    pub fn auto_purge_seconds(&self) -> Option<u64> {
-        let s = self.auto_purge.trim();
-        if s.is_empty() {
-            return None;
-        }
-        let (num_str, suffix) = s.split_at(s.len().saturating_sub(1));
-        let num: u64 = num_str.parse().ok()?;
-        match suffix {
-            "d" => Some(num * 86400),
-            "h" => Some(num * 3600),
-            "m" => Some(num * 60),
-            _ => None,
+            auto_purge: Some(7 * 86400), // 7 days
+            image_queue_batch_size: 10,
         }
     }
 }
@@ -183,6 +345,8 @@ pub struct CorsConfig {
     /// Response headers exposed to the browser.
     pub exposed_headers: Vec<String>,
     /// How long browsers can cache preflight results, in seconds.
+    /// Accepts integer seconds or human-readable string ("1h", "3600").
+    #[serde(with = "serde_duration")]
     pub max_age_seconds: u64,
     /// Whether to allow credentials (cookies, Authorization header).
     /// Cannot be used with `allowed_origins = ["*"]`.
@@ -269,6 +433,25 @@ impl CorsConfig {
     }
 }
 
+/// Access control defaults.
+/// When `default_deny` is true, collections/globals without explicit access functions
+/// deny all operations instead of allowing them. Default: false (backward compatible).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct AccessConfig {
+    /// When true, operations on collections/globals without an explicit access function
+    /// are denied by default. When false (default), missing access functions allow all.
+    pub default_deny: bool,
+}
+
+impl Default for AccessConfig {
+    fn default() -> Self {
+        Self {
+            default_deny: false,
+        }
+    }
+}
+
 /// Live event streaming configuration.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -321,11 +504,19 @@ pub struct AuthConfig {
     /// won't survive restarts).
     pub secret: String,
     /// Default token expiry in seconds (can be overridden per-collection).
+    /// Accepts integer seconds or human-readable string ("2h", "7200").
+    #[serde(with = "serde_duration")]
     pub token_expiry: u64,
     /// Max failed login attempts before lockout. Default: 5.
     pub max_login_attempts: u32,
     /// Lockout window in seconds. Default: 300 (5 minutes).
+    /// Accepts integer seconds or human-readable string ("5m", "300").
+    #[serde(with = "serde_duration")]
     pub login_lockout_seconds: u64,
+    /// Password reset token expiry in seconds. Default: 3600 (1 hour).
+    /// Accepts integer seconds or human-readable string ("1h", "3600").
+    #[serde(with = "serde_duration")]
+    pub reset_token_expiry: u64,
 }
 
 impl Default for AuthConfig {
@@ -335,6 +526,7 @@ impl Default for AuthConfig {
             token_expiry: 7200,
             max_login_attempts: 5,
             login_lockout_seconds: 300,
+            reset_token_expiry: 3600,
         }
     }
 }
@@ -348,11 +540,15 @@ pub struct ServerConfig {
     pub host: String,
 }
 
-/// SQLite database path configuration.
+/// SQLite database path and pool configuration.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct DatabaseConfig {
     pub path: String,
+    /// Maximum number of connections in the pool. Default: 16.
+    pub pool_max_size: u32,
+    /// SQLite busy timeout in milliseconds. Default: 30000 (30s).
+    pub busy_timeout_ms: u64,
 }
 
 /// Admin UI behavior settings.
@@ -376,6 +572,8 @@ impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
             path: "data/crap.db".to_string(),
+            pool_max_size: 16,
+            busy_timeout_ms: 30000,
         }
     }
 }
@@ -390,13 +588,23 @@ impl Default for AdminConfig {
 
 impl CrapConfig {
     /// Load configuration from `crap.toml` in the config directory, falling back to defaults.
+    ///
+    /// Supports environment variable substitution: `${VAR}` is replaced with the
+    /// value of `VAR` from the environment. `${VAR:-default}` uses `default` if
+    /// `VAR` is unset or empty. A reference to an unset variable without a default
+    /// causes an error.
     pub fn load(config_dir: &Path) -> Result<Self> {
         let config_path = config_dir.join("crap.toml");
         if config_path.exists() {
             let contents = std::fs::read_to_string(&config_path)
                 .with_context(|| format!("Failed to read {}", config_path.display()))?;
-            let config: CrapConfig = toml::from_str(&contents)
+            // Parse TOML first (strips comments), then substitute env vars only in string values.
+            // This avoids errors from `${VAR}` patterns in comments.
+            let mut value: toml::Value = toml::from_str(&contents)
                 .with_context(|| format!("Failed to parse {}", config_path.display()))?;
+            substitute_in_value(&mut value)?;
+            let config: CrapConfig = value.try_into()
+                .with_context(|| format!("Failed to deserialize {}", config_path.display()))?;
             Ok(config)
         } else {
             tracing::info!("No crap.toml found, using defaults");
@@ -415,9 +623,9 @@ impl CrapConfig {
         Self::check_version_against(self.crap_version.as_deref(), env!("CARGO_PKG_VERSION"))
     }
 
-    /// Inner version check, takes explicit values so it is testable without
+    /// Version check against an explicit version string, testable without
     /// depending on the compile-time package version.
-    fn check_version_against(crap_version: Option<&str>, pkg_version: &str) -> Option<String> {
+    pub fn check_version_against(crap_version: Option<&str>, pkg_version: &str) -> Option<String> {
         let required = match crap_version {
             Some(v) if !v.is_empty() => v,
             _ => return None,
@@ -443,6 +651,7 @@ impl CrapConfig {
     }
 
     /// Resolve the database path relative to the config directory.
+    #[must_use]
     pub fn db_path(&self, config_dir: &Path) -> PathBuf {
         let p = Path::new(&self.database.path);
         if p.is_absolute() {
@@ -451,6 +660,65 @@ impl CrapConfig {
             config_dir.join(p)
         }
     }
+}
+
+/// Recursively walk a TOML `Value` tree and substitute `${VAR}` / `${VAR:-default}`
+/// in all `String` nodes. Tables and arrays are descended into; other types are untouched.
+fn substitute_in_value(value: &mut toml::Value) -> Result<()> {
+    match value {
+        toml::Value::String(s) => {
+            *s = substitute_env_vars(s)?;
+        }
+        toml::Value::Array(arr) => {
+            for item in arr.iter_mut() {
+                substitute_in_value(item)?;
+            }
+        }
+        toml::Value::Table(tbl) => {
+            for (_key, val) in tbl.iter_mut() {
+                substitute_in_value(val)?;
+            }
+        }
+        _ => {} // Integer, Float, Boolean, Datetime — no substitution
+    }
+    Ok(())
+}
+
+/// Replace `${VAR}` and `${VAR:-default}` placeholders with environment variable values.
+///
+/// - `${VAR}` — replaced with the value of `VAR`. Returns an error if `VAR` is unset.
+/// - `${VAR:-fallback}` — replaced with `VAR` if set and non-empty, otherwise `fallback`.
+fn substitute_env_vars(input: &str) -> Result<String> {
+    let re = Regex::new(r"\$\{([^}]+)\}").expect("env var regex");
+    let mut result = String::with_capacity(input.len());
+    let mut last_end = 0;
+
+    for cap in re.captures_iter(input) {
+        let full_match = cap.get(0).unwrap();
+        result.push_str(&input[last_end..full_match.start()]);
+
+        let inner = &cap[1];
+        if let Some((var_name, default_val)) = inner.split_once(":-") {
+            match std::env::var(var_name) {
+                Ok(val) if !val.is_empty() => result.push_str(&val),
+                _ => result.push_str(default_val),
+            }
+        } else {
+            let val = std::env::var(inner).with_context(|| {
+                format!(
+                    "Environment variable '{}' referenced in crap.toml is not set \
+                     (use ${{{}:-default}} for a fallback)",
+                    inner, inner
+                )
+            })?;
+            result.push_str(&val);
+        }
+
+        last_end = full_match.end();
+    }
+
+    result.push_str(&input[last_end..]);
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -464,7 +732,10 @@ mod tests {
         assert_eq!(config.server.grpc_port, 50051);
         assert_eq!(config.server.host, "0.0.0.0");
         assert_eq!(config.database.path, "data/crap.db");
+        assert_eq!(config.database.pool_max_size, 16);
+        assert_eq!(config.database.busy_timeout_ms, 30000);
         assert!(!config.admin.dev_mode);
+        assert!(!config.access.default_deny);
     }
 
     #[test]
@@ -540,46 +811,203 @@ dev_mode = false
         assert_eq!(email.from_name, "Crap CMS");
     }
 
+    // -- parse_duration_string tests --
+
     #[test]
-    fn auto_purge_seconds_days() {
-        let mut cfg = JobsConfig::default();
-        cfg.auto_purge = "7d".to_string();
-        assert_eq!(cfg.auto_purge_seconds(), Some(7 * 86400));
+    fn parse_duration_days() {
+        assert_eq!(parse_duration_string("7d"), Some(7 * 86400));
+        assert_eq!(parse_duration_string("1d"), Some(86400));
+        assert_eq!(parse_duration_string("30d"), Some(30 * 86400));
     }
 
     #[test]
-    fn auto_purge_seconds_hours() {
-        let mut cfg = JobsConfig::default();
-        cfg.auto_purge = "24h".to_string();
-        assert_eq!(cfg.auto_purge_seconds(), Some(24 * 3600));
+    fn parse_duration_hours() {
+        assert_eq!(parse_duration_string("24h"), Some(24 * 3600));
+        assert_eq!(parse_duration_string("1h"), Some(3600));
     }
 
     #[test]
-    fn auto_purge_seconds_minutes() {
-        let mut cfg = JobsConfig::default();
-        cfg.auto_purge = "30m".to_string();
-        assert_eq!(cfg.auto_purge_seconds(), Some(30 * 60));
+    fn parse_duration_minutes() {
+        assert_eq!(parse_duration_string("30m"), Some(30 * 60));
+        assert_eq!(parse_duration_string("1m"), Some(60));
     }
 
     #[test]
-    fn auto_purge_seconds_empty() {
-        let mut cfg = JobsConfig::default();
-        cfg.auto_purge = "".to_string();
-        assert_eq!(cfg.auto_purge_seconds(), None);
+    fn parse_duration_seconds() {
+        assert_eq!(parse_duration_string("30s"), Some(30));
+        assert_eq!(parse_duration_string("1s"), Some(1));
     }
 
     #[test]
-    fn auto_purge_seconds_invalid() {
-        let mut cfg = JobsConfig::default();
-        cfg.auto_purge = "7s".to_string();
-        assert_eq!(cfg.auto_purge_seconds(), None);
+    fn parse_duration_invalid() {
+        assert_eq!(parse_duration_string(""), None);
+        assert_eq!(parse_duration_string("abc"), None);
+        assert_eq!(parse_duration_string("7x"), None);
+        assert_eq!(parse_duration_string("d"), None);
     }
 
     #[test]
-    fn auto_purge_seconds_default_config() {
+    fn parse_duration_whitespace() {
+        assert_eq!(parse_duration_string("  7d  "), Some(7 * 86400));
+    }
+
+    // -- parse_filesize_string tests --
+
+    #[test]
+    fn parse_filesize_bytes() {
+        assert_eq!(parse_filesize_string("500B"), Some(500));
+        assert_eq!(parse_filesize_string("0B"), Some(0));
+        assert_eq!(parse_filesize_string("1B"), Some(1));
+    }
+
+    #[test]
+    fn parse_filesize_kilobytes() {
+        assert_eq!(parse_filesize_string("100KB"), Some(100 * 1024));
+        assert_eq!(parse_filesize_string("1KB"), Some(1024));
+    }
+
+    #[test]
+    fn parse_filesize_megabytes() {
+        assert_eq!(parse_filesize_string("50MB"), Some(50 * 1024 * 1024));
+        assert_eq!(parse_filesize_string("1MB"), Some(1024 * 1024));
+        assert_eq!(parse_filesize_string("100MB"), Some(100 * 1024 * 1024));
+    }
+
+    #[test]
+    fn parse_filesize_gigabytes() {
+        assert_eq!(parse_filesize_string("1GB"), Some(1024 * 1024 * 1024));
+        assert_eq!(parse_filesize_string("2GB"), Some(2 * 1024 * 1024 * 1024));
+    }
+
+    #[test]
+    fn parse_filesize_case_insensitive() {
+        assert_eq!(parse_filesize_string("50mb"), Some(50 * 1024 * 1024));
+        assert_eq!(parse_filesize_string("50Mb"), Some(50 * 1024 * 1024));
+        assert_eq!(parse_filesize_string("1gb"), Some(1024 * 1024 * 1024));
+        assert_eq!(parse_filesize_string("100kb"), Some(100 * 1024));
+    }
+
+    #[test]
+    fn parse_filesize_whitespace() {
+        assert_eq!(parse_filesize_string("  50MB  "), Some(50 * 1024 * 1024));
+    }
+
+    #[test]
+    fn parse_filesize_invalid() {
+        assert_eq!(parse_filesize_string(""), None);
+        assert_eq!(parse_filesize_string("abc"), None);
+        assert_eq!(parse_filesize_string("50"), None);
+        assert_eq!(parse_filesize_string("MB"), None);
+        assert_eq!(parse_filesize_string("50TB"), None);
+    }
+
+    // -- serde_filesize deserialization tests --
+
+    #[test]
+    fn serde_filesize_integer() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[upload]\nmax_file_size = 52428800\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.upload.max_file_size, 52_428_800);
+    }
+
+    #[test]
+    fn serde_filesize_string_megabytes() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[upload]\nmax_file_size = \"50MB\"\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.upload.max_file_size, 50 * 1024 * 1024);
+    }
+
+    #[test]
+    fn serde_filesize_string_gigabytes() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[upload]\nmax_file_size = \"1GB\"\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.upload.max_file_size, 1024 * 1024 * 1024);
+    }
+
+    // -- serde_duration deserialization tests --
+
+    #[test]
+    fn serde_duration_integer() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[auth]\ntoken_expiry = 7200\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.auth.token_expiry, 7200);
+    }
+
+    #[test]
+    fn serde_duration_string_hours() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[auth]\ntoken_expiry = \"2h\"\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.auth.token_expiry, 7200);
+    }
+
+    #[test]
+    fn serde_duration_string_minutes() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[auth]\nlogin_lockout_seconds = \"5m\"\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.auth.login_lockout_seconds, 300);
+    }
+
+    #[test]
+    fn serde_duration_option_string() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[jobs]\nauto_purge = \"7d\"\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.jobs.auto_purge, Some(7 * 86400));
+    }
+
+    #[test]
+    fn serde_duration_option_integer() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[jobs]\nauto_purge = 86400\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.jobs.auto_purge, Some(86400));
+    }
+
+    #[test]
+    fn serde_duration_option_absent_uses_default() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[jobs]\nmax_concurrent = 5\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.jobs.auto_purge, Some(7 * 86400)); // default
+    }
+
+    #[test]
+    fn auto_purge_default_config() {
         let cfg = JobsConfig::default();
-        assert_eq!(cfg.auto_purge, "7d");
-        assert_eq!(cfg.auto_purge_seconds(), Some(7 * 86400));
+        assert_eq!(cfg.auto_purge, Some(7 * 86400));
     }
 
     #[test]
@@ -589,6 +1017,8 @@ dev_mode = false
         assert_eq!(cfg.poll_interval, 1);
         assert_eq!(cfg.cron_interval, 60);
         assert_eq!(cfg.heartbeat_interval, 10);
+        assert_eq!(cfg.auto_purge, Some(7 * 86400));
+        assert_eq!(cfg.image_queue_batch_size, 10);
     }
 
     #[test]
@@ -603,6 +1033,7 @@ dev_mode = false
         let auth = AuthConfig::default();
         assert!(auth.secret.is_empty());
         assert_eq!(auth.token_expiry, 7200);
+        assert_eq!(auth.reset_token_expiry, 3600);
     }
 
     #[test]
@@ -742,6 +1173,57 @@ allow_credentials = true
         assert_eq!(config.database.path, "data/crap.db");
     }
 
+    #[test]
+    fn access_config_default_deny_false_by_default() {
+        let config = CrapConfig::default();
+        assert!(!config.access.default_deny);
+    }
+
+    #[test]
+    fn access_config_default_deny_from_toml() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[access]\ndefault_deny = true\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert!(config.access.default_deny);
+    }
+
+    #[test]
+    fn database_config_from_toml() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[database]\npool_max_size = 32\nbusy_timeout_ms = 60000\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.database.pool_max_size, 32);
+        assert_eq!(config.database.busy_timeout_ms, 60000);
+    }
+
+    #[test]
+    fn auth_reset_token_expiry_from_toml() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[auth]\nreset_token_expiry = 1800\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.auth.reset_token_expiry, 1800);
+    }
+
+    #[test]
+    fn jobs_image_queue_batch_size_from_toml() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[jobs]\nimage_queue_batch_size = 50\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.jobs.image_queue_batch_size, 50);
+    }
+
     // -- crap_version / check_version tests --
 
     #[test]
@@ -823,5 +1305,157 @@ allow_credentials = true
         ).unwrap();
         let config = CrapConfig::load(tmp.path()).unwrap();
         assert!(config.crap_version.is_none());
+    }
+
+    // -- substitute_env_vars tests --
+
+    #[test]
+    fn env_subst_simple() {
+        std::env::set_var("CRAP_TEST_HOST", "127.0.0.1");
+        let result = substitute_env_vars("host = \"${CRAP_TEST_HOST}\"").unwrap();
+        assert_eq!(result, "host = \"127.0.0.1\"");
+        std::env::remove_var("CRAP_TEST_HOST");
+    }
+
+    #[test]
+    fn env_subst_with_default() {
+        std::env::remove_var("CRAP_TEST_MISSING");
+        let result = substitute_env_vars("port = ${CRAP_TEST_MISSING:-3000}").unwrap();
+        assert_eq!(result, "port = 3000");
+    }
+
+    #[test]
+    fn env_subst_default_not_used_when_set() {
+        std::env::set_var("CRAP_TEST_PORT", "8080");
+        let result = substitute_env_vars("port = ${CRAP_TEST_PORT:-3000}").unwrap();
+        assert_eq!(result, "port = 8080");
+        std::env::remove_var("CRAP_TEST_PORT");
+    }
+
+    #[test]
+    fn env_subst_empty_uses_default() {
+        std::env::set_var("CRAP_TEST_EMPTY", "");
+        let result = substitute_env_vars("val = \"${CRAP_TEST_EMPTY:-fallback}\"").unwrap();
+        assert_eq!(result, "val = \"fallback\"");
+        std::env::remove_var("CRAP_TEST_EMPTY");
+    }
+
+    #[test]
+    fn env_subst_missing_no_default_errors() {
+        std::env::remove_var("CRAP_TEST_NOEXIST_XYZ");
+        let result = substitute_env_vars("secret = \"${CRAP_TEST_NOEXIST_XYZ}\"");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("CRAP_TEST_NOEXIST_XYZ"));
+    }
+
+    #[test]
+    fn env_subst_multiple() {
+        std::env::set_var("CRAP_TEST_A", "hello");
+        std::env::set_var("CRAP_TEST_B", "world");
+        let result = substitute_env_vars("${CRAP_TEST_A} ${CRAP_TEST_B}").unwrap();
+        assert_eq!(result, "hello world");
+        std::env::remove_var("CRAP_TEST_A");
+        std::env::remove_var("CRAP_TEST_B");
+    }
+
+    #[test]
+    fn env_subst_no_vars_passthrough() {
+        let input = "admin_port = 3000\nhost = \"0.0.0.0\"";
+        let result = substitute_env_vars(input).unwrap();
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn env_subst_in_toml_load() {
+        std::env::set_var("CRAP_TEST_ADMIN_PORT", "9999");
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[server]\nadmin_port = 9999\nhost = \"${CRAP_TEST_HOST2:-0.0.0.0}\"\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.server.admin_port, 9999);
+        assert_eq!(config.server.host, "0.0.0.0");
+        std::env::remove_var("CRAP_TEST_ADMIN_PORT");
+    }
+
+    #[test]
+    fn env_subst_ignores_comments() {
+        // ${UNSET_VAR_IN_COMMENT} in a TOML comment should not cause an error
+        std::env::remove_var("CRAP_TEST_UNSET_COMMENT_VAR");
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "# Set ${CRAP_TEST_UNSET_COMMENT_VAR} for production\n\
+             [server]\nadmin_port = 3000\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.server.admin_port, 3000);
+    }
+
+    #[test]
+    fn env_subst_in_string_values_via_load() {
+        std::env::set_var("CRAP_TEST_SMTP_HOST", "mail.example.com");
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[email]\nsmtp_host = \"${CRAP_TEST_SMTP_HOST}\"\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.email.smtp_host, "mail.example.com");
+        std::env::remove_var("CRAP_TEST_SMTP_HOST");
+    }
+
+    // -- substitute_in_value tests --
+
+    #[test]
+    fn substitute_in_value_string() {
+        std::env::set_var("CRAP_TEST_SIV", "replaced");
+        let mut val = toml::Value::String("${CRAP_TEST_SIV}".to_string());
+        substitute_in_value(&mut val).unwrap();
+        assert_eq!(val.as_str().unwrap(), "replaced");
+        std::env::remove_var("CRAP_TEST_SIV");
+    }
+
+    #[test]
+    fn substitute_in_value_table() {
+        std::env::set_var("CRAP_TEST_SIV2", "value2");
+        let mut tbl = toml::map::Map::new();
+        tbl.insert("key".to_string(), toml::Value::String("${CRAP_TEST_SIV2}".to_string()));
+        tbl.insert("num".to_string(), toml::Value::Integer(42));
+        let mut val = toml::Value::Table(tbl);
+        substitute_in_value(&mut val).unwrap();
+        assert_eq!(val.get("key").unwrap().as_str().unwrap(), "value2");
+        assert_eq!(val.get("num").unwrap().as_integer().unwrap(), 42);
+        std::env::remove_var("CRAP_TEST_SIV2");
+    }
+
+    #[test]
+    fn substitute_in_value_array() {
+        std::env::set_var("CRAP_TEST_SIV3", "item");
+        let mut val = toml::Value::Array(vec![
+            toml::Value::String("${CRAP_TEST_SIV3}".to_string()),
+            toml::Value::Boolean(true),
+        ]);
+        substitute_in_value(&mut val).unwrap();
+        assert_eq!(val.as_array().unwrap()[0].as_str().unwrap(), "item");
+        assert!(val.as_array().unwrap()[1].as_bool().unwrap());
+        std::env::remove_var("CRAP_TEST_SIV3");
+    }
+
+    #[test]
+    fn substitute_in_value_non_string_untouched() {
+        let mut val = toml::Value::Integer(99);
+        substitute_in_value(&mut val).unwrap();
+        assert_eq!(val.as_integer().unwrap(), 99);
+
+        let mut val = toml::Value::Float(3.14);
+        substitute_in_value(&mut val).unwrap();
+        assert!((val.as_float().unwrap() - 3.14).abs() < f64::EPSILON);
+
+        let mut val = toml::Value::Boolean(true);
+        substitute_in_value(&mut val).unwrap();
+        assert!(val.as_bool().unwrap());
     }
 }

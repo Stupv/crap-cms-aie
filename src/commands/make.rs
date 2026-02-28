@@ -434,6 +434,9 @@ pub fn try_load_field_infos(config_dir: &Path, collection: &str) -> Option<Vec<c
             crate::core::field::FieldType::Array
             | crate::core::field::FieldType::Blocks
             | crate::core::field::FieldType::Group
+            | crate::core::field::FieldType::Row
+            | crate::core::field::FieldType::Collapsible
+            | crate::core::field::FieldType::Tabs
         ))
         .map(|f| crate::scaffold::ConditionFieldInfo {
             name: f.name.clone(),
