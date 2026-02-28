@@ -575,4 +575,104 @@ mod tests {
         assert!(cols.contains("og__image"), "Deeply nested: Tabs → Collapsible → Group");
         assert!(cols.contains("canonical"), "Deeply nested: Tabs → Collapsible → plain");
     }
+
+    // ── Group containing layout fields (the former terminal-node bug) ─────
+
+    #[test]
+    fn global_group_containing_row() {
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_global("settings", vec![
+            FieldDefinition {
+                name: "branding".to_string(),
+                field_type: FieldType::Group,
+                fields: vec![
+                    FieldDefinition {
+                        name: "row1".to_string(),
+                        field_type: FieldType::Row,
+                        fields: vec![text_field("logo"), text_field("favicon")],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+        ]);
+        sync_global_table(&conn, "settings", &def, &no_locale()).unwrap();
+        let cols = get_table_columns(&conn, "_global_settings").unwrap();
+        assert!(cols.contains("branding__logo"), "Group→Row: branding__logo");
+        assert!(cols.contains("branding__favicon"), "Group→Row: branding__favicon");
+    }
+
+    #[test]
+    fn global_group_containing_tabs() {
+        use crate::core::field::FieldTab;
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_global("settings", vec![
+            FieldDefinition {
+                name: "config".to_string(),
+                field_type: FieldType::Group,
+                fields: vec![
+                    FieldDefinition {
+                        name: "layout".to_string(),
+                        field_type: FieldType::Tabs,
+                        tabs: vec![
+                            FieldTab {
+                                label: "General".to_string(),
+                                description: None,
+                                fields: vec![text_field("site_name")],
+                            },
+                            FieldTab {
+                                label: "Social".to_string(),
+                                description: None,
+                                fields: vec![text_field("twitter")],
+                            },
+                        ],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+        ]);
+        sync_global_table(&conn, "settings", &def, &no_locale()).unwrap();
+        let cols = get_table_columns(&conn, "_global_settings").unwrap();
+        assert!(cols.contains("config__site_name"), "Group→Tabs: config__site_name");
+        assert!(cols.contains("config__twitter"), "Group→Tabs: config__twitter");
+    }
+
+    #[test]
+    fn global_group_tabs_group_three_levels() {
+        use crate::core::field::FieldTab;
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_global("settings", vec![
+            FieldDefinition {
+                name: "a".to_string(),
+                field_type: FieldType::Group,
+                fields: vec![
+                    FieldDefinition {
+                        name: "t".to_string(),
+                        field_type: FieldType::Tabs,
+                        tabs: vec![FieldTab {
+                            label: "Tab".to_string(),
+                            description: None,
+                            fields: vec![
+                                FieldDefinition {
+                                    name: "b".to_string(),
+                                    field_type: FieldType::Group,
+                                    fields: vec![text_field("leaf")],
+                                    ..Default::default()
+                                },
+                            ],
+                        }],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+        ]);
+        sync_global_table(&conn, "settings", &def, &no_locale()).unwrap();
+        let cols = get_table_columns(&conn, "_global_settings").unwrap();
+        assert!(cols.contains("a__b__leaf"), "Group→Tabs→Group: a__b__leaf");
+    }
 }

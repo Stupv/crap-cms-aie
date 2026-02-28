@@ -61,7 +61,7 @@ pub fn update_global(
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
     let mut idx = 1;
 
-    collect_update_params(&def.fields, data, &locale_ctx, &mut set_clauses, &mut params, &mut idx);
+    collect_update_params(&def.fields, data, &locale_ctx, &mut set_clauses, &mut params, &mut idx, "");
 
     set_clauses.push(format!("updated_at = ?{}", idx));
     params.push(Box::new(now));
@@ -85,8 +85,7 @@ pub fn update_global(
 }
 
 /// Recursively collect SET clauses + params from a field list.
-/// Handles Group (prefixed), Row/Collapsible (promoted flat), Tabs (promoted flat),
-/// and arbitrary nesting of layout fields.
+/// Handles arbitrary nesting: Group (prefixed), Row/Collapsible/Tabs (promoted flat).
 fn collect_update_params(
     fields: &[crate::core::field::FieldDefinition],
     data: &HashMap<String, String>,
@@ -94,40 +93,35 @@ fn collect_update_params(
     set_clauses: &mut Vec<String>,
     params: &mut Vec<Box<dyn rusqlite::types::ToSql>>,
     idx: &mut usize,
+    prefix: &str,
 ) {
     for field in fields {
         match field.field_type {
             FieldType::Group => {
-                for sub in &field.fields {
-                    let data_key = format!("{}__{}", field.name, sub.name);
-                    let col_name = locale_write_column(&data_key, sub, locale_ctx);
-                    if let Some(value) = data.get(&data_key) {
-                        set_clauses.push(format!("{} = ?{}", col_name, *idx));
-                        params.push(coerce_value(&sub.field_type, value));
-                        *idx += 1;
-                    } else if sub.field_type == FieldType::Checkbox {
-                        set_clauses.push(format!("{} = ?{}", col_name, *idx));
-                        params.push(Box::new(0i32));
-                        *idx += 1;
-                    }
-                }
+                let new_prefix = if prefix.is_empty() {
+                    field.name.clone()
+                } else {
+                    format!("{}__{}", prefix, field.name)
+                };
+                collect_update_params(&field.fields, data, locale_ctx, set_clauses, params, idx, &new_prefix);
             }
             FieldType::Row | FieldType::Collapsible => {
-                // Promoted flat — recurse into sub-fields
-                collect_update_params(&field.fields, data, locale_ctx, set_clauses, params, idx);
+                collect_update_params(&field.fields, data, locale_ctx, set_clauses, params, idx, prefix);
             }
             FieldType::Tabs => {
-                // Promoted flat — recurse into each tab's sub-fields
                 for tab in &field.tabs {
-                    collect_update_params(&tab.fields, data, locale_ctx, set_clauses, params, idx);
+                    collect_update_params(&tab.fields, data, locale_ctx, set_clauses, params, idx, prefix);
                 }
             }
             _ => {
-                if !field.has_parent_column() {
-                    continue;
-                }
-                let col_name = locale_write_column(&field.name, field, locale_ctx);
-                if let Some(value) = data.get(&field.name) {
+                if !field.has_parent_column() { continue; }
+                let data_key = if prefix.is_empty() {
+                    field.name.clone()
+                } else {
+                    format!("{}__{}", prefix, field.name)
+                };
+                let col_name = locale_write_column(&data_key, field, locale_ctx);
+                if let Some(value) = data.get(&data_key) {
                     set_clauses.push(format!("{} = ?{}", col_name, *idx));
                     params.push(coerce_value(&field.field_type, value));
                     *idx += 1;
@@ -441,5 +435,161 @@ mod tests {
         assert!(names.contains(&"_status".to_string()), "should include _status for drafts-enabled global");
         assert!(names.contains(&"created_at".to_string()));
         assert!(names.contains(&"updated_at".to_string()));
+    }
+
+    // ── Group containing layout fields (the former terminal-node bug) ─────
+
+    #[test]
+    fn update_global_group_containing_row() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE _global_branding (
+                id TEXT PRIMARY KEY,
+                colors__primary TEXT,
+                colors__secondary TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            );
+            INSERT INTO _global_branding (id, created_at, updated_at)
+            VALUES ('default', '2024-01-01', '2024-01-01');"
+        ).unwrap();
+
+        let def = GlobalDefinition {
+            slug: "branding".to_string(),
+            labels: CollectionLabels::default(),
+            fields: vec![
+                FieldDefinition {
+                    name: "colors".to_string(),
+                    field_type: FieldType::Group,
+                    fields: vec![
+                        FieldDefinition {
+                            name: "r".to_string(),
+                            field_type: FieldType::Row,
+                            fields: vec![
+                                FieldDefinition { name: "primary".to_string(), ..Default::default() },
+                                FieldDefinition { name: "secondary".to_string(), ..Default::default() },
+                            ],
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                },
+            ],
+            hooks: CollectionHooks::default(),
+            access: CollectionAccess::default(),
+            live: None,
+            versions: None,
+        };
+
+        let mut data = HashMap::new();
+        data.insert("colors__primary".to_string(), "#ff0000".to_string());
+        data.insert("colors__secondary".to_string(), "#00ff00".to_string());
+
+        let doc = update_global(&conn, "branding", &def, &data, None).unwrap();
+        let colors = doc.fields.get("colors").expect("colors should exist");
+        assert_eq!(colors.get("primary").and_then(|v| v.as_str()), Some("#ff0000"));
+        assert_eq!(colors.get("secondary").and_then(|v| v.as_str()), Some("#00ff00"));
+    }
+
+    #[test]
+    fn update_global_group_containing_tabs() {
+        use crate::core::field::FieldTab;
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE _global_settings (
+                id TEXT PRIMARY KEY,
+                config__theme TEXT,
+                config__cache_ttl TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            );
+            INSERT INTO _global_settings (id, created_at, updated_at)
+            VALUES ('default', '2024-01-01', '2024-01-01');"
+        ).unwrap();
+
+        let def = GlobalDefinition {
+            slug: "settings".to_string(),
+            labels: CollectionLabels::default(),
+            fields: vec![
+                FieldDefinition {
+                    name: "config".to_string(),
+                    field_type: FieldType::Group,
+                    fields: vec![
+                        FieldDefinition {
+                            name: "t".to_string(),
+                            field_type: FieldType::Tabs,
+                            tabs: vec![
+                                FieldTab {
+                                    label: "General".to_string(),
+                                    description: None,
+                                    fields: vec![
+                                        FieldDefinition { name: "theme".to_string(), ..Default::default() },
+                                    ],
+                                },
+                                FieldTab {
+                                    label: "Perf".to_string(),
+                                    description: None,
+                                    fields: vec![
+                                        FieldDefinition { name: "cache_ttl".to_string(), ..Default::default() },
+                                    ],
+                                },
+                            ],
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                },
+            ],
+            hooks: CollectionHooks::default(),
+            access: CollectionAccess::default(),
+            live: None,
+            versions: None,
+        };
+
+        let mut data = HashMap::new();
+        data.insert("config__theme".to_string(), "dark".to_string());
+        data.insert("config__cache_ttl".to_string(), "3600".to_string());
+
+        let doc = update_global(&conn, "settings", &def, &data, None).unwrap();
+        let config = doc.fields.get("config").expect("config should exist");
+        assert_eq!(config.get("theme").and_then(|v| v.as_str()), Some("dark"));
+        assert_eq!(config.get("cache_ttl").and_then(|v| v.as_str()), Some("3600"));
+    }
+
+    #[test]
+    fn get_global_column_names_group_containing_tabs() {
+        use crate::core::field::FieldTab;
+        let def = GlobalDefinition {
+            slug: "settings".to_string(),
+            labels: CollectionLabels::default(),
+            fields: vec![
+                FieldDefinition {
+                    name: "config".to_string(),
+                    field_type: FieldType::Group,
+                    fields: vec![
+                        FieldDefinition {
+                            name: "t".to_string(),
+                            field_type: FieldType::Tabs,
+                            tabs: vec![FieldTab {
+                                label: "Tab".to_string(),
+                                description: None,
+                                fields: vec![
+                                    FieldDefinition { name: "value".to_string(), ..Default::default() },
+                                ],
+                            }],
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                },
+            ],
+            hooks: CollectionHooks::default(),
+            access: CollectionAccess::default(),
+            live: None,
+            versions: None,
+        };
+
+        let names = get_global_column_names(&def);
+        assert!(names.contains(&"config__value".to_string()), "Group→Tabs: config__value");
     }
 }

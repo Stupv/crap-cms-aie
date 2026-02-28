@@ -1061,4 +1061,198 @@ mod tests {
         assert!(cols.contains("og__title"), "Deeply nested Group inside Collapsible inside Tabs");
         assert!(cols.contains("canonical"), "Plain field in Collapsible inside Tabs");
     }
+
+    // ── Group containing layout fields (the former terminal-node bug) ─────
+
+    #[test]
+    fn group_containing_row() {
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection("posts", vec![
+            FieldDefinition {
+                name: "meta".to_string(),
+                field_type: FieldType::Group,
+                fields: vec![
+                    FieldDefinition {
+                        name: "row1".to_string(),
+                        field_type: FieldType::Row,
+                        fields: vec![text_field("title"), text_field("slug")],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+        ]);
+        create_collection_table(&conn, "posts", &def, &no_locale()).unwrap();
+        let cols = get_table_columns(&conn, "posts").unwrap();
+        assert!(cols.contains("meta__title"), "Group→Row should produce meta__title");
+        assert!(cols.contains("meta__slug"), "Group→Row should produce meta__slug");
+    }
+
+    #[test]
+    fn group_containing_collapsible() {
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection("posts", vec![
+            FieldDefinition {
+                name: "seo".to_string(),
+                field_type: FieldType::Group,
+                fields: vec![
+                    FieldDefinition {
+                        name: "advanced".to_string(),
+                        field_type: FieldType::Collapsible,
+                        fields: vec![text_field("robots"), text_field("canonical")],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+        ]);
+        create_collection_table(&conn, "posts", &def, &no_locale()).unwrap();
+        let cols = get_table_columns(&conn, "posts").unwrap();
+        assert!(cols.contains("seo__robots"), "Group→Collapsible should produce seo__robots");
+        assert!(cols.contains("seo__canonical"), "Group→Collapsible should produce seo__canonical");
+    }
+
+    #[test]
+    fn group_containing_tabs() {
+        use crate::core::field::FieldTab;
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection("posts", vec![
+            FieldDefinition {
+                name: "settings".to_string(),
+                field_type: FieldType::Group,
+                fields: vec![
+                    FieldDefinition {
+                        name: "layout".to_string(),
+                        field_type: FieldType::Tabs,
+                        tabs: vec![
+                            FieldTab {
+                                label: "General".to_string(),
+                                description: None,
+                                fields: vec![text_field("theme")],
+                            },
+                            FieldTab {
+                                label: "Advanced".to_string(),
+                                description: None,
+                                fields: vec![text_field("cache_ttl")],
+                            },
+                        ],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+        ]);
+        create_collection_table(&conn, "posts", &def, &no_locale()).unwrap();
+        let cols = get_table_columns(&conn, "posts").unwrap();
+        assert!(cols.contains("settings__theme"), "Group→Tabs should produce settings__theme");
+        assert!(cols.contains("settings__cache_ttl"), "Group→Tabs should produce settings__cache_ttl");
+    }
+
+    #[test]
+    fn group_tabs_group_three_levels() {
+        use crate::core::field::FieldTab;
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection("posts", vec![
+            FieldDefinition {
+                name: "outer".to_string(),
+                field_type: FieldType::Group,
+                fields: vec![
+                    FieldDefinition {
+                        name: "layout".to_string(),
+                        field_type: FieldType::Tabs,
+                        tabs: vec![FieldTab {
+                            label: "Nested".to_string(),
+                            description: None,
+                            fields: vec![
+                                FieldDefinition {
+                                    name: "inner".to_string(),
+                                    field_type: FieldType::Group,
+                                    fields: vec![text_field("deep_value")],
+                                    ..Default::default()
+                                },
+                            ],
+                        }],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+        ]);
+        create_collection_table(&conn, "posts", &def, &no_locale()).unwrap();
+        let cols = get_table_columns(&conn, "posts").unwrap();
+        assert!(cols.contains("outer__inner__deep_value"), "Group→Tabs→Group should produce outer__inner__deep_value");
+    }
+
+    #[test]
+    fn group_row_group_collapsible_four_levels() {
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection("posts", vec![
+            FieldDefinition {
+                name: "a".to_string(),
+                field_type: FieldType::Group,
+                fields: vec![
+                    FieldDefinition {
+                        name: "r".to_string(),
+                        field_type: FieldType::Row,
+                        fields: vec![
+                            FieldDefinition {
+                                name: "b".to_string(),
+                                field_type: FieldType::Group,
+                                fields: vec![
+                                    FieldDefinition {
+                                        name: "c".to_string(),
+                                        field_type: FieldType::Collapsible,
+                                        fields: vec![text_field("leaf")],
+                                        ..Default::default()
+                                    },
+                                ],
+                                ..Default::default()
+                            },
+                        ],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+        ]);
+        create_collection_table(&conn, "posts", &def, &no_locale()).unwrap();
+        let cols = get_table_columns(&conn, "posts").unwrap();
+        assert!(cols.contains("a__b__leaf"), "Group→Row→Group→Collapsible: a__b__leaf");
+    }
+
+    #[test]
+    fn group_containing_tabs_with_locale() {
+        use crate::core::field::FieldTab;
+        let pool = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection("posts", vec![
+            FieldDefinition {
+                name: "meta".to_string(),
+                field_type: FieldType::Group,
+                localized: true,
+                fields: vec![
+                    FieldDefinition {
+                        name: "layout".to_string(),
+                        field_type: FieldType::Tabs,
+                        tabs: vec![FieldTab {
+                            label: "Content".to_string(),
+                            description: None,
+                            fields: vec![text_field("title")],
+                        }],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+        ]);
+        create_collection_table(&conn, "posts", &def, &locale_en_de()).unwrap();
+        let cols = get_table_columns(&conn, "posts").unwrap();
+        assert!(cols.contains("meta__title__en"), "Localized Group→Tabs: meta__title__en");
+        assert!(cols.contains("meta__title__de"), "Localized Group→Tabs: meta__title__de");
+    }
 }

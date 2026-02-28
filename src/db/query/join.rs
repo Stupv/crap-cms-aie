@@ -376,6 +376,44 @@ pub fn find_block_rows(
     Ok(rows)
 }
 
+/// Recursively extract prefixed columns from `doc.fields` into a nested Group object.
+/// Handles Group→Row, Group→Collapsible, Group→Tabs, and Group→Group nesting.
+fn reconstruct_group_fields(
+    fields: &[FieldDefinition],
+    prefix: &str,
+    doc: &mut Document,
+    group_obj: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    for sub in fields {
+        match sub.field_type {
+            FieldType::Group => {
+                // Nested group: collect sub-group's fields into a nested object
+                let new_prefix = format!("{}__{}", prefix, sub.name);
+                let mut sub_obj = serde_json::Map::new();
+                reconstruct_group_fields(&sub.fields, &new_prefix, doc, &mut sub_obj);
+                if !sub_obj.is_empty() {
+                    group_obj.insert(sub.name.clone(), serde_json::Value::Object(sub_obj));
+                }
+            }
+            FieldType::Row | FieldType::Collapsible => {
+                // Layout fields are transparent — promote sub-fields to same level
+                reconstruct_group_fields(&sub.fields, prefix, doc, group_obj);
+            }
+            FieldType::Tabs => {
+                for tab in &sub.tabs {
+                    reconstruct_group_fields(&tab.fields, prefix, doc, group_obj);
+                }
+            }
+            _ => {
+                let col_name = format!("{}__{}", prefix, sub.name);
+                if let Some(val) = doc.fields.remove(&col_name) {
+                    group_obj.insert(sub.name.clone(), val);
+                }
+            }
+        }
+    }
+}
+
 /// Hydrate a document with join table data (has-many relationships and arrays).
 /// Populates `doc.fields` with JSON arrays for each join-table field.
 /// If `select` is provided, skip hydrating fields not in the select list.
@@ -424,12 +462,8 @@ pub fn hydrate_document(
             FieldType::Group => {
                 // Reconstruct nested object from prefixed columns: seo__title → { seo: { title: val } }
                 let mut group_obj = serde_json::Map::new();
-                for sub in &field.fields {
-                    let col_name = format!("{}__{}", field.name, sub.name);
-                    if let Some(val) = doc.fields.remove(&col_name) {
-                        group_obj.insert(sub.name.clone(), val);
-                    }
-                }
+                let prefix = &field.name;
+                reconstruct_group_fields(&field.fields, prefix, doc, &mut group_obj);
                 if !group_obj.is_empty() {
                     doc.fields.insert(field.name.clone(), serde_json::Value::Object(group_obj));
                 }

@@ -237,24 +237,36 @@ pub fn get_column_names(def: &CollectionDefinition) -> Vec<String> {
 
 /// Recursively collect column names from a field tree.
 pub(super) fn collect_column_names(fields: &[FieldDefinition], names: &mut Vec<String>) {
+    collect_column_names_inner(fields, names, "");
+}
+
+fn collect_column_names_inner(fields: &[FieldDefinition], names: &mut Vec<String>, prefix: &str) {
     for field in fields {
         match field.field_type {
             FieldType::Group => {
-                for sub in &field.fields {
-                    names.push(format!("{}__{}", field.name, sub.name));
-                }
+                let new_prefix = if prefix.is_empty() {
+                    field.name.clone()
+                } else {
+                    format!("{}__{}", prefix, field.name)
+                };
+                collect_column_names_inner(&field.fields, names, &new_prefix);
             }
             FieldType::Row | FieldType::Collapsible => {
-                collect_column_names(&field.fields, names);
+                collect_column_names_inner(&field.fields, names, prefix);
             }
             FieldType::Tabs => {
                 for tab in &field.tabs {
-                    collect_column_names(&tab.fields, names);
+                    collect_column_names_inner(&tab.fields, names, prefix);
                 }
             }
             _ => {
                 if field.has_parent_column() {
-                    names.push(field.name.clone());
+                    let col = if prefix.is_empty() {
+                        field.name.clone()
+                    } else {
+                        format!("{}__{}", prefix, field.name)
+                    };
+                    names.push(col);
                 }
             }
         }
@@ -273,7 +285,7 @@ pub fn get_locale_select_columns(
     let mut select_exprs = vec!["id".to_string()];
     let mut result_names = vec!["id".to_string()];
 
-    collect_locale_columns(fields, &mut select_exprs, &mut result_names, locale_ctx);
+    collect_locale_columns(fields, &mut select_exprs, &mut result_names, locale_ctx, "", false);
 
     if timestamps {
         select_exprs.push("created_at".to_string());
@@ -291,36 +303,43 @@ fn collect_locale_columns(
     select_exprs: &mut Vec<String>,
     result_names: &mut Vec<String>,
     locale_ctx: &LocaleContext,
+    prefix: &str,
+    inherited_localized: bool,
 ) {
     for field in fields {
         match field.field_type {
             FieldType::Group => {
-                for sub in &field.fields {
-                    let base = format!("{}__{}", field.name, sub.name);
-                    let is_localized = (field.localized || sub.localized) && locale_ctx.config.is_enabled();
-                    if is_localized {
-                        add_locale_columns(select_exprs, result_names, &base, locale_ctx);
-                    } else {
-                        select_exprs.push(base.clone());
-                        result_names.push(base);
-                    }
-                }
+                let new_prefix = if prefix.is_empty() {
+                    field.name.clone()
+                } else {
+                    format!("{}__{}", prefix, field.name)
+                };
+                collect_locale_columns(
+                    &field.fields, select_exprs, result_names, locale_ctx,
+                    &new_prefix, inherited_localized || field.localized,
+                );
             }
             FieldType::Row | FieldType::Collapsible => {
-                collect_locale_columns(&field.fields, select_exprs, result_names, locale_ctx);
+                collect_locale_columns(&field.fields, select_exprs, result_names, locale_ctx, prefix, inherited_localized);
             }
             FieldType::Tabs => {
                 for tab in &field.tabs {
-                    collect_locale_columns(&tab.fields, select_exprs, result_names, locale_ctx);
+                    collect_locale_columns(&tab.fields, select_exprs, result_names, locale_ctx, prefix, inherited_localized);
                 }
             }
             _ => {
                 if !field.has_parent_column() { continue; }
-                if field.localized && locale_ctx.config.is_enabled() {
-                    add_locale_columns(select_exprs, result_names, &field.name, locale_ctx);
+                let base = if prefix.is_empty() {
+                    field.name.clone()
                 } else {
-                    select_exprs.push(field.name.clone());
-                    result_names.push(field.name.clone());
+                    format!("{}__{}", prefix, field.name)
+                };
+                let is_localized = (inherited_localized || field.localized) && locale_ctx.config.is_enabled();
+                if is_localized {
+                    add_locale_columns(select_exprs, result_names, &base, locale_ctx);
+                } else {
+                    select_exprs.push(base.clone());
+                    result_names.push(base);
                 }
             }
         }
@@ -366,65 +385,56 @@ fn add_locale_columns(
 /// Group locale-suffixed fields into nested objects for `LocaleMode::All`.
 /// Converts `title__en: "Hello", title__de: "Hallo"` into `title: { en: "Hello", de: "Hallo" }`.
 pub(crate) fn group_locale_fields(doc: &mut Document, fields: &[FieldDefinition], locale_config: &LocaleConfig) {
+    group_locale_fields_inner(doc, fields, locale_config, "", false);
+}
+
+fn group_locale_fields_inner(
+    doc: &mut Document,
+    fields: &[FieldDefinition],
+    locale_config: &LocaleConfig,
+    prefix: &str,
+    inherited_localized: bool,
+) {
     for field in fields {
-        if field.field_type == FieldType::Group {
-            for sub in &field.fields {
-                if (field.localized || sub.localized) && locale_config.is_enabled() {
-                    let base = format!("{}__{}", field.name, sub.name);
-                    let mut locale_map = serde_json::Map::new();
-                    for locale in &locale_config.locales {
-                        let col = format!("{}__{}", base, locale);
-                        if let Some(val) = doc.fields.remove(&col) {
-                            locale_map.insert(locale.clone(), val);
-                        }
-                    }
-                    if !locale_map.is_empty() {
-                        doc.fields.insert(base, serde_json::Value::Object(locale_map));
-                    }
+        match field.field_type {
+            FieldType::Group => {
+                let new_prefix = if prefix.is_empty() {
+                    field.name.clone()
+                } else {
+                    format!("{}__{}", prefix, field.name)
+                };
+                group_locale_fields_inner(
+                    doc, &field.fields, locale_config,
+                    &new_prefix, inherited_localized || field.localized,
+                );
+            }
+            FieldType::Row | FieldType::Collapsible => {
+                group_locale_fields_inner(doc, &field.fields, locale_config, prefix, inherited_localized);
+            }
+            FieldType::Tabs => {
+                for tab in &field.tabs {
+                    group_locale_fields_inner(doc, &tab.fields, locale_config, prefix, inherited_localized);
                 }
             }
-        } else if field.field_type == FieldType::Row || field.field_type == FieldType::Collapsible {
-            for sub in &field.fields {
-                if sub.localized && locale_config.is_enabled() {
-                    let mut locale_map = serde_json::Map::new();
-                    for locale in &locale_config.locales {
-                        let col = format!("{}__{}", sub.name, locale);
-                        if let Some(val) = doc.fields.remove(&col) {
-                            locale_map.insert(locale.clone(), val);
-                        }
-                    }
-                    if !locale_map.is_empty() {
-                        doc.fields.insert(sub.name.clone(), serde_json::Value::Object(locale_map));
-                    }
-                }
-            }
-        } else if field.field_type == FieldType::Tabs {
-            for tab in &field.tabs {
-                for sub in &tab.fields {
-                    if sub.localized && locale_config.is_enabled() {
-                        let mut locale_map = serde_json::Map::new();
-                        for locale in &locale_config.locales {
-                            let col = format!("{}__{}", sub.name, locale);
-                            if let Some(val) = doc.fields.remove(&col) {
-                                locale_map.insert(locale.clone(), val);
-                            }
-                        }
-                        if !locale_map.is_empty() {
-                            doc.fields.insert(sub.name.clone(), serde_json::Value::Object(locale_map));
-                        }
+            _ => {
+                if !field.has_parent_column() { continue; }
+                let is_localized = (inherited_localized || field.localized) && locale_config.is_enabled();
+                if !is_localized { continue; }
+                let base = if prefix.is_empty() {
+                    field.name.clone()
+                } else {
+                    format!("{}__{}", prefix, field.name)
+                };
+                let mut locale_map = serde_json::Map::new();
+                for locale in &locale_config.locales {
+                    let col = format!("{}__{}", base, locale);
+                    if let Some(val) = doc.fields.remove(&col) {
+                        locale_map.insert(locale.clone(), val);
                     }
                 }
-            }
-        } else if field.has_parent_column() && field.localized && locale_config.is_enabled() {
-            let mut locale_map = serde_json::Map::new();
-            for locale in &locale_config.locales {
-                let col = format!("{}__{}", field.name, locale);
-                if let Some(val) = doc.fields.remove(&col) {
-                    locale_map.insert(locale.clone(), val);
+                if !locale_map.is_empty() {
+                    doc.fields.insert(base, serde_json::Value::Object(locale_map));
                 }
-            }
-            if !locale_map.is_empty() {
-                doc.fields.insert(field.name.clone(), serde_json::Value::Object(locale_map));
             }
         }
     }
@@ -434,25 +444,7 @@ pub(crate) fn group_locale_fields(doc: &mut Document, fields: &[FieldDefinition]
 pub(crate) fn get_valid_filter_columns(def: &CollectionDefinition, locale_ctx: Option<&LocaleContext>) -> HashSet<String> {
     let mut valid = HashSet::new();
     valid.insert("id".to_string());
-    for field in &def.fields {
-        if field.field_type == FieldType::Group {
-            for sub in &field.fields {
-                valid.insert(format!("{}__{}", field.name, sub.name));
-            }
-        } else if field.field_type == FieldType::Row || field.field_type == FieldType::Collapsible {
-            for sub in &field.fields {
-                valid.insert(sub.name.clone());
-            }
-        } else if field.field_type == FieldType::Tabs {
-            for tab in &field.tabs {
-                for sub in &tab.fields {
-                    valid.insert(sub.name.clone());
-                }
-            }
-        } else if field.has_parent_column() {
-            valid.insert(field.name.clone());
-        }
-    }
+    collect_valid_filter_names(&def.fields, &mut valid, "");
     if def.has_drafts() {
         valid.insert("_status".to_string());
     }
@@ -462,6 +454,39 @@ pub(crate) fn get_valid_filter_columns(def: &CollectionDefinition, locale_ctx: O
     }
     let _ = locale_ctx; // filter validation uses undecorated field names
     valid
+}
+
+fn collect_valid_filter_names(fields: &[FieldDefinition], valid: &mut HashSet<String>, prefix: &str) {
+    for field in fields {
+        match field.field_type {
+            FieldType::Group => {
+                let new_prefix = if prefix.is_empty() {
+                    field.name.clone()
+                } else {
+                    format!("{}__{}", prefix, field.name)
+                };
+                collect_valid_filter_names(&field.fields, valid, &new_prefix);
+            }
+            FieldType::Row | FieldType::Collapsible => {
+                collect_valid_filter_names(&field.fields, valid, prefix);
+            }
+            FieldType::Tabs => {
+                for tab in &field.tabs {
+                    collect_valid_filter_names(&tab.fields, valid, prefix);
+                }
+            }
+            _ => {
+                if field.has_parent_column() {
+                    let col = if prefix.is_empty() {
+                        field.name.clone()
+                    } else {
+                        format!("{}__{}", prefix, field.name)
+                    };
+                    valid.insert(col);
+                }
+            }
+        }
+    }
 }
 
 /// Map a flat field name to the actual locale-suffixed column name for writes.
@@ -1213,5 +1238,159 @@ mod tests {
         // Should produce COALESCE for fallback
         assert!(exprs.iter().any(|e| e.contains("title__de")), "Localized field in Tabs should have locale column");
         assert!(names.contains(&"title".to_string()));
+    }
+
+    // ── Group containing layout fields (the former terminal-node bug) ─────
+
+    #[test]
+    fn get_column_names_group_containing_row() {
+        let fields = vec![
+            make_group_field("meta", vec![
+                make_row_field("r", vec![
+                    make_field("title", FieldType::Text),
+                    make_field("slug", FieldType::Text),
+                ]),
+            ]),
+        ];
+        let def = make_collection_def("posts", fields, false);
+        let names = get_column_names(&def);
+        assert!(names.contains(&"meta__title".to_string()), "Group→Row: meta__title");
+        assert!(names.contains(&"meta__slug".to_string()), "Group→Row: meta__slug");
+    }
+
+    #[test]
+    fn get_column_names_group_containing_collapsible() {
+        let fields = vec![
+            make_group_field("seo", vec![
+                make_collapsible_field("c", vec![
+                    make_field("robots", FieldType::Text),
+                    make_field("canonical", FieldType::Text),
+                ]),
+            ]),
+        ];
+        let def = make_collection_def("posts", fields, false);
+        let names = get_column_names(&def);
+        assert!(names.contains(&"seo__robots".to_string()), "Group→Collapsible: seo__robots");
+        assert!(names.contains(&"seo__canonical".to_string()), "Group→Collapsible: seo__canonical");
+    }
+
+    #[test]
+    fn get_column_names_group_containing_tabs() {
+        let fields = vec![
+            make_group_field("settings", vec![
+                make_tabs_field("t", vec![
+                    FieldTab {
+                        label: "General".to_string(),
+                        description: None,
+                        fields: vec![make_field("theme", FieldType::Text)],
+                    },
+                    FieldTab {
+                        label: "Advanced".to_string(),
+                        description: None,
+                        fields: vec![make_field("cache_ttl", FieldType::Text)],
+                    },
+                ]),
+            ]),
+        ];
+        let def = make_collection_def("posts", fields, false);
+        let names = get_column_names(&def);
+        assert!(names.contains(&"settings__theme".to_string()), "Group→Tabs: settings__theme");
+        assert!(names.contains(&"settings__cache_ttl".to_string()), "Group→Tabs: settings__cache_ttl");
+    }
+
+    #[test]
+    fn get_column_names_group_tabs_group_three_levels() {
+        let fields = vec![
+            make_group_field("outer", vec![
+                make_tabs_field("t", vec![
+                    FieldTab {
+                        label: "Nested".to_string(),
+                        description: None,
+                        fields: vec![
+                            make_group_field("inner", vec![
+                                make_field("deep", FieldType::Text),
+                            ]),
+                        ],
+                    },
+                ]),
+            ]),
+        ];
+        let def = make_collection_def("posts", fields, false);
+        let names = get_column_names(&def);
+        assert!(names.contains(&"outer__inner__deep".to_string()), "Group→Tabs→Group: outer__inner__deep");
+    }
+
+    #[test]
+    fn get_column_names_group_row_group_collapsible_four_levels() {
+        let fields = vec![
+            make_group_field("a", vec![
+                make_row_field("r", vec![
+                    make_group_field("b", vec![
+                        make_collapsible_field("c", vec![
+                            make_field("leaf", FieldType::Text),
+                        ]),
+                    ]),
+                ]),
+            ]),
+        ];
+        let def = make_collection_def("posts", fields, false);
+        let names = get_column_names(&def);
+        assert!(names.contains(&"a__b__leaf".to_string()), "Group→Row→Group→Collapsible: a__b__leaf");
+    }
+
+    #[test]
+    fn get_locale_select_columns_group_containing_tabs_localized() {
+        let fields = vec![{
+            let mut g = make_group_field("meta", vec![
+                make_tabs_field("t", vec![
+                    FieldTab {
+                        label: "Content".to_string(),
+                        description: None,
+                        fields: vec![make_field("title", FieldType::Text)],
+                    },
+                ]),
+            ]);
+            g.localized = true;
+            g
+        }];
+        let locale_cfg = make_locale_config();
+        let ctx = LocaleContext { mode: LocaleMode::Single("de".to_string()), config: locale_cfg };
+        let (exprs, names) = get_locale_select_columns(&fields, false, &ctx);
+        assert!(exprs.iter().any(|e| e.contains("meta__title__de")), "Localized Group→Tabs: meta__title__de");
+        assert!(names.contains(&"meta__title".to_string()));
+    }
+
+    #[test]
+    fn get_valid_filter_columns_group_containing_row() {
+        let def = make_collection_def("posts", vec![
+            make_group_field("meta", vec![
+                make_row_field("r", vec![
+                    make_field("title", FieldType::Text),
+                ]),
+            ]),
+        ], false);
+        let valid = get_valid_filter_columns(&def, None);
+        assert!(valid.contains("meta__title"), "Group→Row filter: meta__title");
+    }
+
+    #[test]
+    fn get_valid_filter_columns_group_tabs_group() {
+        let def = make_collection_def("posts", vec![
+            make_group_field("outer", vec![
+                make_tabs_field("t", vec![
+                    FieldTab {
+                        label: "Tab".to_string(),
+                        description: None,
+                        fields: vec![
+                            make_group_field("inner", vec![
+                                make_field("value", FieldType::Text),
+                            ]),
+                        ],
+                    },
+                ]),
+            ]),
+        ], false);
+        let valid = get_valid_filter_columns(&def, None);
+        assert!(valid.contains("outer__inner__value"), "Group→Tabs→Group filter: outer__inner__value");
     }
 }

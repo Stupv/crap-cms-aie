@@ -23,187 +23,213 @@ pub(super) fn validate_fields_inner(
     is_draft: bool,
 ) -> Result<(), ValidationError> {
     let mut errors = Vec::new();
-
-    for field in fields {
-        let value = data.get(&field.name);
-        let is_empty = match value {
-            None => true,
-            Some(serde_json::Value::Null) => true,
-            Some(serde_json::Value::String(s)) => s.is_empty(),
-            _ => false,
-        };
-
-        // Required check (skip for checkboxes — absent = false is valid)
-        // For Array and has-many Relationship, "required" means at least one item
-        // Skip required checks entirely for draft saves
-        // On update (exclude_id set): skip if field not in data (partial update, keep existing)
-        let is_update = exclude_id.is_some();
-        if field.required && !is_draft && field.field_type != FieldType::Checkbox
-            && !(is_update && value.is_none())
-        {
-            if !field.has_parent_column() {
-                let has_items = match value {
-                    Some(serde_json::Value::Array(arr)) => !arr.is_empty(),
-                    Some(serde_json::Value::String(s)) => !s.is_empty(),
-                    _ => false,
-                };
-                if !has_items {
-                    errors.push(FieldError {
-                        field: field.name.clone(),
-                        message: format!("{} is required", field.name),
-                    });
-                }
-            } else if is_empty {
-                errors.push(FieldError {
-                    field: field.name.clone(),
-                    message: format!("{} is required", field.name),
-                });
-            }
-        }
-
-        // Validate Group sub-fields (stored as group__subfield keys at top level)
-        if field.field_type == FieldType::Group && !is_draft {
-            for gsf in &field.fields {
-                let key = format!("{}__{}", field.name, gsf.name);
-                let gv = data.get(&key);
-                let g_empty = match gv {
-                    None => true,
-                    Some(serde_json::Value::Null) => true,
-                    Some(serde_json::Value::String(s)) => s.is_empty(),
-                    _ => false,
-                };
-                if gsf.required && g_empty && gsf.field_type != FieldType::Checkbox {
-                    errors.push(FieldError {
-                        field: key,
-                        message: format!("{} is required", gsf.name),
-                    });
-                }
-            }
-        }
-
-        // Layout fields promote sub-fields flat — recurse to get full validation
-        // (required, unique, date format, custom validate, nested Groups, etc.)
-        if field.field_type == FieldType::Row || field.field_type == FieldType::Collapsible {
-            if let Err(ve) = validate_fields_inner(lua, &field.fields, data, conn, table, exclude_id, is_draft) {
-                errors.extend(ve.errors);
-            }
-        }
-        if field.field_type == FieldType::Tabs {
-            for tab in &field.tabs {
-                if let Err(ve) = validate_fields_inner(lua, &tab.fields, data, conn, table, exclude_id, is_draft) {
-                    errors.extend(ve.errors);
-                }
-            }
-        }
-
-        // min_rows / max_rows validation for Array, Blocks, and has-many Relationship
-        if !is_draft && (field.min_rows.is_some() || field.max_rows.is_some()) {
-            let row_count = match value {
-                Some(serde_json::Value::Array(arr)) => arr.len(),
-                _ => 0,
-            };
-            if let Some(min) = field.min_rows {
-                if row_count < min {
-                    errors.push(FieldError {
-                        field: field.name.clone(),
-                        message: format!("{} requires at least {} item(s)", field.name, min),
-                    });
-                }
-            }
-            if let Some(max) = field.max_rows {
-                if row_count > max {
-                    errors.push(FieldError {
-                        field: field.name.clone(),
-                        message: format!("{} allows at most {} item(s)", field.name, max),
-                    });
-                }
-            }
-        }
-
-        // Validate sub-fields within Array/Blocks rows
-        if !is_draft && matches!(field.field_type, FieldType::Array | FieldType::Blocks) {
-            if let Some(serde_json::Value::Array(rows)) = value {
-                for (idx, row) in rows.iter().enumerate() {
-                    let row_obj = match row.as_object() {
-                        Some(obj) => obj,
-                        None => continue,
-                    };
-
-                    let sub_fields: &[FieldDefinition] = if field.field_type == FieldType::Blocks {
-                        let block_type = row_obj.get("_block_type")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("");
-                        match field.blocks.iter().find(|b| b.block_type == block_type) {
-                            Some(bd) => &bd.fields,
-                            None => continue,
-                        }
-                    } else {
-                        &field.fields
-                    };
-
-                    validate_sub_fields_inner(
-                        lua, sub_fields, row_obj, &field.name, idx, table, &mut errors,
-                    );
-                }
-            }
-        }
-
-        // Unique check (only if value is non-empty, skip for join-table fields)
-        if field.unique && !is_empty && field.has_parent_column() {
-            let value_str = match value {
-                Some(serde_json::Value::String(s)) => s.clone(),
-                Some(other) => other.to_string(),
-                None => String::new(),
-            };
-            match query::count_where_field_eq(conn, table, &field.name, &value_str, exclude_id) {
-                Ok(count) if count > 0 => {
-                    errors.push(FieldError {
-                        field: field.name.clone(),
-                        message: format!("{} must be unique", field.name),
-                    });
-                }
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::warn!("Unique check failed for {}.{}: {}", table, field.name, e);
-                }
-            }
-        }
-
-        // Date format validation (only if non-empty)
-        if field.field_type == FieldType::Date && !is_empty {
-            if let Some(serde_json::Value::String(s)) = value {
-                if !is_valid_date_format(s) {
-                    errors.push(FieldError {
-                        field: field.name.clone(),
-                        message: format!("{} is not a valid date format", field.name),
-                    });
-                }
-            }
-        }
-
-        // Custom validate function (Lua)
-        if let Some(ref validate_ref) = field.validate {
-            if let Some(val) = value {
-                match run_validate_function_inner(lua, validate_ref, val, data, table, &field.name) {
-                    Ok(Some(err_msg)) => {
-                        errors.push(FieldError {
-                            field: field.name.clone(),
-                            message: err_msg,
-                        });
-                    }
-                    Ok(None) => {} // valid
-                    Err(e) => {
-                        tracing::warn!("Validate function '{}' error: {}", validate_ref, e);
-                    }
-                }
-            }
-        }
-    }
-
+    validate_fields_recursive(lua, fields, data, conn, table, exclude_id, is_draft, "", &mut errors);
     if errors.is_empty() {
         Ok(())
     } else {
         Err(ValidationError { errors })
+    }
+}
+
+/// Recursive validation with prefix support for arbitrary nesting.
+/// Group accumulates prefix (`group__`), Row/Collapsible/Tabs pass through.
+fn validate_fields_recursive(
+    lua: &Lua,
+    fields: &[FieldDefinition],
+    data: &HashMap<String, serde_json::Value>,
+    conn: &rusqlite::Connection,
+    table: &str,
+    exclude_id: Option<&str>,
+    is_draft: bool,
+    prefix: &str,
+    errors: &mut Vec<FieldError>,
+) {
+    for field in fields {
+        match field.field_type {
+            FieldType::Group => {
+                let new_prefix = if prefix.is_empty() {
+                    field.name.clone()
+                } else {
+                    format!("{}__{}", prefix, field.name)
+                };
+                validate_fields_recursive(
+                    lua, &field.fields, data, conn, table, exclude_id, is_draft, &new_prefix, errors,
+                );
+            }
+            FieldType::Row | FieldType::Collapsible => {
+                validate_fields_recursive(
+                    lua, &field.fields, data, conn, table, exclude_id, is_draft, prefix, errors,
+                );
+            }
+            FieldType::Tabs => {
+                for tab in &field.tabs {
+                    validate_fields_recursive(
+                        lua, &tab.fields, data, conn, table, exclude_id, is_draft, prefix, errors,
+                    );
+                }
+            }
+            _ => {
+                validate_scalar_field(lua, field, data, conn, table, exclude_id, is_draft, prefix, errors);
+            }
+        }
+    }
+}
+
+/// Validate a single scalar field (not Group/Row/Collapsible/Tabs).
+fn validate_scalar_field(
+    lua: &Lua,
+    field: &FieldDefinition,
+    data: &HashMap<String, serde_json::Value>,
+    conn: &rusqlite::Connection,
+    table: &str,
+    exclude_id: Option<&str>,
+    is_draft: bool,
+    prefix: &str,
+    errors: &mut Vec<FieldError>,
+) {
+    let data_key = if prefix.is_empty() {
+        field.name.clone()
+    } else {
+        format!("{}__{}", prefix, field.name)
+    };
+
+    let value = data.get(&data_key);
+    let is_empty = match value {
+        None => true,
+        Some(serde_json::Value::Null) => true,
+        Some(serde_json::Value::String(s)) => s.is_empty(),
+        _ => false,
+    };
+
+    // Required check (skip for checkboxes — absent = false is valid)
+    // For Array and has-many Relationship, "required" means at least one item
+    // Skip required checks entirely for draft saves
+    // On update (exclude_id set): skip if field not in data (partial update, keep existing)
+    let is_update = exclude_id.is_some();
+    if field.required && !is_draft && field.field_type != FieldType::Checkbox
+        && !(is_update && value.is_none())
+    {
+        if !field.has_parent_column() {
+            let has_items = match value {
+                Some(serde_json::Value::Array(arr)) => !arr.is_empty(),
+                Some(serde_json::Value::String(s)) => !s.is_empty(),
+                _ => false,
+            };
+            if !has_items {
+                errors.push(FieldError {
+                    field: data_key.clone(),
+                    message: format!("{} is required", field.name),
+                });
+            }
+        } else if is_empty {
+            errors.push(FieldError {
+                field: data_key.clone(),
+                message: format!("{} is required", field.name),
+            });
+        }
+    }
+
+    // min_rows / max_rows validation for Array, Blocks, and has-many Relationship
+    if !is_draft && (field.min_rows.is_some() || field.max_rows.is_some()) {
+        let row_count = match value {
+            Some(serde_json::Value::Array(arr)) => arr.len(),
+            _ => 0,
+        };
+        if let Some(min) = field.min_rows {
+            if row_count < min {
+                errors.push(FieldError {
+                    field: data_key.clone(),
+                    message: format!("{} requires at least {} item(s)", field.name, min),
+                });
+            }
+        }
+        if let Some(max) = field.max_rows {
+            if row_count > max {
+                errors.push(FieldError {
+                    field: data_key.clone(),
+                    message: format!("{} allows at most {} item(s)", field.name, max),
+                });
+            }
+        }
+    }
+
+    // Validate sub-fields within Array/Blocks rows
+    if !is_draft && matches!(field.field_type, FieldType::Array | FieldType::Blocks) {
+        if let Some(serde_json::Value::Array(rows)) = value {
+            for (idx, row) in rows.iter().enumerate() {
+                let row_obj = match row.as_object() {
+                    Some(obj) => obj,
+                    None => continue,
+                };
+
+                let sub_fields: &[FieldDefinition] = if field.field_type == FieldType::Blocks {
+                    let block_type = row_obj.get("_block_type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    match field.blocks.iter().find(|b| b.block_type == block_type) {
+                        Some(bd) => &bd.fields,
+                        None => continue,
+                    }
+                } else {
+                    &field.fields
+                };
+
+                validate_sub_fields_inner(
+                    lua, sub_fields, row_obj, &data_key, idx, table, errors,
+                );
+            }
+        }
+    }
+
+    // Unique check (only if value is non-empty, skip for join-table fields)
+    if field.unique && !is_empty && field.has_parent_column() {
+        let value_str = match value {
+            Some(serde_json::Value::String(s)) => s.clone(),
+            Some(other) => other.to_string(),
+            None => String::new(),
+        };
+        match query::count_where_field_eq(conn, table, &data_key, &value_str, exclude_id) {
+            Ok(count) if count > 0 => {
+                errors.push(FieldError {
+                    field: data_key.clone(),
+                    message: format!("{} must be unique", field.name),
+                });
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!("Unique check failed for {}.{}: {}", table, data_key, e);
+            }
+        }
+    }
+
+    // Date format validation (only if non-empty)
+    if field.field_type == FieldType::Date && !is_empty {
+        if let Some(serde_json::Value::String(s)) = value {
+            if !is_valid_date_format(s) {
+                errors.push(FieldError {
+                    field: data_key.clone(),
+                    message: format!("{} is not a valid date format", field.name),
+                });
+            }
+        }
+    }
+
+    // Custom validate function (Lua)
+    if let Some(ref validate_ref) = field.validate {
+        if let Some(val) = value {
+            match run_validate_function_inner(lua, validate_ref, val, data, table, &field.name) {
+                Ok(Some(err_msg)) => {
+                    errors.push(FieldError {
+                        field: data_key,
+                        message: err_msg,
+                    });
+                }
+                Ok(None) => {} // valid
+                Err(e) => {
+                    tracing::warn!("Validate function '{}' error: {}", validate_ref, e);
+                }
+            }
+        }
     }
 }
 
@@ -1679,5 +1705,234 @@ mod tests {
         // is_draft = true should skip all required checks
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, true);
         assert!(result.is_ok(), "Draft saves should skip required checks in layout fields");
+    }
+
+    // ── Group containing layout fields (the former terminal-node bug) ─────
+
+    #[test]
+    fn test_validate_group_containing_row_required() {
+        let lua = mlua::Lua::new();
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, meta__title TEXT)").unwrap();
+        let fields = vec![FieldDefinition {
+            name: "meta".to_string(),
+            field_type: FieldType::Group,
+            fields: vec![
+                FieldDefinition {
+                    name: "r".to_string(),
+                    field_type: FieldType::Row,
+                    fields: vec![FieldDefinition {
+                        name: "title".to_string(),
+                        required: true,
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }];
+        let mut data = HashMap::new();
+        data.insert("meta__title".to_string(), json!(""));
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        assert!(result.is_err(), "Group→Row: required field should fail");
+        assert_eq!(result.unwrap_err().errors[0].field, "meta__title");
+    }
+
+    #[test]
+    fn test_validate_group_containing_collapsible_required() {
+        let lua = mlua::Lua::new();
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, seo__robots TEXT)").unwrap();
+        let fields = vec![FieldDefinition {
+            name: "seo".to_string(),
+            field_type: FieldType::Group,
+            fields: vec![
+                FieldDefinition {
+                    name: "c".to_string(),
+                    field_type: FieldType::Collapsible,
+                    fields: vec![FieldDefinition {
+                        name: "robots".to_string(),
+                        required: true,
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }];
+        let mut data = HashMap::new();
+        data.insert("seo__robots".to_string(), json!(""));
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        assert!(result.is_err(), "Group→Collapsible: required field should fail");
+        assert_eq!(result.unwrap_err().errors[0].field, "seo__robots");
+    }
+
+    #[test]
+    fn test_validate_group_containing_tabs_required() {
+        use crate::core::field::FieldTab;
+        let lua = mlua::Lua::new();
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, settings__theme TEXT)").unwrap();
+        let fields = vec![FieldDefinition {
+            name: "settings".to_string(),
+            field_type: FieldType::Group,
+            fields: vec![
+                FieldDefinition {
+                    name: "t".to_string(),
+                    field_type: FieldType::Tabs,
+                    tabs: vec![FieldTab {
+                        label: "General".to_string(),
+                        description: None,
+                        fields: vec![FieldDefinition {
+                            name: "theme".to_string(),
+                            required: true,
+                            ..Default::default()
+                        }],
+                    }],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }];
+        let mut data = HashMap::new();
+        data.insert("settings__theme".to_string(), json!(""));
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        assert!(result.is_err(), "Group→Tabs: required field should fail");
+        assert_eq!(result.unwrap_err().errors[0].field, "settings__theme");
+    }
+
+    #[test]
+    fn test_validate_group_tabs_group_three_levels_required() {
+        use crate::core::field::FieldTab;
+        let lua = mlua::Lua::new();
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, outer__inner__deep TEXT)").unwrap();
+        let fields = vec![FieldDefinition {
+            name: "outer".to_string(),
+            field_type: FieldType::Group,
+            fields: vec![
+                FieldDefinition {
+                    name: "t".to_string(),
+                    field_type: FieldType::Tabs,
+                    tabs: vec![FieldTab {
+                        label: "Tab".to_string(),
+                        description: None,
+                        fields: vec![
+                            FieldDefinition {
+                                name: "inner".to_string(),
+                                field_type: FieldType::Group,
+                                fields: vec![FieldDefinition {
+                                    name: "deep".to_string(),
+                                    required: true,
+                                    ..Default::default()
+                                }],
+                                ..Default::default()
+                            },
+                        ],
+                    }],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }];
+        let mut data = HashMap::new();
+        data.insert("outer__inner__deep".to_string(), json!(""));
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        assert!(result.is_err(), "Group→Tabs→Group: required field should fail");
+        assert_eq!(result.unwrap_err().errors[0].field, "outer__inner__deep");
+    }
+
+    #[test]
+    fn test_validate_group_containing_tabs_unique() {
+        use crate::core::field::FieldTab;
+        let lua = mlua::Lua::new();
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE test (id TEXT PRIMARY KEY, config__slug TEXT);
+             INSERT INTO test (id, config__slug) VALUES ('existing', 'taken');"
+        ).unwrap();
+        let fields = vec![FieldDefinition {
+            name: "config".to_string(),
+            field_type: FieldType::Group,
+            fields: vec![
+                FieldDefinition {
+                    name: "t".to_string(),
+                    field_type: FieldType::Tabs,
+                    tabs: vec![FieldTab {
+                        label: "Tab".to_string(),
+                        description: None,
+                        fields: vec![FieldDefinition {
+                            name: "slug".to_string(),
+                            unique: true,
+                            ..Default::default()
+                        }],
+                    }],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }];
+        let mut data = HashMap::new();
+        data.insert("config__slug".to_string(), json!("taken"));
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        assert!(result.is_err(), "Group→Tabs: unique field should fail on duplicate");
+        assert_eq!(result.unwrap_err().errors[0].field, "config__slug");
+    }
+
+    #[test]
+    fn test_validate_group_containing_row_date_format() {
+        let lua = mlua::Lua::new();
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, meta__date TEXT)").unwrap();
+        let fields = vec![FieldDefinition {
+            name: "meta".to_string(),
+            field_type: FieldType::Group,
+            fields: vec![
+                FieldDefinition {
+                    name: "r".to_string(),
+                    field_type: FieldType::Row,
+                    fields: vec![FieldDefinition {
+                        name: "date".to_string(),
+                        field_type: FieldType::Date,
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }];
+        let mut data = HashMap::new();
+        data.insert("meta__date".to_string(), json!("not-a-date"));
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        assert!(result.is_err(), "Group→Row: invalid date should fail");
+        assert_eq!(result.unwrap_err().errors[0].field, "meta__date");
+    }
+
+    #[test]
+    fn test_validate_group_containing_row_valid_passes() {
+        let lua = mlua::Lua::new();
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, meta__title TEXT)").unwrap();
+        let fields = vec![FieldDefinition {
+            name: "meta".to_string(),
+            field_type: FieldType::Group,
+            fields: vec![
+                FieldDefinition {
+                    name: "r".to_string(),
+                    field_type: FieldType::Row,
+                    fields: vec![FieldDefinition {
+                        name: "title".to_string(),
+                        required: true,
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }];
+        let mut data = HashMap::new();
+        data.insert("meta__title".to_string(), json!("Valid Title"));
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        assert!(result.is_ok(), "Group→Row: valid data should pass");
     }
 }

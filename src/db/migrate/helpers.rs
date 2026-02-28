@@ -55,7 +55,7 @@ pub(super) fn collect_column_specs<'a>(
     locale_config: &LocaleConfig,
 ) -> Vec<ColumnSpec<'a>> {
     let mut specs = Vec::new();
-    collect_column_specs_inner(fields, &mut specs, locale_config);
+    collect_column_specs_inner(fields, &mut specs, locale_config, "", false);
     specs
 }
 
@@ -63,34 +63,43 @@ fn collect_column_specs_inner<'a>(
     fields: &'a [crate::core::field::FieldDefinition],
     specs: &mut Vec<ColumnSpec<'a>>,
     locale_config: &LocaleConfig,
+    prefix: &str,
+    inherited_localized: bool,
 ) {
     use crate::core::field::FieldType;
 
     for field in fields {
         match field.field_type {
             FieldType::Group => {
-                for sub in &field.fields {
-                    specs.push(ColumnSpec {
-                        col_name: format!("{}__{}", field.name, sub.name),
-                        field: sub,
-                        is_localized: (field.localized || sub.localized) && locale_config.is_enabled(),
-                    });
-                }
+                let new_prefix = if prefix.is_empty() {
+                    field.name.clone()
+                } else {
+                    format!("{}__{}", prefix, field.name)
+                };
+                collect_column_specs_inner(
+                    &field.fields, specs, locale_config,
+                    &new_prefix, inherited_localized || field.localized,
+                );
             }
             FieldType::Row | FieldType::Collapsible => {
-                collect_column_specs_inner(&field.fields, specs, locale_config);
+                collect_column_specs_inner(&field.fields, specs, locale_config, prefix, inherited_localized);
             }
             FieldType::Tabs => {
                 for tab in &field.tabs {
-                    collect_column_specs_inner(&tab.fields, specs, locale_config);
+                    collect_column_specs_inner(&tab.fields, specs, locale_config, prefix, inherited_localized);
                 }
             }
             _ => {
                 if !field.has_parent_column() { continue; }
+                let col_name = if prefix.is_empty() {
+                    field.name.clone()
+                } else {
+                    format!("{}__{}", prefix, field.name)
+                };
                 specs.push(ColumnSpec {
-                    col_name: field.name.clone(),
+                    col_name,
                     field,
-                    is_localized: field.localized && locale_config.is_enabled(),
+                    is_localized: (inherited_localized || field.localized) && locale_config.is_enabled(),
                 });
             }
         }
@@ -610,5 +619,129 @@ mod tests {
 
         let cols = get_table_columns(&conn, "posts_items").unwrap();
         assert!(cols.contains("_locale"));
+    }
+
+    // ── collect_column_specs: Group containing layout fields ──────────────
+
+    #[test]
+    fn column_specs_group_containing_row() {
+        let fields = vec![
+            FieldDefinition {
+                name: "meta".to_string(),
+                field_type: FieldType::Group,
+                fields: vec![
+                    FieldDefinition {
+                        name: "r".to_string(),
+                        field_type: FieldType::Row,
+                        fields: vec![text_field("title"), text_field("slug")],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+        ];
+        let specs = collect_column_specs(&fields, &no_locale());
+        let names: Vec<&str> = specs.iter().map(|s| s.col_name.as_str()).collect();
+        assert!(names.contains(&"meta__title"), "Group→Row: meta__title");
+        assert!(names.contains(&"meta__slug"), "Group→Row: meta__slug");
+    }
+
+    #[test]
+    fn column_specs_group_containing_tabs() {
+        use crate::core::field::FieldTab;
+        let fields = vec![
+            FieldDefinition {
+                name: "settings".to_string(),
+                field_type: FieldType::Group,
+                fields: vec![
+                    FieldDefinition {
+                        name: "t".to_string(),
+                        field_type: FieldType::Tabs,
+                        tabs: vec![
+                            FieldTab {
+                                label: "General".to_string(),
+                                description: None,
+                                fields: vec![text_field("theme")],
+                            },
+                            FieldTab {
+                                label: "Advanced".to_string(),
+                                description: None,
+                                fields: vec![text_field("cache_ttl")],
+                            },
+                        ],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+        ];
+        let specs = collect_column_specs(&fields, &no_locale());
+        let names: Vec<&str> = specs.iter().map(|s| s.col_name.as_str()).collect();
+        assert!(names.contains(&"settings__theme"), "Group→Tabs: settings__theme");
+        assert!(names.contains(&"settings__cache_ttl"), "Group→Tabs: settings__cache_ttl");
+    }
+
+    #[test]
+    fn column_specs_group_tabs_group_three_levels() {
+        use crate::core::field::FieldTab;
+        let fields = vec![
+            FieldDefinition {
+                name: "outer".to_string(),
+                field_type: FieldType::Group,
+                fields: vec![
+                    FieldDefinition {
+                        name: "t".to_string(),
+                        field_type: FieldType::Tabs,
+                        tabs: vec![FieldTab {
+                            label: "Tab".to_string(),
+                            description: None,
+                            fields: vec![
+                                FieldDefinition {
+                                    name: "inner".to_string(),
+                                    field_type: FieldType::Group,
+                                    fields: vec![text_field("deep")],
+                                    ..Default::default()
+                                },
+                            ],
+                        }],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+        ];
+        let specs = collect_column_specs(&fields, &no_locale());
+        let names: Vec<&str> = specs.iter().map(|s| s.col_name.as_str()).collect();
+        assert!(names.contains(&"outer__inner__deep"), "Group→Tabs→Group: outer__inner__deep");
+    }
+
+    #[test]
+    fn column_specs_group_containing_localized_tabs() {
+        use crate::core::field::FieldTab;
+        let fields = vec![
+            FieldDefinition {
+                name: "meta".to_string(),
+                field_type: FieldType::Group,
+                localized: true,
+                fields: vec![
+                    FieldDefinition {
+                        name: "t".to_string(),
+                        field_type: FieldType::Tabs,
+                        tabs: vec![FieldTab {
+                            label: "Content".to_string(),
+                            description: None,
+                            fields: vec![text_field("title")],
+                        }],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+        ];
+        let specs = collect_column_specs(&fields, &locale_en_de());
+        let names: Vec<&str> = specs.iter().map(|s| s.col_name.as_str()).collect();
+        assert!(names.contains(&"meta__title"), "Localized Group→Tabs: meta__title");
+        assert!(specs.iter().any(|s| s.col_name == "meta__title" && s.is_localized),
+                "meta__title should be marked localized via inheritance");
     }
 }
