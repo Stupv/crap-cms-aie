@@ -9,6 +9,8 @@
  * `.upload-field__preview` and `.upload-field__info` elements.
  */
 
+import { registerInit } from './actions.js';
+
 /**
  * Update preview and info elements.
  * @param {HTMLElement} wrapper - The [data-upload-field] wrapper
@@ -86,5 +88,4 @@ function initUploadPreviews() {
   );
 }
 
-document.addEventListener('DOMContentLoaded', initUploadPreviews);
-document.addEventListener('htmx:afterSettle', initUploadPreviews);
+registerInit(initUploadPreviews);

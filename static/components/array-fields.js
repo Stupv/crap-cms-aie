@@ -8,7 +8,7 @@
  * `addBlockRow` is exported for direct use by block-picker.js.
  */
 
-import { registerAction, registerDrag } from './actions.js';
+import { registerAction, registerDrag, registerInit } from './actions.js';
 
 /* ── Row label watchers ──────────────────────────────────────── */
 
@@ -82,8 +82,7 @@ function initRowLabelWatchers() {
   );
 }
 
-document.addEventListener('DOMContentLoaded', initRowLabelWatchers);
-document.addEventListener('htmx:afterSettle', initRowLabelWatchers);
+registerInit(initRowLabelWatchers);
 
 /* ── Index replacement helpers ───────────────────────────────── */
 

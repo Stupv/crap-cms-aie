@@ -6,6 +6,8 @@
  * `?locale=XX` so it carries over to list pages, other collections, etc.
  */
 
+import { registerInit } from './actions.js';
+
 const STORAGE_KEY = 'crap_locale';
 
 /**
@@ -45,8 +47,7 @@ function bindLocaleSelector() {
 const initial = new URLSearchParams(location.search).get('locale');
 if (initial) setStoredLocale(initial);
 
-document.addEventListener('DOMContentLoaded', bindLocaleSelector);
-document.addEventListener('htmx:afterSettle', bindLocaleSelector);
+registerInit(bindLocaleSelector);
 
 /**
  * Before every HTMX request, inject the stored locale into the URL

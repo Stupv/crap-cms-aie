@@ -6,6 +6,8 @@
  * - Server-side (data-condition-ref): Lua function ref, debounced POST.
  */
 
+import { registerInit } from './actions.js';
+
 /**
  * Check if a value is truthy (mirrors Rust condition_is_truthy).
  *
@@ -168,5 +170,4 @@ function initDisplayConditions() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', initDisplayConditions);
-document.addEventListener('htmx:afterSettle', initDisplayConditions);
+registerInit(initDisplayConditions);

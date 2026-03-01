@@ -5,6 +5,8 @@
  * locale-formatted date string using the browser's Intl.DateTimeFormat.
  */
 
+import { registerInit } from './actions.js';
+
 /** @type {Intl.DateTimeFormat} */
 const formatter = new Intl.DateTimeFormat(undefined, {
   year: 'numeric',
@@ -31,5 +33,4 @@ function formatTimeElements() {
   );
 }
 
-document.addEventListener('DOMContentLoaded', formatTimeElements);
-document.addEventListener('htmx:afterSettle', formatTimeElements);
+registerInit(formatTimeElements);

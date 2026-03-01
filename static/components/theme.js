@@ -2,11 +2,14 @@
  * Theme switching — persistence, application, and picker UI.
  *
  * Sets `data-theme` attribute on <html> and persists to localStorage.
- * Re-inits picker on `htmx:afterSettle` because HTMX body swaps destroy
+ * Re-inits picker on htmx:afterSettle because HTMX body swaps destroy
  * the picker DOM.
  *
  * @namespace window.CrapTheme
  */
+
+import { registerInit } from './actions.js';
+
 window.CrapTheme = {
   /** @type {string} localStorage key */
   _key: 'crap-theme',
@@ -90,13 +93,7 @@ window.CrapTheme = {
   },
 };
 
-// Init on load
-document.addEventListener('DOMContentLoaded', () => {
+registerInit(() => {
   window.CrapTheme.apply(window.CrapTheme.get());
-  window.CrapTheme.initPicker();
-});
-
-// Re-init after HTMX body swaps (picker DOM gets replaced)
-document.addEventListener('htmx:afterSettle', () => {
   window.CrapTheme.initPicker();
 });

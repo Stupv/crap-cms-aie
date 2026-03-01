@@ -1,9 +1,14 @@
 /**
- * Event delegation system for admin UI actions.
+ * Event delegation and centralized init system for admin UI.
  *
- * Replaces inline `onclick` / `ondragstart` / etc. handlers with a single
- * document-level delegation layer. Template elements use `data-action="name"`
- * instead of inline JS — the delegation layer dispatches to registered handlers.
+ * Provides three registration APIs:
+ * - `registerAction(name, handler)` — click delegation via `data-action` attributes
+ * - `registerDrag(handlers)` — drag-and-drop delegation
+ * - `registerInit(fn)` — init functions that run on DOMContentLoaded + htmx:afterSettle
+ *
+ * Modules call these instead of adding their own `document.addEventListener` pairs.
+ * Overriding `index.js` to remove an import prevents that module's actions, drag
+ * handlers, and init functions from registering — single file controls everything.
  *
  * @module actions
  */
@@ -84,3 +89,28 @@ document.addEventListener('drop', (e) => {
   );
   if (container && dragHandlers.drop) dragHandlers.drop(container, /** @type {DragEvent} */ (e));
 });
+
+/* ── Centralized init ────────────────────────────────────────── */
+
+/** @type {Array<() => void>} */
+const initFns = [];
+
+/**
+ * Register an init function that runs on DOMContentLoaded and htmx:afterSettle.
+ *
+ * Modules call this instead of adding their own listener pairs. If a module
+ * isn't imported (because the user overrode index.js), its init never registers.
+ *
+ * @param {() => void} fn
+ */
+export function registerInit(fn) {
+  initFns.push(fn);
+}
+
+/** Run all registered init functions. */
+function runInits() {
+  for (const fn of initFns) fn();
+}
+
+document.addEventListener('DOMContentLoaded', runInits);
+document.addEventListener('htmx:afterSettle', runInits);

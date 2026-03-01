@@ -12,6 +12,7 @@
  * @module block-picker
  */
 
+import { registerInit } from './actions.js';
 import { addBlockRow } from './array-fields.js';
 
 /**
@@ -158,6 +159,4 @@ function init() {
   });
 }
 
-// Run on first load and after HTMX swaps (same pattern as other modules)
-document.addEventListener('DOMContentLoaded', init);
-document.addEventListener('htmx:afterSettle', init);
+registerInit(init);

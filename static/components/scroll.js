@@ -10,6 +10,8 @@
  * so state persists across same-page saves but resets on navigation.
  */
 
+import { registerInit } from './actions.js';
+
 const STORAGE_KEY = 'crap-form-state';
 
 /**
@@ -111,6 +113,5 @@ function onBeforeRequest(e) {
   saveFormState();
 }
 
+registerInit(restoreFormState);
 document.addEventListener('htmx:beforeRequest', onBeforeRequest);
-document.addEventListener('htmx:afterSettle', restoreFormState);
-document.addEventListener('DOMContentLoaded', restoreFormState);
