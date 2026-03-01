@@ -1,363 +1,711 @@
 /**
- * Relationship search component.
+ * <crap-relationship-search> — Light DOM custom element for relationship
+ * and upload fields.
  *
  * Replaces static `<select>` elements with a debounced search input
- * and dropdown for relationship fields. Works for both has-one and
- * has-many relationships, including polymorphic (multi-collection).
+ * and dropdown. Works for has-one, has-many, and polymorphic relationships.
+ * Absorbs view-link management and drawer-picker behavior.
  *
- * Activated by `data-relationship-search="true"` on a container element.
- * The container must have:
- *   - data-collection: target collection slug (primary / first)
- *   - data-field-name: form field name
- *   - data-has-many: "true" for multi-select (optional)
- *   - data-polymorphic: "true" for multi-collection (optional)
- *   - data-collections: JSON array of collection slugs (when polymorphic)
- *   - data-selected: JSON array of {id, label, collection?} for pre-selected items
+ * Attributes:
+ *   collection     — target collection slug (primary / first)
+ *   field-name     — form field name
+ *   field-type     — "relationship" or "upload"
+ *   has-many       — boolean attribute for multi-select
+ *   polymorphic    — boolean attribute for multi-collection
+ *   collections    — JSON array of collection slugs (when polymorphic)
+ *   selected       — JSON array of {id, label, collection?} for pre-selected items
+ *   picker         — "drawer" to enable the browse-drawer UI
+ *   required       — boolean attribute
+ *   readonly       — boolean attribute
+ *   data-error     — boolean attribute for error styling
  */
+
+import { getDrawer } from './drawer.js';
 
 const DEBOUNCE_MS = 250;
 const MIN_QUERY_LENGTH = 0;
+const DRAWER_DEBOUNCE_MS = 300;
+const DRAWER_PAGE_SIZE = 24;
 
-/**
- * @param {HTMLElement} container
- */
-function initSearchWidget(container) {
-  if (container.hasAttribute('data-search-init')) return;
-  container.setAttribute('data-search-init', 'true');
+/** Inline style for material icon spans (class doesn't apply inside Shadow DOM). */
+const ICON_STYLE = "font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; font-feature-settings: 'liga'; -webkit-font-smoothing: antialiased;";
 
-  const collection = container.dataset.collection;
-  const fieldName = container.dataset.fieldName;
-  const hasMany = container.dataset.hasMany === 'true';
-  const required = container.dataset.required === 'true';
-  const readonly = container.dataset.readonly === 'true';
-  const errorClass = container.dataset.error ? ' form__input--error' : '';
-  const polymorphic = container.dataset.polymorphic === 'true';
+class CrapRelationshipSearch extends HTMLElement {
+  constructor() {
+    super();
+    /** @type {boolean} */
+    this._initialized = false;
+  }
 
-  /** @type {string[]} */
-  let collections = [collection];
-  if (polymorphic) {
+  connectedCallback() {
+    if (this._initialized) return;
+    this._initialized = true;
+
+    const collection = this.getAttribute('collection') || '';
+    const fieldName = this.getAttribute('field-name') || '';
+    const hasMany = this.hasAttribute('has-many');
+    const required = this.hasAttribute('required');
+    const readonly = this.hasAttribute('readonly');
+    const errorClass = this.hasAttribute('data-error') ? ' form__input--error' : '';
+    const polymorphic = this.hasAttribute('polymorphic');
+    const fieldType = this.getAttribute('field-type') || 'relationship';
+    const pickerMode = this.getAttribute('picker') || '';
+    const isUpload = fieldType === 'upload';
+
+    /** @type {string[]} */
+    let collections = [collection];
+    if (polymorphic) {
+      try {
+        collections = JSON.parse(this.getAttribute('collections') || '[]');
+      } catch { /* fallback to single */ }
+      if (collections.length === 0) collections = [collection];
+    }
+
+    /** @type {Array<{id: string, label: string, collection?: string, thumbnail_url?: string, filename?: string, is_image?: boolean}>} */
+    let selected = [];
     try {
-      collections = JSON.parse(container.dataset.collections || '[]');
-    } catch { /* fallback to single */ }
-    if (collections.length === 0) collections = [collection];
-  }
+      selected = JSON.parse(this.getAttribute('selected') || '[]');
+    } catch { /* empty */ }
 
-  /** @type {Array<{id: string, label: string, collection?: string}>} */
-  let selected = [];
-  try {
-    selected = JSON.parse(container.dataset.selected || '[]');
-  } catch { /* empty */ }
+    // Build the DOM
+    this.innerHTML = '';
 
-  // Build the DOM
-  container.innerHTML = '';
+    // Hidden input(s) for form submission
+    const hiddenContainer = document.createElement('div');
+    hiddenContainer.className = 'relationship-search__hidden';
+    this.appendChild(hiddenContainer);
 
-  // Hidden input(s) for form submission
-  const hiddenContainer = document.createElement('div');
-  hiddenContainer.className = 'relationship-search__hidden';
-  container.appendChild(hiddenContainer);
-
-  // Selected items display (chips for has-many, single display for has-one)
-  if (hasMany) {
-    const chipsContainer = document.createElement('div');
-    chipsContainer.className = 'relationship-search__chips';
-    container.appendChild(chipsContainer);
-  }
-
-  // Search input
-  const inputWrapper = document.createElement('div');
-  inputWrapper.className = 'relationship-search__input-wrapper';
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'relationship-search__input' + errorClass;
-  input.placeholder = hasMany ? 'Search to add...' : 'Search...';
-  input.autocomplete = 'off';
-  if (readonly) input.disabled = true;
-  inputWrapper.appendChild(input);
-  container.appendChild(inputWrapper);
-
-  // Dropdown
-  const dropdown = document.createElement('div');
-  dropdown.className = 'relationship-search__dropdown';
-  dropdown.style.display = 'none';
-  container.appendChild(dropdown);
-
-  let debounceTimer = null;
-  let activeIndex = -1;
-  let suppressFocus = false;
-  /** @type {Array<{id: string, label: string, collection?: string}>} */
-  let results = [];
-
-  const isUpload = container.dataset.fieldType === 'upload';
-
-  function syncHiddenInputs() {
-    hiddenContainer.innerHTML = '';
+    // Selected items display (chips for has-many)
     if (hasMany) {
-      const hidden = document.createElement('input');
-      hidden.type = 'hidden';
-      hidden.name = fieldName;
-      hidden.value = selected.map((s) => s.id).join(',');
-      hiddenContainer.appendChild(hidden);
-    } else {
-      const hidden = document.createElement('input');
-      hidden.type = 'hidden';
-      hidden.name = fieldName;
-      hidden.value = selected.length > 0 ? selected[0].id : '';
-      // Store upload metadata on the hidden input for preview updates
-      if (isUpload && selected.length > 0) {
-        const item = selected[0];
-        if (item.thumbnail_url) hidden.setAttribute('data-thumbnail', item.thumbnail_url);
-        if (item.filename) hidden.setAttribute('data-filename', item.filename);
-        if (item.is_image) hidden.setAttribute('data-is-image', 'true');
-      }
-      hiddenContainer.appendChild(hidden);
+      const chipsContainer = document.createElement('div');
+      chipsContainer.className = 'relationship-search__chips';
+      this.appendChild(chipsContainer);
     }
-    // Notify parent (e.g. upload preview) that selection changed
-    container.dispatchEvent(new Event('crap:change', { bubbles: true }));
-  }
 
-  function renderChips() {
-    const chipsContainer = container.querySelector('.relationship-search__chips');
-    if (!chipsContainer) return;
-    chipsContainer.innerHTML = '';
-    selected.forEach((item) => {
-      const chip = document.createElement('span');
-      chip.className = 'relationship-search__chip';
-      // Show collection tag for polymorphic
-      if (polymorphic && item.collection) {
-        const tag = document.createElement('span');
-        tag.className = 'relationship-search__chip-collection';
-        tag.textContent = item.collection;
-        chip.appendChild(tag);
-      }
-      chip.appendChild(document.createTextNode(item.label));
-      if (!readonly) {
-        const removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.className = 'relationship-search__chip-remove';
-        removeBtn.textContent = '\u00d7';
-        removeBtn.addEventListener('click', () => {
-          selected = selected.filter((s) => s.id !== item.id);
-          renderChips();
-          syncHiddenInputs();
-        });
-        chip.appendChild(removeBtn);
-      }
-      chipsContainer.appendChild(chip);
-    });
-  }
+    // Search input
+    const inputWrapper = document.createElement('div');
+    inputWrapper.className = 'relationship-search__input-wrapper';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'relationship-search__input' + errorClass;
+    input.placeholder = hasMany ? 'Search to add...' : 'Search...';
+    input.autocomplete = 'off';
+    if (readonly) input.disabled = true;
+    inputWrapper.appendChild(input);
+    this.appendChild(inputWrapper);
 
-  function renderHasOneDisplay() {
-    if (hasMany) return;
-    if (selected.length > 0) {
-      const item = selected[0];
-      const prefix = (polymorphic && item.collection) ? `[${item.collection}] ` : '';
-      input.value = prefix + item.label;
-      input.dataset.selectedId = item.id;
-    } else {
-      input.value = '';
-      input.dataset.selectedId = '';
-    }
-  }
+    // Dropdown
+    const dropdown = document.createElement('div');
+    dropdown.className = 'relationship-search__dropdown';
+    dropdown.style.display = 'none';
+    this.appendChild(dropdown);
 
-  function renderDropdown() {
-    dropdown.innerHTML = '';
-    if (results.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'relationship-search__empty';
-      empty.textContent = 'No results';
-      dropdown.appendChild(empty);
-    } else {
-      let currentGroup = null;
-      results.forEach((item, idx) => {
-        // Group header for polymorphic results
-        if (polymorphic && item.collection && item.collection !== currentGroup) {
-          currentGroup = item.collection;
-          const header = document.createElement('div');
-          header.className = 'relationship-search__group-header';
-          header.textContent = item.collection;
-          dropdown.appendChild(header);
+    let debounceTimer = null;
+    let activeIndex = -1;
+    let suppressFocus = false;
+    /** @type {Array<{id: string, label: string, collection?: string}>} */
+    let results = [];
+
+    function syncHiddenInputs() {
+      hiddenContainer.innerHTML = '';
+      if (hasMany) {
+        const hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.name = fieldName;
+        hidden.value = selected.map((s) => s.id).join(',');
+        hiddenContainer.appendChild(hidden);
+      } else {
+        const hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.name = fieldName;
+        hidden.value = selected.length > 0 ? selected[0].id : '';
+        // Store upload metadata on the hidden input for preview updates
+        if (isUpload && selected.length > 0) {
+          const item = selected[0];
+          if (item.thumbnail_url) hidden.setAttribute('data-thumbnail', item.thumbnail_url);
+          if (item.filename) hidden.setAttribute('data-filename', item.filename);
+          if (item.is_image) hidden.setAttribute('data-is-image', 'true');
         }
+        hiddenContainer.appendChild(hidden);
+      }
+      // Notify parent (e.g. upload preview) that selection changed
+      self.dispatchEvent(new Event('crap:change', { bubbles: true }));
+      updateViewLink();
+    }
 
-        const option = document.createElement('div');
-        option.className = 'relationship-search__option';
-        if (idx === activeIndex) option.classList.add('relationship-search__option--active');
+    const self = this;
 
-        const isSelected = selected.some((s) => s.id === item.id);
-        if (isSelected) option.classList.add('relationship-search__option--selected');
+    /** Update the sibling view link (if any) based on current selection. */
+    function updateViewLink() {
+      const viewLink = /** @type {HTMLAnchorElement|null} */ (
+        self.closest('.relationship-field')?.querySelector('.relationship-field__view-link')
+      );
+      if (!viewLink) return;
 
-        option.textContent = item.label;
-        option.addEventListener('mousedown', (e) => {
-          e.preventDefault();
-          selectItem(item);
-        });
-        dropdown.appendChild(option);
+      const val = selected.length > 0 ? selected[0].id : '';
+      const col = viewLink.getAttribute('data-collection') || collection;
+      if (val) {
+        const href = '/admin/collections/' + col + '/' + val;
+        viewLink.setAttribute('href', href);
+        viewLink.setAttribute('hx-get', href);
+        viewLink.style.display = '';
+      } else {
+        viewLink.style.display = 'none';
+      }
+    }
+
+    function renderChips() {
+      const chipsContainer = self.querySelector('.relationship-search__chips');
+      if (!chipsContainer) return;
+      chipsContainer.innerHTML = '';
+      selected.forEach((item) => {
+        const chip = document.createElement('span');
+        chip.className = 'relationship-search__chip';
+        // Show collection tag for polymorphic
+        if (polymorphic && item.collection) {
+          const tag = document.createElement('span');
+          tag.className = 'relationship-search__chip-collection';
+          tag.textContent = item.collection;
+          chip.appendChild(tag);
+        }
+        chip.appendChild(document.createTextNode(item.label));
+        if (!readonly) {
+          const removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.className = 'relationship-search__chip-remove';
+          removeBtn.textContent = '\u00d7';
+          removeBtn.addEventListener('click', () => {
+            selected = selected.filter((s) => s.id !== item.id);
+            renderChips();
+            syncHiddenInputs();
+          });
+          chip.appendChild(removeBtn);
+        }
+        chipsContainer.appendChild(chip);
       });
     }
-    dropdown.style.display = '';
-  }
 
-  /** @param {{id: string, label: string, collection?: string}} item */
-  function selectItem(item) {
-    if (hasMany) {
-      if (!selected.some((s) => s.id === item.id)) {
-        selected.push(item);
-        renderChips();
+    function renderHasOneDisplay() {
+      if (hasMany) return;
+      if (selected.length > 0) {
+        const item = selected[0];
+        const prefix = (polymorphic && item.collection) ? `[${item.collection}] ` : '';
+        input.value = prefix + item.label;
+        input.dataset.selectedId = item.id;
+      } else {
+        input.value = '';
+        input.dataset.selectedId = '';
       }
-      input.value = '';
-    } else {
-      selected = [item];
-      renderHasOneDisplay();
     }
-    syncHiddenInputs();
-    closeDropdown();
-  }
 
-  function closeDropdown() {
-    dropdown.style.display = 'none';
-    dropdown.innerHTML = '';
-    results = [];
-    activeIndex = -1;
+    function renderDropdown() {
+      dropdown.innerHTML = '';
+      if (results.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'relationship-search__empty';
+        empty.textContent = 'No results';
+        dropdown.appendChild(empty);
+      } else {
+        let currentGroup = null;
+        results.forEach((item, idx) => {
+          // Group header for polymorphic results
+          if (polymorphic && item.collection && item.collection !== currentGroup) {
+            currentGroup = item.collection;
+            const header = document.createElement('div');
+            header.className = 'relationship-search__group-header';
+            header.textContent = item.collection;
+            dropdown.appendChild(header);
+          }
+
+          const option = document.createElement('div');
+          option.className = 'relationship-search__option';
+          if (idx === activeIndex) option.classList.add('relationship-search__option--active');
+
+          const isSelected = selected.some((s) => s.id === item.id);
+          if (isSelected) option.classList.add('relationship-search__option--selected');
+
+          option.textContent = item.label;
+          option.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            selectItem(item);
+          });
+          dropdown.appendChild(option);
+        });
+      }
+      dropdown.style.display = '';
+    }
+
+    /** @param {{id: string, label: string, collection?: string}} item */
+    function selectItem(item) {
+      if (hasMany) {
+        if (!selected.some((s) => s.id === item.id)) {
+          selected.push(item);
+          renderChips();
+        }
+        input.value = '';
+      } else {
+        selected = [item];
+        renderHasOneDisplay();
+      }
+      syncHiddenInputs();
+      closeDropdown();
+    }
+
+    function closeDropdown() {
+      dropdown.style.display = 'none';
+      dropdown.innerHTML = '';
+      results = [];
+      activeIndex = -1;
+    }
+
+    /**
+     * Search one or more collections and merge results.
+     * @param {string} query
+     */
+    async function doSearch(query) {
+      if (polymorphic) {
+        // Fan out to all target collections
+        const promises = collections.map(async (col) => {
+          const url = `/admin/api/search/${encodeURIComponent(col)}?q=${encodeURIComponent(query)}&limit=20`;
+          try {
+            const resp = await fetch(url);
+            if (!resp.ok) return [];
+            const items = await resp.json();
+            // Tag each result with its collection and use composite id
+            return items.map((item) => ({
+              id: `${col}/${item.id}`,
+              label: item.label,
+              collection: col,
+            }));
+          } catch { return []; }
+        });
+        const allResults = await Promise.all(promises);
+        results = allResults.flat();
+        // Sort: group by collection
+        results.sort((a, b) => {
+          const ca = collections.indexOf(a.collection);
+          const cb = collections.indexOf(b.collection);
+          return ca - cb;
+        });
+      } else {
+        const url = `/admin/api/search/${encodeURIComponent(collection)}?q=${encodeURIComponent(query)}&limit=20`;
+        try {
+          const resp = await fetch(url);
+          if (!resp.ok) return;
+          results = await resp.json();
+        } catch { return; }
+      }
+      activeIndex = -1;
+      renderDropdown();
+    }
+
+    // Input events
+    input.addEventListener('input', () => {
+      const query = input.value.trim();
+      if (debounceTimer) clearTimeout(debounceTimer);
+
+      // For has-one, clear selection when user types
+      if (!hasMany && input.dataset.selectedId) {
+        selected = [];
+        input.dataset.selectedId = '';
+        syncHiddenInputs();
+      }
+
+      debounceTimer = setTimeout(() => {
+        if (query.length >= MIN_QUERY_LENGTH) {
+          doSearch(query);
+        } else {
+          doSearch('');
+        }
+      }, DEBOUNCE_MS);
+    });
+
+    input.addEventListener('focus', () => {
+      if (!readonly && !suppressFocus) {
+        const query = (!hasMany && input.dataset.selectedId) ? '' : input.value.trim();
+        doSearch(query);
+      }
+    });
+
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        closeDropdown();
+        if (!hasMany) renderHasOneDisplay();
+      }, 200);
+    });
+
+    input.addEventListener('keydown', (e) => {
+      const optionCount = results.length;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeIndex = Math.min(activeIndex + 1, optionCount - 1);
+        renderDropdown();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeIndex = Math.max(activeIndex - 1, 0);
+        renderDropdown();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (activeIndex >= 0 && activeIndex < optionCount) {
+          selectItem(results[activeIndex]);
+        }
+      } else if (e.key === 'Escape') {
+        closeDropdown();
+        if (!hasMany) renderHasOneDisplay();
+      } else if (e.key === 'Backspace' && hasMany && input.value === '' && selected.length > 0) {
+        selected.pop();
+        renderChips();
+        syncHiddenInputs();
+      }
+    });
+
+    // Clear button for has-one (when not required)
+    if (!hasMany && !required && !readonly) {
+      const clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.className = 'relationship-search__clear';
+      clearBtn.textContent = '\u00d7';
+      clearBtn.title = 'Clear selection';
+      clearBtn.style.display = selected.length > 0 ? '' : 'none';
+      clearBtn.addEventListener('click', () => {
+        selected = [];
+        syncHiddenInputs();
+        renderHasOneDisplay();
+        clearBtn.style.display = 'none';
+      });
+      inputWrapper.appendChild(clearBtn);
+
+      const observer = new MutationObserver(() => {
+        clearBtn.style.display = selected.length > 0 ? '' : 'none';
+      });
+      observer.observe(hiddenContainer, { childList: true, subtree: true });
+    }
+
+    // Listen for picks from external sources (e.g. drawer picker)
+    this.addEventListener('crap:pick', (e) => {
+      suppressFocus = true;
+      selectItem(/** @type {CustomEvent} */ (e).detail);
+      setTimeout(() => { suppressFocus = false; }, 300);
+    });
+
+    // Initial render
+    syncHiddenInputs();
+    if (hasMany) renderChips();
+    else renderHasOneDisplay();
+
+    // ── Drawer picker (when picker="drawer") ────────────────────
+    if (pickerMode === 'drawer' && !readonly) {
+      this._setupDrawerPicker(collection, isUpload, hasMany);
+    }
   }
 
   /**
-   * Search one or more collections and merge results.
-   * @param {string} query
+   * Set up the drawer browse button and picker UI.
+   *
+   * @param {string} collection
+   * @param {boolean} isUpload
+   * @param {boolean} hasMany
    */
-  async function doSearch(query) {
-    if (polymorphic) {
-      // Fan out to all target collections
-      const promises = collections.map(async (col) => {
-        const url = `/admin/api/search/${encodeURIComponent(col)}?q=${encodeURIComponent(query)}&limit=20`;
-        try {
-          const resp = await fetch(url);
-          if (!resp.ok) return [];
-          const items = await resp.json();
-          // Tag each result with its collection and use composite id
-          return items.map((item) => ({
-            id: `${col}/${item.id}`,
-            label: item.label,
-            collection: col,
-          }));
-        } catch { return []; }
+  _setupDrawerPicker(collection, isUpload, hasMany) {
+    const inputWrapper = this.querySelector('.relationship-search__input-wrapper');
+    if (!inputWrapper) return;
+
+    const row = document.createElement('div');
+    row.className = 'relationship-search__input-row';
+    inputWrapper.parentNode.insertBefore(row, inputWrapper);
+    row.appendChild(inputWrapper);
+
+    const browseBtn = document.createElement('button');
+    browseBtn.type = 'button';
+    browseBtn.className = 'relationship-search__browse';
+    browseBtn.title = 'Browse';
+    browseBtn.innerHTML = '<span style="' + ICON_STYLE + ' font-size: 18px;">folder_open</span>';
+    row.appendChild(browseBtn);
+
+    browseBtn.addEventListener('click', () => {
+      this._openDrawerPicker(collection, isUpload, hasMany);
+    });
+  }
+
+  /**
+   * Open the drawer picker for browsing.
+   *
+   * @param {string} collection
+   * @param {boolean} isUpload
+   * @param {boolean} hasMany
+   */
+  _openDrawerPicker(collection, isUpload, hasMany) {
+    const drawer = getDrawer();
+    const label = isUpload ? 'Browse Media' : 'Browse';
+    drawer.open({ title: label });
+
+    const body = drawer.body;
+    const self = this;
+
+    // Get currently selected IDs
+    const hiddenInput = this.querySelector('.relationship-search__hidden input[type="hidden"]');
+    const currentIds = new Set();
+    if (hiddenInput && /** @type {HTMLInputElement} */ (hiddenInput).value) {
+      /** @type {HTMLInputElement} */ (hiddenInput).value.split(',').forEach((id) => {
+        if (id) currentIds.add(id);
       });
-      const allResults = await Promise.all(promises);
-      results = allResults.flat();
-      // Sort: group by collection
-      results.sort((a, b) => {
-        const ca = collections.indexOf(a.collection);
-        const cb = collections.indexOf(b.collection);
-        return ca - cb;
+    }
+
+    // Search input
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = 'Search...';
+    searchInput.autocomplete = 'off';
+    Object.assign(searchInput.style, {
+      width: '100%',
+      boxSizing: 'border-box',
+      padding: '8px 12px',
+      border: '1px solid var(--border-color, #e5e7eb)',
+      borderRadius: 'var(--radius-md, 6px)',
+      fontSize: 'var(--text-sm, 0.875rem)',
+      marginBottom: '12px',
+      background: 'var(--input-bg, #fff)',
+      color: 'var(--text-primary, rgba(0, 0, 0, 0.88))',
+    });
+    body.appendChild(searchInput);
+
+    // Results container
+    const results = document.createElement('div');
+    if (isUpload) {
+      Object.assign(results.style, {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+        gap: '10px',
       });
     } else {
-      const url = `/admin/api/search/${encodeURIComponent(collection)}?q=${encodeURIComponent(query)}&limit=20`;
+      Object.assign(results.style, {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '4px',
+      });
+    }
+    body.appendChild(results);
+
+    // Load more button
+    const loadMore = document.createElement('button');
+    loadMore.type = 'button';
+    loadMore.textContent = 'Load more';
+    Object.assign(loadMore.style, {
+      display: 'none',
+      width: '100%',
+      padding: '8px',
+      marginTop: '12px',
+      border: '1px solid var(--border-color, #e5e7eb)',
+      borderRadius: 'var(--radius-md, 6px)',
+      background: 'transparent',
+      cursor: 'pointer',
+      fontSize: 'var(--text-sm, 0.875rem)',
+      color: 'var(--text-secondary, rgba(0, 0, 0, 0.65))',
+    });
+    body.appendChild(loadMore);
+
+    let debounceTimer = null;
+    let currentOffset = 0;
+
+    /**
+     * Fetch results from the search API.
+     * @param {string} query
+     * @param {boolean} append
+     */
+    async function fetchResults(query, append) {
+      if (!append) {
+        results.innerHTML = '';
+        currentOffset = 0;
+      }
+
+      const limit = DRAWER_PAGE_SIZE;
+      const url = `/admin/api/search/${encodeURIComponent(collection)}?q=${encodeURIComponent(query)}&limit=${limit}`;
       try {
         const resp = await fetch(url);
         if (!resp.ok) return;
-        results = await resp.json();
-      } catch { return; }
-    }
-    activeIndex = -1;
-    renderDropdown();
-  }
+        const items = await resp.json();
 
-  // Input events
-  input.addEventListener('input', () => {
-    const query = input.value.trim();
-    if (debounceTimer) clearTimeout(debounceTimer);
+        items.forEach((item) => {
+          const el = isUpload
+            ? createUploadCard(item, currentIds, hasMany, self, drawer)
+            : createListItem(item, currentIds, hasMany, self, drawer);
+          results.appendChild(el);
+        });
 
-    // For has-one, clear selection when user types
-    if (!hasMany && input.dataset.selectedId) {
-      selected = [];
-      input.dataset.selectedId = '';
-      syncHiddenInputs();
+        currentOffset += items.length;
+        loadMore.style.display = items.length >= limit ? '' : 'none';
+      } catch { /* ignore */ }
     }
 
-    debounceTimer = setTimeout(() => {
-      if (query.length >= MIN_QUERY_LENGTH) {
-        doSearch(query);
-      } else {
-        doSearch('');
-      }
-    }, DEBOUNCE_MS);
-  });
-
-  input.addEventListener('focus', () => {
-    if (!readonly && !suppressFocus) {
-      const query = (!hasMany && input.dataset.selectedId) ? '' : input.value.trim();
-      doSearch(query);
-    }
-  });
-
-  input.addEventListener('blur', () => {
-    setTimeout(() => {
-      closeDropdown();
-      if (!hasMany) renderHasOneDisplay();
-    }, 200);
-  });
-
-  input.addEventListener('keydown', (e) => {
-    const optionCount = results.length;
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      activeIndex = Math.min(activeIndex + 1, optionCount - 1);
-      renderDropdown();
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      activeIndex = Math.max(activeIndex - 1, 0);
-      renderDropdown();
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (activeIndex >= 0 && activeIndex < optionCount) {
-        selectItem(results[activeIndex]);
-      }
-    } else if (e.key === 'Escape') {
-      closeDropdown();
-      if (!hasMany) renderHasOneDisplay();
-    } else if (e.key === 'Backspace' && hasMany && input.value === '' && selected.length > 0) {
-      selected.pop();
-      renderChips();
-      syncHiddenInputs();
-    }
-  });
-
-  // Clear button for has-one (when not required)
-  if (!hasMany && !required && !readonly) {
-    const clearBtn = document.createElement('button');
-    clearBtn.type = 'button';
-    clearBtn.className = 'relationship-search__clear';
-    clearBtn.textContent = '\u00d7';
-    clearBtn.title = 'Clear selection';
-    clearBtn.style.display = selected.length > 0 ? '' : 'none';
-    clearBtn.addEventListener('click', () => {
-      selected = [];
-      syncHiddenInputs();
-      renderHasOneDisplay();
-      clearBtn.style.display = 'none';
+    searchInput.addEventListener('input', () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        fetchResults(searchInput.value.trim(), false);
+      }, DRAWER_DEBOUNCE_MS);
     });
-    inputWrapper.appendChild(clearBtn);
 
-    const observer = new MutationObserver(() => {
-      clearBtn.style.display = selected.length > 0 ? '' : 'none';
+    loadMore.addEventListener('click', () => {
+      loadMore.style.display = 'none';
     });
-    observer.observe(hiddenContainer, { childList: true, subtree: true });
+
+    // Initial load
+    fetchResults('', false);
+    searchInput.focus();
   }
-
-  // Listen for picks from external sources (e.g. drawer picker)
-  container.addEventListener('crap:pick', (e) => {
-    suppressFocus = true;
-    selectItem(e.detail);
-    setTimeout(() => { suppressFocus = false; }, 300);
-  });
-
-  // Initial render
-  syncHiddenInputs();
-  if (hasMany) renderChips();
-  else renderHasOneDisplay();
 }
 
-function initAllSearchWidgets() {
-  document.querySelectorAll('[data-relationship-search="true"]').forEach(initSearchWidget);
+/* ── Drawer picker helpers ─────────────────────────────────────── */
+
+/**
+ * Create a thumbnail card for upload results.
+ *
+ * @param {Object} item
+ * @param {Set<string>} currentIds
+ * @param {boolean} hasMany
+ * @param {HTMLElement} container
+ * @param {*} drawer
+ * @returns {HTMLElement}
+ */
+function createUploadCard(item, currentIds, hasMany, container, drawer) {
+  const card = document.createElement('div');
+  const isSelected = currentIds.has(item.id);
+  Object.assign(card.style, {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '10px',
+    border: `2px solid ${isSelected ? 'var(--color-primary, #6366f1)' : 'var(--border-color, #e5e7eb)'}`,
+    borderRadius: 'var(--radius-md, 6px)',
+    background: isSelected ? 'var(--color-primary-bg, rgba(99, 102, 241, 0.08))' : 'var(--surface-primary, #fff)',
+    cursor: 'pointer',
+    transition: 'border-color 0.15s, background 0.15s',
+    minHeight: '100px',
+    position: 'relative',
+    overflow: 'hidden',
+  });
+
+  // Thumbnail or file icon
+  if (item.thumbnail_url && item.is_image) {
+    const img = document.createElement('img');
+    img.src = item.thumbnail_url;
+    img.alt = item.label || '';
+    Object.assign(img.style, {
+      width: '100%',
+      height: '80px',
+      objectFit: 'contain',
+      borderRadius: '4px',
+    });
+    card.appendChild(img);
+  } else {
+    const icon = document.createElement('span');
+    icon.textContent = 'description';
+    Object.assign(icon.style, {
+      fontFamily: "'Material Symbols Outlined'",
+      fontSize: '36px',
+      color: 'var(--text-tertiary, rgba(0, 0, 0, 0.45))',
+    });
+    card.appendChild(icon);
+  }
+
+  // Label
+  const label = document.createElement('span');
+  label.textContent = item.label || item.id;
+  Object.assign(label.style, {
+    fontSize: 'var(--text-xs, 0.75rem)',
+    color: 'var(--text-secondary, rgba(0, 0, 0, 0.65))',
+    textAlign: 'center',
+    lineHeight: '1.3',
+    wordBreak: 'break-word',
+    maxWidth: '100%',
+  });
+  card.appendChild(label);
+
+  // Selected indicator
+  if (isSelected) {
+    const check = document.createElement('span');
+    check.textContent = 'check_circle';
+    Object.assign(check.style, {
+      fontFamily: "'Material Symbols Outlined'",
+      position: 'absolute',
+      top: '4px',
+      right: '4px',
+      fontSize: '18px',
+      color: 'var(--color-primary, #6366f1)',
+    });
+    card.appendChild(check);
+  }
+
+  card.addEventListener('click', () => {
+    container.dispatchEvent(new CustomEvent('crap:pick', { detail: item }));
+    if (!hasMany) drawer.close();
+  });
+
+  card.addEventListener('mouseenter', () => {
+    if (!isSelected) card.style.borderColor = 'var(--color-primary, #6366f1)';
+  });
+  card.addEventListener('mouseleave', () => {
+    if (!isSelected) card.style.borderColor = 'var(--border-color, #e5e7eb)';
+  });
+
+  return card;
 }
 
-document.addEventListener('DOMContentLoaded', initAllSearchWidgets);
-document.addEventListener('htmx:afterSettle', initAllSearchWidgets);
+/**
+ * Create a list item for relationship results.
+ *
+ * @param {Object} item
+ * @param {Set<string>} currentIds
+ * @param {boolean} hasMany
+ * @param {HTMLElement} container
+ * @param {*} drawer
+ * @returns {HTMLElement}
+ */
+function createListItem(item, currentIds, hasMany, container, drawer) {
+  const row = document.createElement('div');
+  const isSelected = currentIds.has(item.id);
+  Object.assign(row.style, {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '8px 12px',
+    border: `1px solid ${isSelected ? 'var(--color-primary, #6366f1)' : 'var(--border-color, #e5e7eb)'}`,
+    borderRadius: 'var(--radius-md, 6px)',
+    background: isSelected ? 'var(--color-primary-bg, rgba(99, 102, 241, 0.08))' : 'var(--surface-primary, #fff)',
+    cursor: 'pointer',
+    transition: 'border-color 0.15s, background 0.15s',
+    fontSize: 'var(--text-sm, 0.875rem)',
+    color: 'var(--text-primary, rgba(0, 0, 0, 0.88))',
+  });
+
+  const label = document.createElement('span');
+  label.textContent = item.label || item.id;
+  row.appendChild(label);
+
+  if (isSelected) {
+    const check = document.createElement('span');
+    check.textContent = 'check';
+    Object.assign(check.style, {
+      fontFamily: "'Material Symbols Outlined'",
+      fontSize: '18px',
+      color: 'var(--color-primary, #6366f1)',
+    });
+    row.appendChild(check);
+  }
+
+  row.addEventListener('click', () => {
+    container.dispatchEvent(new CustomEvent('crap:pick', { detail: item }));
+    if (!hasMany) drawer.close();
+  });
+
+  row.addEventListener('mouseenter', () => {
+    if (!isSelected) row.style.borderColor = 'var(--color-primary, #6366f1)';
+  });
+  row.addEventListener('mouseleave', () => {
+    if (!isSelected) row.style.borderColor = 'var(--border-color, #e5e7eb)';
+  });
+
+  return row;
+}
+
+customElements.define('crap-relationship-search', CrapRelationshipSearch);

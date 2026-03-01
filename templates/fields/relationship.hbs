@@ -4,19 +4,18 @@
   {{#if locale_locked}}<span class="form__locale-badge">{{t "shared_field"}}</span>{{/if}}
 </label>
 <div class="relationship-field">
-  <div class="relationship-search"
-    data-relationship-search="true"
-    data-collection="{{relationship_collection}}"
-    data-field-name="{{name}}"
-    data-field-type="relationship"
-    {{#if has_many}}data-has-many="true"{{/if}}
-    {{#if polymorphic}}data-polymorphic="true" data-collections='{{json collections}}'{{/if}}
-    {{#if picker}}data-picker="{{picker}}"{{/if}}
-    {{#if required}}data-required="true"{{/if}}
-    {{#if readonly}}data-readonly="true"{{/if}}
-    {{#if error}}data-error="true"{{/if}}
-    data-selected='{{json selected_items}}'>
-  </div>
+  <crap-relationship-search
+    collection="{{relationship_collection}}"
+    field-name="{{name}}"
+    field-type="relationship"
+    {{#if has_many}}has-many{{/if}}
+    {{#if polymorphic}}polymorphic collections='{{json collections}}'{{/if}}
+    {{#if picker}}picker="{{picker}}"{{/if}}
+    {{#if required}}required{{/if}}
+    {{#if readonly}}readonly{{/if}}
+    {{#if error}}data-error{{/if}}
+    selected='{{json selected_items}}'>
+  </crap-relationship-search>
   {{#unless locale_locked}}
   <div class="relationship-field__actions">
     {{#if polymorphic}}

@@ -5,7 +5,7 @@
             class="form__tabs-tab{{#if @first}} form__tabs-tab--active{{/if}}"
             role="tab"
             aria-selected="{{#if @first}}true{{else}}false{{/if}}"
-            onclick="switchTab(this, '{{@index}}')"
+            data-action="switch-tab"
             data-tab-index="{{@index}}">
       {{label}}
       {{#if error_count}}<span class="form__tabs-tab-error">{{error_count}}</span>{{/if}}

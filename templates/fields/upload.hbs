@@ -5,18 +5,17 @@
 </label>
 {{#if has_many}}
 <div class="upload-field upload-field--has-many">
-  <div class="relationship-search"
-    data-relationship-search="true"
-    data-collection="{{relationship_collection}}"
-    data-field-name="{{name}}"
-    data-has-many="true"
-    data-field-type="upload"
-    {{#if picker}}data-picker="{{picker}}"{{/if}}
-    {{#if required}}data-required="true"{{/if}}
-    {{#if readonly}}data-readonly="true"{{/if}}
-    {{#if error}}data-error="true"{{/if}}
-    data-selected='{{json selected_items}}'>
-  </div>
+  <crap-relationship-search
+    collection="{{relationship_collection}}"
+    field-name="{{name}}"
+    field-type="upload"
+    has-many
+    {{#if picker}}picker="{{picker}}"{{/if}}
+    {{#if required}}required{{/if}}
+    {{#if readonly}}readonly{{/if}}
+    {{#if error}}data-error{{/if}}
+    selected='{{json selected_items}}'>
+  </crap-relationship-search>
   {{#unless locale_locked}}
   <div class="upload-field__actions">
     <a class="relationship-field__action" href="/admin/collections/{{relationship_collection}}/create"
@@ -42,25 +41,23 @@
   </div>
   {{#if locale_locked}}
   <input type="hidden" name="{{name}}" value="{{value}}" />
-  <div class="relationship-search"
-    data-relationship-search="true"
-    data-collection="{{relationship_collection}}"
-    data-field-name="{{name}}"
-    data-field-type="upload"
-    data-readonly="true"
-    data-selected='{{json selected_items}}'>
-  </div>
+  <crap-relationship-search
+    collection="{{relationship_collection}}"
+    field-name="{{name}}"
+    field-type="upload"
+    readonly
+    selected='{{json selected_items}}'>
+  </crap-relationship-search>
   {{else}}
-  <div class="relationship-search"
-    data-relationship-search="true"
-    data-collection="{{relationship_collection}}"
-    data-field-name="{{name}}"
-    data-field-type="upload"
-    {{#if picker}}data-picker="{{picker}}"{{/if}}
-    {{#if required}}data-required="true"{{/if}}
-    {{#if error}}data-error="true"{{/if}}
-    data-selected='{{json selected_items}}'>
-  </div>
+  <crap-relationship-search
+    collection="{{relationship_collection}}"
+    field-name="{{name}}"
+    field-type="upload"
+    {{#if picker}}picker="{{picker}}"{{/if}}
+    {{#if required}}required{{/if}}
+    {{#if error}}data-error{{/if}}
+    selected='{{json selected_items}}'>
+  </crap-relationship-search>
   {{#if relationship_collection}}
   <div class="upload-field__actions">
     <a class="relationship-field__action" href="/admin/collections/{{relationship_collection}}/create"

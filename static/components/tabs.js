@@ -1,10 +1,12 @@
 /**
  * Tab field switching.
  *
- * `switchTab` is exported for use as a global (called from inline onclick).
+ * Registers a `switch-tab` action via the delegation system.
  * State persistence is handled by scroll.js (snapshot before form save,
  * restore after same-page HTMX settle).
  */
+
+import { registerAction } from './actions.js';
 
 /**
  * Switch to a tab panel by index.
@@ -12,7 +14,7 @@
  * @param {HTMLElement} button - The tab button clicked.
  * @param {string} index - The tab panel index.
  */
-export function switchTab(button, index) {
+function switchTab(button, index) {
   const tabs = button.closest('.form__tabs');
   if (!tabs) return;
   tabs.querySelectorAll('.form__tabs-tab').forEach(t => {
@@ -24,3 +26,5 @@ export function switchTab(button, index) {
   button.setAttribute('aria-selected', 'true');
   tabs.querySelector(`[data-tab-panel="${index}"]`).classList.remove('form__tabs-panel--hidden');
 }
+
+registerAction('switch-tab', (el) => switchTab(el, el.dataset.tabIndex));

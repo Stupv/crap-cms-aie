@@ -1,17 +1,19 @@
 /**
  * Collapsible group fields.
  *
- * `toggleGroup` is exported for use as a global (called from inline onclick).
+ * Registers a `toggle-group` action via the delegation system.
  * State persistence is handled by scroll.js (snapshot before form save,
  * restore after same-page HTMX settle).
  */
+
+import { registerAction } from './actions.js';
 
 /**
  * Toggle a group fieldset's collapsed state.
  *
  * @param {HTMLButtonElement} btn - The toggle button inside the legend.
  */
-export function toggleGroup(btn) {
+function toggleGroup(btn) {
   const fieldset = btn.closest('[data-collapsible]');
   if (!fieldset) return;
   const cls = fieldset.classList.contains('form__collapsible')
@@ -19,3 +21,5 @@ export function toggleGroup(btn) {
     : 'form__group--collapsed';
   fieldset.classList.toggle(cls);
 }
+
+registerAction('toggle-group', (el) => toggleGroup(el));

@@ -1,6 +1,6 @@
 <div class="form__collapsible{{#if collapsed}} form__collapsible--collapsed{{/if}}"
      data-collapsible data-group-name="{{name}}" data-field-name="{{name}}">
-  <button type="button" class="form__collapsible-toggle" onclick="toggleGroup(this)">
+  <button type="button" class="form__collapsible-toggle" data-action="toggle-group">
     <span class="form__group-chevron material-symbols-outlined">expand_more</span>
     {{label}}
   </button>

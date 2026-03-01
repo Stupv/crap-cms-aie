@@ -712,8 +712,9 @@ input[type="checkbox"]:disabled {
 }
 
 /* Relationship search widget */
-.relationship-search {
+crap-relationship-search {
   position: relative;
+  display: block;
 }
 
 .relationship-search__input-wrapper {

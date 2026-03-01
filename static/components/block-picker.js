@@ -12,6 +12,8 @@
  * @module block-picker
  */
 
+import { addBlockRow } from './array-fields.js';
+
 /**
  * Enhance a single block-type select element.
  *
@@ -136,9 +138,7 @@ function buildVisualPicker(select, options) {
     card.addEventListener('click', () => {
       // Set select value and trigger addBlockRow
       select.value = opt.value;
-      if (typeof window.addBlockRow === 'function') {
-        window.addBlockRow(templateId);
-      }
+      addBlockRow(templateId);
     });
 
     picker.appendChild(card);

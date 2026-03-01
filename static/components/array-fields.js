@@ -4,9 +4,11 @@
  * Handles add/remove/reorder/duplicate rows, drag-and-drop sorting,
  * index rewriting, live row label watchers, empty state, and max_rows.
  *
- * Functions called from template onclick handlers are exported for
- * global assignment in index.js.
+ * All row actions are registered via the delegation system (actions.js).
+ * `addBlockRow` is exported for direct use by block-picker.js.
  */
+
+import { registerAction, registerDrag } from './actions.js';
 
 /* ── Row label watchers ──────────────────────────────────────── */
 
@@ -130,11 +132,11 @@ function replaceIndexInSubtree(root, index) {
       el.id = el.id.replace('__INDEX__', String(index));
     }
   );
-  root.querySelectorAll('[onclick*="__INDEX__"]').forEach(
+  root.querySelectorAll('[data-template-id*="__INDEX__"]').forEach(
     /** @param {HTMLElement} el */ (el) => {
-      const onclick = el.getAttribute('onclick');
-      if (onclick) {
-        el.setAttribute('onclick', onclick.replace('__INDEX__', String(index)));
+      const tid = el.getAttribute('data-template-id');
+      if (tid) {
+        el.setAttribute('data-template-id', tid.replace('__INDEX__', String(index)));
       }
     }
   );
@@ -236,14 +238,14 @@ function reindexRows(fieldset) {
   );
 }
 
-/* ── Row actions (exported for global onclick) ───────────────── */
+/* ── Row actions ─────────────────────────────────────────────── */
 
 /**
  * Toggle a single array row's collapsed state.
  *
  * @param {HTMLElement} header
  */
-export function toggleArrayRow(header) {
+function toggleArrayRow(header) {
   const row = header.closest('.form__array-row');
   if (!row) return;
   row.classList.toggle('form__array-row--collapsed');
@@ -255,7 +257,7 @@ export function toggleArrayRow(header) {
  * @param {HTMLButtonElement} btn
  * @param {boolean} collapse - true to collapse, false to expand.
  */
-export function toggleAllRows(btn, collapse) {
+function toggleAllRows(btn, collapse) {
   const fieldset = btn.closest('.form__array');
   if (!fieldset) return;
   fieldset.querySelectorAll(':scope > .form__array-rows > .form__array-row').forEach(
@@ -270,7 +272,7 @@ export function toggleAllRows(btn, collapse) {
  *
  * @param {HTMLButtonElement} btn
  */
-export function moveRowUp(btn) {
+function moveRowUp(btn) {
   const row = btn.closest('.form__array-row');
   if (!row || !row.previousElementSibling) return;
   row.parentElement.insertBefore(row, row.previousElementSibling);
@@ -283,7 +285,7 @@ export function moveRowUp(btn) {
  *
  * @param {HTMLButtonElement} btn
  */
-export function moveRowDown(btn) {
+function moveRowDown(btn) {
   const row = btn.closest('.form__array-row');
   if (!row || !row.nextElementSibling) return;
   row.parentElement.insertBefore(row.nextElementSibling, row);
@@ -296,7 +298,7 @@ export function moveRowDown(btn) {
  *
  * @param {HTMLButtonElement} btn
  */
-export function duplicateRow(btn) {
+function duplicateRow(btn) {
   const row = btn.closest('.form__array-row');
   if (!row) return;
   const fieldset = row.closest('.form__array');
@@ -333,7 +335,7 @@ export function duplicateRow(btn) {
  *
  * @param {HTMLButtonElement} btn
  */
-export function removeArrayRow(btn) {
+function removeArrayRow(btn) {
   const row = btn.closest('.form__array-row');
   if (!row) return;
 
@@ -354,7 +356,7 @@ export function removeArrayRow(btn) {
  *
  * @param {string} templateId
  */
-export function addArrayRow(templateId) {
+function addArrayRow(templateId) {
   const template = document.getElementById(`array-template-${templateId}`);
   const container = document.getElementById(`array-rows-${templateId}`);
   if (!template || !container) return;
@@ -459,67 +461,6 @@ export function addBlockRow(templateId) {
 let draggedRow = null;
 
 /**
- * @param {DragEvent} e
- */
-export function rowDragStart(e) {
-  draggedRow = e.target.closest('.form__array-row');
-  if (!draggedRow) return;
-  draggedRow.classList.add('form__array-row--dragging');
-  e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/plain', '');
-}
-
-/**
- * @param {DragEvent} e
- */
-export function rowDragEnd(e) {
-  if (draggedRow) {
-    draggedRow.classList.remove('form__array-row--dragging');
-    draggedRow = null;
-  }
-  document.querySelectorAll('.form__array-row--drag-over').forEach(
-    (el) => el.classList.remove('form__array-row--drag-over')
-  );
-}
-
-/**
- * @param {DragEvent} e
- */
-export function rowDragOver(e) {
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  if (!draggedRow) return;
-  const container = e.currentTarget;
-  const afterElement = getDragAfterElement(container, e.clientY);
-  container.querySelectorAll('.form__array-row--drag-over').forEach(
-    (el) => el.classList.remove('form__array-row--drag-over')
-  );
-  if (afterElement) {
-    afterElement.classList.add('form__array-row--drag-over');
-  }
-}
-
-/**
- * @param {DragEvent} e
- */
-export function rowDrop(e) {
-  e.preventDefault();
-  if (!draggedRow) return;
-  const container = e.currentTarget;
-  const afterElement = getDragAfterElement(container, e.clientY);
-  if (afterElement) {
-    container.insertBefore(draggedRow, afterElement);
-  } else {
-    container.appendChild(draggedRow);
-  }
-  container.querySelectorAll('.form__array-row--drag-over').forEach(
-    (el) => el.classList.remove('form__array-row--drag-over')
-  );
-  const fieldset = container.closest('.form__array');
-  reindexRows(fieldset);
-}
-
-/**
  * Determine the element after which the dragged row should be inserted.
  *
  * @param {HTMLElement} container
@@ -537,3 +478,61 @@ function getDragAfterElement(container, y) {
     return closest;
   }, { offset: Number.NEGATIVE_INFINITY }).element || null;
 }
+
+registerDrag({
+  start(el, e) {
+    draggedRow = el.closest('.form__array-row');
+    if (!draggedRow) return;
+    draggedRow.classList.add('form__array-row--dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', '');
+  },
+  end() {
+    if (draggedRow) {
+      draggedRow.classList.remove('form__array-row--dragging');
+      draggedRow = null;
+    }
+    document.querySelectorAll('.form__array-row--drag-over').forEach(
+      (el) => el.classList.remove('form__array-row--drag-over')
+    );
+  },
+  over(container, e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (!draggedRow) return;
+    const afterElement = getDragAfterElement(container, e.clientY);
+    container.querySelectorAll('.form__array-row--drag-over').forEach(
+      (el) => el.classList.remove('form__array-row--drag-over')
+    );
+    if (afterElement) {
+      afterElement.classList.add('form__array-row--drag-over');
+    }
+  },
+  drop(container, e) {
+    e.preventDefault();
+    if (!draggedRow) return;
+    const afterElement = getDragAfterElement(container, e.clientY);
+    if (afterElement) {
+      container.insertBefore(draggedRow, afterElement);
+    } else {
+      container.appendChild(draggedRow);
+    }
+    container.querySelectorAll('.form__array-row--drag-over').forEach(
+      (el) => el.classList.remove('form__array-row--drag-over')
+    );
+    const fieldset = container.closest('.form__array');
+    reindexRows(fieldset);
+  },
+});
+
+/* ── Action registrations ────────────────────────────────────── */
+
+registerAction('toggle-array-row', (el) => toggleArrayRow(el));
+registerAction('toggle-all-rows-collapse', (el) => toggleAllRows(el, true));
+registerAction('toggle-all-rows-expand', (el) => toggleAllRows(el, false));
+registerAction('move-row-up', (el) => moveRowUp(el));
+registerAction('move-row-down', (el) => moveRowDown(el));
+registerAction('duplicate-row', (el) => duplicateRow(el));
+registerAction('remove-array-row', (el) => removeArrayRow(el));
+registerAction('add-array-row', (el) => addArrayRow(el.dataset.templateId));
+registerAction('add-block-row', (el) => addBlockRow(el.dataset.templateId));
