@@ -1,18 +1,17 @@
---- Access: allow reading published content, or drafts by the author/editors/admins.
---- Returns a query constraint for list operations.
+--- Read access: admins see all, authenticated see all, anonymous see published only.
 ---@param context crap.AccessContext
 ---@return boolean|table
 return function(context)
-    -- Admins and editors can see everything
-    if context.user ~= nil then
-        if context.user.role == "admin" or context.user.role == "editor" then
-            return true
-        end
-        -- Authors can see published + their own drafts
-        -- TODO: OR filters not yet supported in access constraints,
-        -- so for now authors see everything (filtered in application layer)
-        return true
-    end
-    -- Anonymous: only published
-    return { _status = "published" }
+	if context.user then
+		local role = context.user.role
+		if role == "admin" or role == "director" or role == "editor" then
+			return true
+		end
+		-- Authenticated users (authors) can see all posts
+		-- (no OR support in access filters, so we allow read and rely on
+		-- update/delete access to protect editing)
+		return true
+	end
+	-- Anonymous: published only
+	return { _status = "published" }
 end

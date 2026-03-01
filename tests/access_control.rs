@@ -43,7 +43,7 @@ fn access_config_parsed_from_lua() {
     assert_eq!(posts.access.read.as_deref(), Some("access.published_or_author"));
     assert_eq!(posts.access.create.as_deref(), Some("access.authenticated"));
     assert_eq!(posts.access.update.as_deref(), Some("access.author_or_editor"));
-    assert_eq!(posts.access.delete.as_deref(), Some("access.author_or_admin"));
+    assert_eq!(posts.access.delete.as_deref(), Some("access.editor_or_above"));
 }
 
 #[test]

@@ -1,38 +1,18 @@
--- hooks/labels.lua — Row label functions for admin UI
--- These are pure formatting functions (no DB access).
--- They receive the row data as a Lua table and return a display string.
+--- Row label function for project content blocks.
+---@param data table
+---@return string
+return function(data)
+	local block_type = data._block_type or "block"
+	local label = data.heading or data.title or data.caption or ""
 
-local M = {}
+	if label == "" then
+		return block_type
+	end
 
---- Computed row label for post content blocks.
---- Priority: row_label function > per-block label_field > block type + index.
----@param row table Row data including `_block_type` and block field values.
----@return string?
-function M.content_block_row(row)
-    local bt = row._block_type or ""
-    if bt == "richtext" then
-        -- Rich text blocks don't have a good title field, so use a fixed label
-        return "Rich Text"
-    elseif bt == "image" then
-        local caption = row.caption or ""
-        if caption ~= "" then
-            return "Image: " .. caption
-        end
-        return "Image"
-    elseif bt == "code" then
-        local lang = row.language or ""
-        if lang ~= "" then
-            return "Code (" .. lang .. ")"
-        end
-        return "Code"
-    elseif bt == "quote" then
-        local attr = row.attribution or ""
-        if attr ~= "" then
-            return "Quote — " .. attr
-        end
-        return "Quote"
-    end
-    return nil -- fall back to label_field or default
+	-- Truncate long labels
+	if #label > 50 then
+		label = label:sub(1, 47) .. "..."
+	end
+
+	return string.format("%s: %s", block_type, label)
 end
-
-return M

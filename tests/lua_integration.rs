@@ -34,7 +34,11 @@ fn init_lua_loads_example_config() {
     assert_eq!(pages.display_name(), "Pages");
     assert!(pages.fields.iter().any(|f| f.name == "title"));
     assert!(pages.fields.iter().any(|f| f.name == "slug"));
-    assert!(pages.fields.iter().any(|f| f.name == "content"));
+    // content is nested inside the page_settings tabs field
+    let page_tabs = pages.fields.iter().find(|f| f.name == "page_settings")
+        .expect("page_settings tabs field not found");
+    assert!(!page_tabs.tabs.is_empty(), "page_settings should have tabs");
+    assert!(page_tabs.tabs[0].fields.iter().any(|f| f.name == "content"));
 
     // Example config defines "site_settings" global
     assert!(

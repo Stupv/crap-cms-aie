@@ -62,10 +62,14 @@ input:-webkit-autofill:focus {
   transition: background-color 5000s ease-in-out 0s;
 }
 
-/* Checkbox reset */
-input[type="checkbox"] {
+/* Checkbox & radio reset */
+input[type="checkbox"],
+input[type="radio"] {
   width: auto;
   height: auto;
+  padding: 0;
+  border: none;
+  box-shadow: none;
 }
 
 .form {

@@ -4,6 +4,8 @@
 ---@field title string
 ---@field slug string
 ---@field description? string
+---@field parent? string
+---@field color? string
 ---@field seo? table
 
 ---@class crap.doc.Categories
@@ -11,6 +13,8 @@
 ---@field title string
 ---@field slug string
 ---@field description? string
+---@field parent? string
+---@field color? string
 ---@field seo? table
 ---@field created_at? string
 ---@field updated_at? string
@@ -31,6 +35,8 @@
 ---@field title? crap.FilterValue
 ---@field slug? crap.FilterValue
 ---@field description? crap.FilterValue
+---@field parent? crap.FilterValue
+---@field color? crap.FilterValue
 ---@field seo__meta_title? crap.FilterValue
 ---@field seo__meta_description? crap.FilterValue
 ---@field seo__no_index? crap.FilterValue
@@ -39,7 +45,212 @@
 
 ---@class crap.query.Categories
 ---@field filters? crap.filters.Categories
----@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"description"|"-description"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"description"|"-description"|"parent"|"-parent"|"color"|"-color"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field limit? integer
+---@field offset? integer
+---@field locale? string
+
+---@class crap.data.Clients
+---@field company_name string
+---@field logo? string
+---@field website? string
+---@field since? string
+---@field contact_name? string
+---@field contact_email? string
+---@field contact_phone? string
+---@field industry? "technology" | "finance" | "healthcare" | "education" | "retail" | "media" | "nonprofit" | "government"
+---@field notes? string
+---@field client_projects? table[]
+---@field seo? table
+
+---@class crap.doc.Clients
+---@field id string
+---@field company_name string
+---@field logo? string
+---@field website? string
+---@field since? string
+---@field contact_name? string
+---@field contact_email? string
+---@field contact_phone? string
+---@field industry? "technology" | "finance" | "healthcare" | "education" | "retail" | "media" | "nonprofit" | "government"
+---@field notes? string
+---@field client_projects? table[]
+---@field seo? table
+---@field created_at? string
+---@field updated_at? string
+
+---@class crap.hook.Clients
+---@field collection "clients"
+---@field operation "create" | "update"
+---@field data crap.data.Clients
+
+---@class crap.find_result.Clients
+---@field documents crap.doc.Clients[]
+---@field total integer
+
+---@alias crap.hook_fn.Clients fun(ctx: crap.hook.Clients): crap.hook.Clients
+
+---@class crap.filters.Clients
+---@field id? crap.FilterValue
+---@field company_name? crap.FilterValue
+---@field logo? crap.FilterValue
+---@field website? crap.FilterValue
+---@field since? crap.FilterValue
+---@field contact_name? crap.FilterValue
+---@field contact_email? crap.FilterValue
+---@field contact_phone? crap.FilterValue
+---@field industry? crap.FilterValue
+---@field notes? crap.FilterValue
+---@field seo__meta_title? crap.FilterValue
+---@field seo__meta_description? crap.FilterValue
+---@field seo__no_index? crap.FilterValue
+---@field created_at? crap.FilterValue
+---@field updated_at? crap.FilterValue
+
+---@class crap.query.Clients
+---@field filters? crap.filters.Clients
+---@field order_by? "id"|"-id"|"company_name"|"-company_name"|"logo"|"-logo"|"website"|"-website"|"since"|"-since"|"contact_name"|"-contact_name"|"contact_email"|"-contact_email"|"contact_phone"|"-contact_phone"|"industry"|"-industry"|"notes"|"-notes"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field limit? integer
+---@field offset? integer
+---@field locale? string
+
+---@class crap.data.Events
+---@field title string
+---@field slug string
+---@field description? string
+---@field hero_image? string
+---@field start_date string
+---@field end_date? string
+---@field online? boolean
+---@field event_url? string
+---@field location? table
+---@field speakers? string[]
+---@field categories? string[]
+---@field registration_url? string
+---@field max_attendees? number
+---@field registration_deadline? string
+---@field seo? table
+
+---@class crap.doc.Events
+---@field id string
+---@field title string
+---@field slug string
+---@field description? string
+---@field hero_image? string
+---@field start_date string
+---@field end_date? string
+---@field online? boolean
+---@field event_url? string
+---@field location? table
+---@field speakers? string[]
+---@field categories? string[]
+---@field registration_url? string
+---@field max_attendees? number
+---@field registration_deadline? string
+---@field seo? table
+---@field created_at? string
+---@field updated_at? string
+
+---@class crap.hook.Events
+---@field collection "events"
+---@field operation "create" | "update"
+---@field data crap.data.Events
+
+---@class crap.find_result.Events
+---@field documents crap.doc.Events[]
+---@field total integer
+
+---@alias crap.hook_fn.Events fun(ctx: crap.hook.Events): crap.hook.Events
+
+---@class crap.filters.Events
+---@field id? crap.FilterValue
+---@field title? crap.FilterValue
+---@field slug? crap.FilterValue
+---@field description? crap.FilterValue
+---@field hero_image? crap.FilterValue
+---@field start_date? crap.FilterValue
+---@field end_date? crap.FilterValue
+---@field online? crap.FilterValue
+---@field event_url? crap.FilterValue
+---@field location__venue_name? crap.FilterValue
+---@field location__address? crap.FilterValue
+---@field location__city? crap.FilterValue
+---@field location__country? crap.FilterValue
+---@field registration_url? crap.FilterValue
+---@field max_attendees? crap.FilterValue
+---@field registration_deadline? crap.FilterValue
+---@field seo__meta_title? crap.FilterValue
+---@field seo__meta_description? crap.FilterValue
+---@field seo__no_index? crap.FilterValue
+---@field created_at? crap.FilterValue
+---@field updated_at? crap.FilterValue
+
+---@class crap.query.Events
+---@field filters? crap.filters.Events
+---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"description"|"-description"|"hero_image"|"-hero_image"|"start_date"|"-start_date"|"end_date"|"-end_date"|"online"|"-online"|"event_url"|"-event_url"|"location__venue_name"|"-location__venue_name"|"location__address"|"-location__address"|"location__city"|"-location__city"|"location__country"|"-location__country"|"registration_url"|"-registration_url"|"max_attendees"|"-max_attendees"|"registration_deadline"|"-registration_deadline"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field limit? integer
+---@field offset? integer
+---@field locale? string
+
+---@class crap.data.Inquiries
+---@field name string
+---@field email string
+---@field company? string
+---@field phone? string
+---@field service? string
+---@field budget_range? "under_5k" | "5k_15k" | "15k_50k" | "50k_100k" | "over_100k"
+---@field message string
+---@field status "new" | "contacted" | "qualified" | "proposal" | "won" | "lost" | "archived"
+---@field assigned_to? string
+---@field internal_notes? string
+---@field metadata? any
+
+---@class crap.doc.Inquiries
+---@field id string
+---@field name string
+---@field email string
+---@field company? string
+---@field phone? string
+---@field service? string
+---@field budget_range? "under_5k" | "5k_15k" | "15k_50k" | "50k_100k" | "over_100k"
+---@field message string
+---@field status "new" | "contacted" | "qualified" | "proposal" | "won" | "lost" | "archived"
+---@field assigned_to? string
+---@field internal_notes? string
+---@field metadata? any
+---@field created_at? string
+---@field updated_at? string
+
+---@class crap.hook.Inquiries
+---@field collection "inquiries"
+---@field operation "create" | "update"
+---@field data crap.data.Inquiries
+
+---@class crap.find_result.Inquiries
+---@field documents crap.doc.Inquiries[]
+---@field total integer
+
+---@alias crap.hook_fn.Inquiries fun(ctx: crap.hook.Inquiries): crap.hook.Inquiries
+
+---@class crap.filters.Inquiries
+---@field id? crap.FilterValue
+---@field name? crap.FilterValue
+---@field email? crap.FilterValue
+---@field company? crap.FilterValue
+---@field phone? crap.FilterValue
+---@field service? crap.FilterValue
+---@field budget_range? crap.FilterValue
+---@field message? crap.FilterValue
+---@field status? crap.FilterValue
+---@field assigned_to? crap.FilterValue
+---@field internal_notes? crap.FilterValue
+---@field metadata? crap.FilterValue
+---@field created_at? crap.FilterValue
+---@field updated_at? crap.FilterValue
+
+---@class crap.query.Inquiries
+---@field filters? crap.filters.Inquiries
+---@field order_by? "id"|"-id"|"name"|"-name"|"email"|"-email"|"company"|"-company"|"phone"|"-phone"|"service"|"-service"|"budget_range"|"-budget_range"|"message"|"-message"|"status"|"-status"|"assigned_to"|"-assigned_to"|"internal_notes"|"-internal_notes"|"metadata"|"-metadata"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
 ---@field locale? string
@@ -66,8 +277,14 @@
 ---@field hero_height? number
 ---@field hero_webp_url? string
 ---@field hero_avif_url? string
+---@field og_url? string
+---@field og_width? number
+---@field og_height? number
+---@field og_webp_url? string
+---@field og_avif_url? string
 ---@field alt string
 ---@field caption? string
+---@field credit? string
 
 ---@class crap.doc.Media
 ---@field id string
@@ -92,8 +309,14 @@
 ---@field hero_height? number
 ---@field hero_webp_url? string
 ---@field hero_avif_url? string
+---@field og_url? string
+---@field og_width? number
+---@field og_height? number
+---@field og_webp_url? string
+---@field og_avif_url? string
 ---@field alt string
 ---@field caption? string
+---@field credit? string
 ---@field created_at? string
 ---@field updated_at? string
 
@@ -131,14 +354,20 @@
 ---@field hero_height? crap.FilterValue
 ---@field hero_webp_url? crap.FilterValue
 ---@field hero_avif_url? crap.FilterValue
+---@field og_url? crap.FilterValue
+---@field og_width? crap.FilterValue
+---@field og_height? crap.FilterValue
+---@field og_webp_url? crap.FilterValue
+---@field og_avif_url? crap.FilterValue
 ---@field alt? crap.FilterValue
 ---@field caption? crap.FilterValue
+---@field credit? crap.FilterValue
 ---@field created_at? crap.FilterValue
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Media
 ---@field filters? crap.filters.Media
----@field order_by? "id"|"-id"|"filename"|"-filename"|"mime_type"|"-mime_type"|"filesize"|"-filesize"|"width"|"-width"|"height"|"-height"|"url"|"-url"|"thumbnail_url"|"-thumbnail_url"|"thumbnail_width"|"-thumbnail_width"|"thumbnail_height"|"-thumbnail_height"|"thumbnail_webp_url"|"-thumbnail_webp_url"|"thumbnail_avif_url"|"-thumbnail_avif_url"|"card_url"|"-card_url"|"card_width"|"-card_width"|"card_height"|"-card_height"|"card_webp_url"|"-card_webp_url"|"card_avif_url"|"-card_avif_url"|"hero_url"|"-hero_url"|"hero_width"|"-hero_width"|"hero_height"|"-hero_height"|"hero_webp_url"|"-hero_webp_url"|"hero_avif_url"|"-hero_avif_url"|"alt"|"-alt"|"caption"|"-caption"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field order_by? "id"|"-id"|"filename"|"-filename"|"mime_type"|"-mime_type"|"filesize"|"-filesize"|"width"|"-width"|"height"|"-height"|"url"|"-url"|"thumbnail_url"|"-thumbnail_url"|"thumbnail_width"|"-thumbnail_width"|"thumbnail_height"|"-thumbnail_height"|"thumbnail_webp_url"|"-thumbnail_webp_url"|"thumbnail_avif_url"|"-thumbnail_avif_url"|"card_url"|"-card_url"|"card_width"|"-card_width"|"card_height"|"-card_height"|"card_webp_url"|"-card_webp_url"|"card_avif_url"|"-card_avif_url"|"hero_url"|"-hero_url"|"hero_width"|"-hero_width"|"hero_height"|"-hero_height"|"hero_webp_url"|"-hero_webp_url"|"hero_avif_url"|"-hero_avif_url"|"og_url"|"-og_url"|"og_width"|"-og_width"|"og_height"|"-og_height"|"og_webp_url"|"-og_webp_url"|"og_avif_url"|"-og_avif_url"|"alt"|"-alt"|"caption"|"-caption"|"credit"|"-credit"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
 ---@field locale? string
@@ -147,26 +376,20 @@
 ---@field title string
 ---@field slug string
 ---@field content? table[]
----@field featured_image? string
----@field show_title? boolean
----@field page_template? "default" | "full_width" | "sidebar" | "landing"
----@field meta_title? string
----@field meta_description? string
----@field og_image? string
----@field no_index? boolean
+---@field parent? string
+---@field template? "default" | "full_width" | "landing" | "sidebar"
+---@field show_in_nav? boolean
+---@field nav_order? number
 
 ---@class crap.doc.Pages
 ---@field id string
 ---@field title string
 ---@field slug string
 ---@field content? table[]
----@field featured_image? string
----@field show_title? boolean
----@field page_template? "default" | "full_width" | "sidebar" | "landing"
----@field meta_title? string
----@field meta_description? string
----@field og_image? string
----@field no_index? boolean
+---@field parent? string
+---@field template? "default" | "full_width" | "landing" | "sidebar"
+---@field show_in_nav? boolean
+---@field nav_order? number
 ---@field created_at? string
 ---@field updated_at? string
 
@@ -185,20 +408,17 @@
 ---@field id? crap.FilterValue
 ---@field title? crap.FilterValue
 ---@field slug? crap.FilterValue
----@field featured_image? crap.FilterValue
----@field show_title? crap.FilterValue
----@field page_template? crap.FilterValue
----@field meta_title? crap.FilterValue
----@field meta_description? crap.FilterValue
----@field og_image? crap.FilterValue
----@field no_index? crap.FilterValue
+---@field parent? crap.FilterValue
+---@field template? crap.FilterValue
+---@field show_in_nav? crap.FilterValue
+---@field nav_order? crap.FilterValue
 ---@field _status? crap.FilterValue
 ---@field created_at? crap.FilterValue
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Pages
 ---@field filters? crap.filters.Pages
----@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"featured_image"|"-featured_image"|"show_title"|"-show_title"|"page_template"|"-page_template"|"meta_title"|"-meta_title"|"meta_description"|"-meta_description"|"og_image"|"-og_image"|"no_index"|"-no_index"|"_status"|"-_status"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"parent"|"-parent"|"template"|"-template"|"show_in_nav"|"-show_in_nav"|"nav_order"|"-nav_order"|"_status"|"-_status"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
 ---@field locale? string
@@ -206,32 +426,38 @@
 ---@class crap.data.Posts
 ---@field title string
 ---@field slug string
----@field author string
----@field featured_image? string
----@field excerpt string
----@field content? table[]
----@field post_type "article" | "link" | "video"
----@field external_url? string
----@field hide_from_feed? boolean
----@field category? string
----@field tags? string[]
+---@field excerpt? string
+---@field post_type "article" | "case_study" | "link" | "video"
 ---@field published_at? string
+---@field external_url? string
+---@field author string
+---@field hero_image? string
+---@field categories? string[]
+---@field tags? string[]
+---@field content? string
+---@field reading_time? string
+---@field related_content? string[]
+---@field featured? boolean
+---@field pinned? boolean
 ---@field seo? table
 
 ---@class crap.doc.Posts
 ---@field id string
 ---@field title string
 ---@field slug string
----@field author string
----@field featured_image? string
----@field excerpt string
----@field content? table[]
----@field post_type "article" | "link" | "video"
----@field external_url? string
----@field hide_from_feed? boolean
----@field category? string
----@field tags? string[]
+---@field excerpt? string
+---@field post_type "article" | "case_study" | "link" | "video"
 ---@field published_at? string
+---@field external_url? string
+---@field author string
+---@field hero_image? string
+---@field categories? string[]
+---@field tags? string[]
+---@field content? string
+---@field reading_time? string
+---@field related_content? string[]
+---@field featured? boolean
+---@field pinned? boolean
 ---@field seo? table
 ---@field created_at? string
 ---@field updated_at? string
@@ -251,14 +477,16 @@
 ---@field id? crap.FilterValue
 ---@field title? crap.FilterValue
 ---@field slug? crap.FilterValue
----@field author? crap.FilterValue
----@field featured_image? crap.FilterValue
 ---@field excerpt? crap.FilterValue
 ---@field post_type? crap.FilterValue
----@field external_url? crap.FilterValue
----@field hide_from_feed? crap.FilterValue
----@field category? crap.FilterValue
 ---@field published_at? crap.FilterValue
+---@field external_url? crap.FilterValue
+---@field author? crap.FilterValue
+---@field hero_image? crap.FilterValue
+---@field content? crap.FilterValue
+---@field reading_time? crap.FilterValue
+---@field featured? crap.FilterValue
+---@field pinned? crap.FilterValue
 ---@field seo__meta_title? crap.FilterValue
 ---@field seo__meta_description? crap.FilterValue
 ---@field seo__no_index? crap.FilterValue
@@ -268,20 +496,181 @@
 
 ---@class crap.query.Posts
 ---@field filters? crap.filters.Posts
----@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"author"|"-author"|"featured_image"|"-featured_image"|"excerpt"|"-excerpt"|"post_type"|"-post_type"|"external_url"|"-external_url"|"hide_from_feed"|"-hide_from_feed"|"category"|"-category"|"published_at"|"-published_at"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"_status"|"-_status"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"excerpt"|"-excerpt"|"post_type"|"-post_type"|"published_at"|"-published_at"|"external_url"|"-external_url"|"author"|"-author"|"hero_image"|"-hero_image"|"content"|"-content"|"reading_time"|"-reading_time"|"featured"|"-featured"|"pinned"|"-pinned"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"_status"|"-_status"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field limit? integer
+---@field offset? integer
+---@field locale? string
+
+---@class crap.array_row.Deliverables
+---@field title string
+---@field completed? boolean
+
+---@class crap.data.Projects
+---@field title string
+---@field slug string
+---@field excerpt? string
+---@field status "planning" | "in_progress" | "review" | "completed" | "archived"
+---@field priority? "low" | "normal" | "high" | "urgent"
+---@field featured? boolean
+---@field start_date? string
+---@field end_date? string
+---@field hero_image? string
+---@field client? string
+---@field team? string[]
+---@field categories? string[]
+---@field tags? string[]
+---@field budget? number
+---@field deliverables? crap.array_row.Deliverables[]
+---@field content? table[]
+---@field published_at? string
+---@field external_url? string
+---@field seo? table
+
+---@class crap.doc.Projects
+---@field id string
+---@field title string
+---@field slug string
+---@field excerpt? string
+---@field status "planning" | "in_progress" | "review" | "completed" | "archived"
+---@field priority? "low" | "normal" | "high" | "urgent"
+---@field featured? boolean
+---@field start_date? string
+---@field end_date? string
+---@field hero_image? string
+---@field client? string
+---@field team? string[]
+---@field categories? string[]
+---@field tags? string[]
+---@field budget? number
+---@field deliverables? crap.array_row.Deliverables[]
+---@field content? table[]
+---@field published_at? string
+---@field external_url? string
+---@field seo? table
+---@field created_at? string
+---@field updated_at? string
+
+---@class crap.hook.Projects
+---@field collection "projects"
+---@field operation "create" | "update"
+---@field data crap.data.Projects
+
+---@class crap.find_result.Projects
+---@field documents crap.doc.Projects[]
+---@field total integer
+
+---@alias crap.hook_fn.Projects fun(ctx: crap.hook.Projects): crap.hook.Projects
+
+---@class crap.filters.Projects
+---@field id? crap.FilterValue
+---@field title? crap.FilterValue
+---@field slug? crap.FilterValue
+---@field excerpt? crap.FilterValue
+---@field status? crap.FilterValue
+---@field priority? crap.FilterValue
+---@field featured? crap.FilterValue
+---@field start_date? crap.FilterValue
+---@field end_date? crap.FilterValue
+---@field hero_image? crap.FilterValue
+---@field client? crap.FilterValue
+---@field budget? crap.FilterValue
+---@field published_at? crap.FilterValue
+---@field external_url? crap.FilterValue
+---@field seo__meta_title? crap.FilterValue
+---@field seo__meta_description? crap.FilterValue
+---@field seo__no_index? crap.FilterValue
+---@field _status? crap.FilterValue
+---@field created_at? crap.FilterValue
+---@field updated_at? crap.FilterValue
+
+---@class crap.query.Projects
+---@field filters? crap.filters.Projects
+---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"excerpt"|"-excerpt"|"status"|"-status"|"priority"|"-priority"|"featured"|"-featured"|"start_date"|"-start_date"|"end_date"|"-end_date"|"hero_image"|"-hero_image"|"client"|"-client"|"budget"|"-budget"|"published_at"|"-published_at"|"external_url"|"-external_url"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"_status"|"-_status"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field limit? integer
+---@field offset? integer
+---@field locale? string
+
+---@class crap.array_row.Features
+---@field title string
+---@field included? boolean
+
+---@class crap.data.Services
+---@field title string
+---@field slug string
+---@field description? string
+---@field icon? string
+---@field active? boolean
+---@field sort_order? number
+---@field pricing_type "fixed" | "hourly" | "custom"
+---@field price_range? table
+---@field features? crap.array_row.Features[]
+---@field hero_image? string
+---@field seo? table
+
+---@class crap.doc.Services
+---@field id string
+---@field title string
+---@field slug string
+---@field description? string
+---@field icon? string
+---@field active? boolean
+---@field sort_order? number
+---@field pricing_type "fixed" | "hourly" | "custom"
+---@field price_range? table
+---@field features? crap.array_row.Features[]
+---@field hero_image? string
+---@field seo? table
+---@field created_at? string
+---@field updated_at? string
+
+---@class crap.hook.Services
+---@field collection "services"
+---@field operation "create" | "update"
+---@field data crap.data.Services
+
+---@class crap.find_result.Services
+---@field documents crap.doc.Services[]
+---@field total integer
+
+---@alias crap.hook_fn.Services fun(ctx: crap.hook.Services): crap.hook.Services
+
+---@class crap.filters.Services
+---@field id? crap.FilterValue
+---@field title? crap.FilterValue
+---@field slug? crap.FilterValue
+---@field description? crap.FilterValue
+---@field icon? crap.FilterValue
+---@field active? crap.FilterValue
+---@field sort_order? crap.FilterValue
+---@field pricing_type? crap.FilterValue
+---@field price_range__min_price? crap.FilterValue
+---@field price_range__max_price? crap.FilterValue
+---@field price_range__currency? crap.FilterValue
+---@field hero_image? crap.FilterValue
+---@field seo__meta_title? crap.FilterValue
+---@field seo__meta_description? crap.FilterValue
+---@field seo__no_index? crap.FilterValue
+---@field created_at? crap.FilterValue
+---@field updated_at? crap.FilterValue
+
+---@class crap.query.Services
+---@field filters? crap.filters.Services
+---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"description"|"-description"|"icon"|"-icon"|"active"|"-active"|"sort_order"|"-sort_order"|"pricing_type"|"-pricing_type"|"price_range__min_price"|"-price_range__min_price"|"price_range__max_price"|"-price_range__max_price"|"price_range__currency"|"-price_range__currency"|"hero_image"|"-hero_image"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
 ---@field locale? string
 
 ---@class crap.data.Tags
----@field title string
+---@field name string
 ---@field slug string
+---@field tag_type "topic" | "technology" | "industry" | "skill"
 ---@field seo? table
 
 ---@class crap.doc.Tags
 ---@field id string
----@field title string
+---@field name string
 ---@field slug string
+---@field tag_type "topic" | "technology" | "industry" | "skill"
 ---@field seo? table
 ---@field created_at? string
 ---@field updated_at? string
@@ -299,8 +688,9 @@
 
 ---@class crap.filters.Tags
 ---@field id? crap.FilterValue
----@field title? crap.FilterValue
+---@field name? crap.FilterValue
 ---@field slug? crap.FilterValue
+---@field tag_type? crap.FilterValue
 ---@field seo__meta_title? crap.FilterValue
 ---@field seo__meta_description? crap.FilterValue
 ---@field seo__no_index? crap.FilterValue
@@ -309,7 +699,66 @@
 
 ---@class crap.query.Tags
 ---@field filters? crap.filters.Tags
----@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field order_by? "id"|"-id"|"name"|"-name"|"slug"|"-slug"|"tag_type"|"-tag_type"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field limit? integer
+---@field offset? integer
+---@field locale? string
+
+---@class crap.data.Testimonials
+---@field author_name string
+---@field author_title? string
+---@field company? string
+---@field author_photo? string
+---@field quote string
+---@field rating number
+---@field project? string
+---@field featured? boolean
+---@field seo? table
+
+---@class crap.doc.Testimonials
+---@field id string
+---@field author_name string
+---@field author_title? string
+---@field company? string
+---@field author_photo? string
+---@field quote string
+---@field rating number
+---@field project? string
+---@field featured? boolean
+---@field seo? table
+---@field created_at? string
+---@field updated_at? string
+
+---@class crap.hook.Testimonials
+---@field collection "testimonials"
+---@field operation "create" | "update"
+---@field data crap.data.Testimonials
+
+---@class crap.find_result.Testimonials
+---@field documents crap.doc.Testimonials[]
+---@field total integer
+
+---@alias crap.hook_fn.Testimonials fun(ctx: crap.hook.Testimonials): crap.hook.Testimonials
+
+---@class crap.filters.Testimonials
+---@field id? crap.FilterValue
+---@field author_name? crap.FilterValue
+---@field author_title? crap.FilterValue
+---@field company? crap.FilterValue
+---@field author_photo? crap.FilterValue
+---@field quote? crap.FilterValue
+---@field rating? crap.FilterValue
+---@field project? crap.FilterValue
+---@field featured? crap.FilterValue
+---@field seo__meta_title? crap.FilterValue
+---@field seo__meta_description? crap.FilterValue
+---@field seo__no_index? crap.FilterValue
+---@field created_at? crap.FilterValue
+---@field updated_at? crap.FilterValue
+
+---@class crap.query.Testimonials
+---@field filters? crap.filters.Testimonials
+---@field order_by? "id"|"-id"|"author_name"|"-author_name"|"author_title"|"-author_title"|"company"|"-company"|"author_photo"|"-author_photo"|"quote"|"-quote"|"rating"|"-rating"|"project"|"-project"|"featured"|"-featured"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
 ---@field locale? string
@@ -317,17 +766,21 @@
 ---@class crap.data.Users
 ---@field email string
 ---@field name string
----@field role "admin" | "editor" | "author"
+---@field role "admin" | "director" | "editor" | "author"
+---@field skills? ("design" | "development" | "strategy" | "motion" | "photography" | "copywriting" | "3d"|string)[]
 ---@field avatar? string
 ---@field bio? string
+---@field authored_posts? table[]
 
 ---@class crap.doc.Users
 ---@field id string
 ---@field email string
 ---@field name string
----@field role "admin" | "editor" | "author"
+---@field role "admin" | "director" | "editor" | "author"
+---@field skills? ("design" | "development" | "strategy" | "motion" | "photography" | "copywriting" | "3d"|string)[]
 ---@field avatar? string
 ---@field bio? string
+---@field authored_posts? table[]
 ---@field created_at? string
 ---@field updated_at? string
 
@@ -347,6 +800,7 @@
 ---@field email? crap.FilterValue
 ---@field name? crap.FilterValue
 ---@field role? crap.FilterValue
+---@field skills? crap.FilterValue
 ---@field avatar? crap.FilterValue
 ---@field bio? crap.FilterValue
 ---@field created_at? crap.FilterValue
@@ -354,31 +808,67 @@
 
 ---@class crap.query.Users
 ---@field filters? crap.filters.Users
----@field order_by? "id"|"-id"|"email"|"-email"|"name"|"-name"|"role"|"-role"|"avatar"|"-avatar"|"bio"|"-bio"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
+---@field order_by? "id"|"-id"|"email"|"-email"|"name"|"-name"|"role"|"-role"|"skills"|"-skills"|"avatar"|"-avatar"|"bio"|"-bio"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
 ---@field locale? string
 
+---@class crap.global_data.Footer
+---@field copyright_text? string
+---@field show_social_links? boolean
+---@field partner_logos? crap.array_row.PartnerLogos[]
+
+---@class crap.global_doc.Footer
+---@field id string
+---@field copyright_text? string
+---@field show_social_links? boolean
+---@field partner_logos? crap.array_row.PartnerLogos[]
+---@field created_at? string
+---@field updated_at? string
+
+---@class crap.hook.global_footer
+---@field global "footer"
+---@field operation "create" | "update"
+---@field data crap.global_data.Footer
+
+---@class crap.global_data.Navigation
+---@field main_nav? crap.array_row.MainNav[]
+
+---@class crap.global_doc.Navigation
+---@field id string
+---@field main_nav? crap.array_row.MainNav[]
+---@field created_at? string
+---@field updated_at? string
+
+---@class crap.hook.global_navigation
+---@field global "navigation"
+---@field operation "create" | "update"
+---@field data crap.global_data.Navigation
+
 ---@class crap.global_data.SiteSettings
 ---@field site_name string
 ---@field tagline? string
----@field description? string
----@field social? table
+---@field contact_email? string
+---@field phone? string
+---@field address? string
 ---@field logo? string
 ---@field favicon? string
----@field default_title_suffix? string
----@field default_og_image? string
+---@field primary_color? string
+---@field secondary_color? string
+---@field social? table
 
 ---@class crap.global_doc.SiteSettings
 ---@field id string
 ---@field site_name string
 ---@field tagline? string
----@field description? string
----@field social? table
+---@field contact_email? string
+---@field phone? string
+---@field address? string
 ---@field logo? string
 ---@field favicon? string
----@field default_title_suffix? string
----@field default_og_image? string
+---@field primary_color? string
+---@field secondary_color? string
+---@field social? table
 ---@field created_at? string
 ---@field updated_at? string
 
@@ -388,10 +878,16 @@
 ---@field data crap.global_data.SiteSettings
 
 ---@overload fun(collection: "categories", query?: crap.query.Categories): crap.find_result.Categories
+---@overload fun(collection: "clients", query?: crap.query.Clients): crap.find_result.Clients
+---@overload fun(collection: "events", query?: crap.query.Events): crap.find_result.Events
+---@overload fun(collection: "inquiries", query?: crap.query.Inquiries): crap.find_result.Inquiries
 ---@overload fun(collection: "media", query?: crap.query.Media): crap.find_result.Media
 ---@overload fun(collection: "pages", query?: crap.query.Pages): crap.find_result.Pages
 ---@overload fun(collection: "posts", query?: crap.query.Posts): crap.find_result.Posts
+---@overload fun(collection: "projects", query?: crap.query.Projects): crap.find_result.Projects
+---@overload fun(collection: "services", query?: crap.query.Services): crap.find_result.Services
 ---@overload fun(collection: "tags", query?: crap.query.Tags): crap.find_result.Tags
+---@overload fun(collection: "testimonials", query?: crap.query.Testimonials): crap.find_result.Testimonials
 ---@overload fun(collection: "users", query?: crap.query.Users): crap.find_result.Users
 ---@param collection string
 ---@param query? crap.FindQuery

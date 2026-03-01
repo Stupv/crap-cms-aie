@@ -50,7 +50,9 @@ The one exception is `crap.hooks.register()`, which takes a function directly â€
 
 Before-event hooks (`before_validate`, `before_change`, `before_delete`) have full CRUD access via the `crap.collections.*` and `crap.globals.*` APIs. They share the parent operation's database transaction.
 
-After-event hooks (`after_change`, `after_read`, `after_delete`) do NOT have CRUD access. They fire in the background after the transaction commits.
+After-write hooks (`after_change`, `after_delete`) also have CRUD access and run inside the same transaction. Errors roll back the entire operation.
+
+After-read hooks (`after_read`) do NOT have CRUD access.
 
 See [Transaction Access](transaction-access.md) for details.
 

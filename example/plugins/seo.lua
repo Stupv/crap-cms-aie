@@ -1,86 +1,80 @@
---- SEO plugin — adds meta title, description, social image, and noindex fields
---- to every collection (except upload and auth collections).
----
---- Usage in init.lua:
----   require("plugins.seo").install()
-
+--- SEO plugin: injects meta title, description, and noindex fields into collections.
 local M = {}
 
---- The SEO field group added to each collection.
 local seo_fields = {
-  name = "seo",
-  type = "group",
-  admin = {
-    label = "SEO",
-    description = "Search engine optimization settings",
-    collapsed = true,
-    position = "sidebar",
-  },
-  fields = {
-    {
-      name = "meta_title",
-      type = "text",
-      admin = {
-        label = "Meta Title",
-        description = "Override the default page title for search engines",
-        placeholder = "Custom SEO title...",
-      },
-    },
-    {
-      name = "meta_description",
-      type = "textarea",
-      admin = {
-        label = "Meta Description",
-        description = "Appears in search result snippets (max 160 chars)",
-        placeholder = "Describe this page for search engines...",
-      },
-    },
-    {
-      name = "no_index",
-      type = "checkbox",
-      default_value = false,
-      admin = {
-        label = "No Index",
-        description = "Hide this page from search engines",
-      },
-    },
-  },
+	name = "seo",
+	type = "group",
+	admin = {
+		label = "SEO",
+		collapsed = true,
+		position = "sidebar",
+	},
+	fields = {
+		{
+			name = "meta_title",
+			type = "text",
+			admin = { placeholder = "Override page title for search engines" },
+		},
+		{
+			name = "meta_description",
+			type = "textarea",
+			admin = { rows = 2, placeholder = "155 characters recommended" },
+		},
+		{
+			name = "no_index",
+			type = "checkbox",
+			default_value = false,
+			admin = { description = "Prevent search engines from indexing" },
+		},
+	},
 }
 
---- Install the SEO plugin. Adds SEO fields to all content collections.
---- Skips upload collections and auth collections.
---- @param opts? { collections?: string[], exclude?: string[] }  Optional: limit to specific collection slugs, or exclude specific ones.
+---@param opts? { exclude: string[] }
 function M.install(opts)
-  local only = opts and opts.collections
-  local exclude = opts and opts.exclude
+	local exclude = opts and opts.exclude
+	local all = crap.collections.config.list()
 
-  for slug, def in pairs(crap.collections.config.list()) do
-    -- Skip upload and auth collections
-    if not def.upload and not def.auth then
-      -- If an exclude list was provided, skip matching slugs
-      if exclude and crap.util.includes(exclude, slug) then
-        goto continue
-      end
-      -- If a whitelist was provided, check it
-      if not only or crap.util.includes(only, slug) then
-        -- Don't add if an "seo" field already exists
-        local has_seo = false
-        for _, field in ipairs(def.fields) do
-          if field.name == "seo" then
-            has_seo = true
-            break
-          end
-        end
+	for slug, def in pairs(all) do
+		if not def then
+			goto continue
+		end
 
-        if not has_seo then
-          def.fields[#def.fields + 1] = seo_fields
-          crap.collections.define(slug, def)
-          crap.log.info("seo: added SEO fields to " .. slug)
-        end
-      end
-      ::continue::
-    end
-  end
+		-- Skip upload and auth collections
+		if def.upload or def.auth then
+			goto continue
+		end
+
+		-- Skip excluded collections
+		if exclude then
+			local skip = false
+			for _, ex in ipairs(exclude) do
+				if ex == slug then
+					skip = true
+					break
+				end
+			end
+			if skip then
+				goto continue
+			end
+		end
+
+		-- Check if SEO fields already exist
+		local has_seo = false
+		for _, field in ipairs(def.fields) do
+			if field.name == "seo" then
+				has_seo = true
+				break
+			end
+		end
+
+		if not has_seo then
+			def.fields[#def.fields + 1] = seo_fields
+			crap.collections.define(slug, def)
+			crap.log.info("seo: added SEO fields to " .. slug)
+		end
+
+		::continue::
+	end
 end
 
 return M

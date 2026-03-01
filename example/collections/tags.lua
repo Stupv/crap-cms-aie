@@ -1,40 +1,44 @@
 crap.collections.define("tags", {
-    labels = {
-        singular = "Tag",
-        plural = "Tags",
-    },
-    timestamps = true,
-    admin = {
-        use_as_title = "title",
-        default_sort = "title",
-    },
-    fields = {
-        {
-            name = "title",
-            type = "text",
-            required = true,
-            unique = true,
-        },
-        {
-            name = "slug",
-            type = "text",
-            required = true,
-            unique = true,
-            admin = {
-                description = "URL-safe identifier (auto-generated from title)",
-            },
-            hooks = {
-                before_validate = { "hooks.auto_slug" },
-            },
-        },
-    },
-    hooks = {
-        before_change = { "hooks.trim_title" },
-    },
-    access = {
-        read = "access.anyone",
-        create = "access.authenticated",
-        update = "access.editor_or_admin",
-        delete = "access.admin_only",
-    },
+	labels = { singular = "Tag", plural = "Tags" },
+	timestamps = true,
+	admin = {
+		use_as_title = "name",
+		default_sort = "name",
+		list_searchable_fields = { "name", "slug" },
+	},
+	fields = {
+		{
+			name = "name",
+			type = "text",
+			required = true,
+			admin = { placeholder = "Tag name" },
+		},
+		{
+			name = "slug",
+			type = "text",
+			required = true,
+			unique = true,
+			hooks = {
+				before_validate = { "hooks.auto_slug" },
+			},
+		},
+		{
+			name = "tag_type",
+			type = "select",
+			required = true,
+			default_value = "topic",
+			options = {
+				{ label = "Topic", value = "topic" },
+				{ label = "Technology", value = "technology" },
+				{ label = "Industry", value = "industry" },
+				{ label = "Skill", value = "skill" },
+			},
+		},
+	},
+	access = {
+		read = "access.anyone",
+		create = "access.authenticated",
+		update = "access.editor_or_above",
+		delete = "access.admin_only",
+	},
 })

@@ -304,7 +304,7 @@ crap = {}
 --- @class crap.HookContext
 --- @field collection string                 Collection slug.
 --- @field operation  string                 The operation: "create", "update", "delete", "find", "find_by_id", "get_global", or "init".
---- @field data       table<string, any>     Document data (mutable in before_* hooks). For read hooks, contains document fields.
+--- @field data       table<string, any>     Document data (mutable in before_* hooks). For read hooks, contains document fields. In after_change/after_delete hooks, `data.id` contains the document ID.
 --- @field locale?    string                 Current locale code (nil if localization disabled or default locale).
 --- @field original_doc? crap.Document       Original document (on update).
 --- @field req?       crap.RequestContext     Request context (if available).

@@ -1,5 +1,3 @@
-# crap_version = "0.1"   # warn if running binary doesn't match
-
 [server]
 admin_port = 3000
 grpc_port = 50051
@@ -7,64 +5,54 @@ host = "0.0.0.0"
 
 [database]
 path = "data/crap.db"
-# pool_max_size = 16       # max connections in the pool
-# busy_timeout_ms = 30000  # SQLite busy timeout in milliseconds
 
 [admin]
 dev_mode = true
 
 [auth]
-# secret = "${JWT_SECRET:-}"    # omit or empty to auto-generate (persisted to data/.jwt_secret)
-# token_expiry = "2h"           # accepts integer seconds or "2h", "30m", etc.
-# max_login_attempts = 5        # failed attempts before lockout
-# login_lockout_seconds = "5m"  # lockout duration after max attempts
-# reset_token_expiry = "1h"     # password reset token expiry
-# Env vars: use ${VAR} or ${VAR:-default} in any string value
+# secret auto-generated on first start
+token_expiry = 7200
+
+[depth]
+default_depth = 1
+max_depth = 10
+
+[upload]
+max_file_size = "50MB"
+
+[email]
+# smtp_host = ""  # Set via CRAP_SMTP_HOST env var to enable
+# smtp_port = 587
+# smtp_username = ""
+# smtp_password = ""
+# from_address = "noreply@meridian.studio"
+# from_name = "Meridian Studio"
 
 [live]
-enabled = true                # enable SSE + gRPC Subscribe for live mutation events
-# channel_capacity = 1024       # broadcast channel buffer size
-
-[hooks]
-# vm_pool_size = 4              # number of Lua VMs for concurrent hook execution
-                                # default: min(available_parallelism, 8)
-# max_depth = 3                 # max hook recursion depth (CRUD → hook → CRUD chains)
-
-# [jobs]
-# max_concurrent = 10         # max concurrent job executions
-# poll_interval = "1s"        # polling interval (accepts seconds or "1s", "5s")
-# cron_interval = "1m"        # cron schedule check interval
-# heartbeat_interval = "10s"  # heartbeat update interval
-# auto_purge = "7d"           # purge completed/failed runs older than this
-# image_queue_batch_size = 10 # pending image conversions per poll
+enabled = true
 
 [locale]
-default_locale = "en"         # default locale for content
-locales = ["en", "de"]        # supported locales (empty = disabled)
-fallback = true               # fall back to default locale if field is empty
+default_locale = "en"
+locales = ["en", "de"]
+fallback = true
 
-# [depth]
-# default_depth = 1          # population depth for FindByID (Find defaults to 0)
-# max_depth = 10             # hard cap on relationship population depth
+[jobs]
+enabled = true
+poll_interval = 5
 
-# [upload]
-# max_file_size = "50MB"     # accepts bytes (52428800) or "50MB", "1GB", etc.
+[cors]
+allowed_origins = ["http://localhost:3000", "http://localhost:5173"]
+allowed_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+allowed_headers = ["Content-Type", "Authorization"]
+max_age = 3600
 
-# [email]
-# smtp_host = ""             # SMTP hostname. Empty = email disabled (no-op)
-# smtp_port = 587            # SMTP port (587 for STARTTLS)
-# smtp_user = ""
-# smtp_pass = "${SMTP_PASSWORD:-}"
-# from_address = "noreply@example.com"
-# from_name = "Crap CMS"
+[access]
+# default_read = "access.authenticated"
 
-# [access]
-# default_deny = false       # true = deny all operations without explicit access functions
+[hooks]
+on_init = ["hooks.on_init"]
 
-# [cors]
-# allowed_origins = ["https://example.com"]  # empty = CORS disabled (default)
-# allowed_methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
-# allowed_headers = ["Content-Type", "Authorization"]
-# exposed_headers = []
-# max_age_seconds = "1h"     # accepts integer seconds or "1h", "30m", etc.
-# allow_credentials = false
+[meridian]
+studio_name = "Meridian Studio"
+max_budget = 500000
+inquiry_webhook_url = "https://hooks.example.com/inquiries"

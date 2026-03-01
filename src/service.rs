@@ -262,10 +262,12 @@ pub fn create_document(
     )?;
 
     // After-hooks: run inside the same transaction, with CRUD access
+    let mut after_data = doc.fields.clone();
+    after_data.insert("id".to_string(), serde_json::Value::String(doc.id.clone()));
     let after_ctx = HookContext {
         collection: slug.to_string(),
         operation: "create".to_string(),
-        data: doc.fields.clone(),
+        data: after_data,
         locale,
         draft: Some(is_draft),
         context: req_context,
@@ -336,10 +338,12 @@ pub fn update_document(
         )?;
 
         // After-hooks: run inside the same transaction, with CRUD access
+        let mut after_data = existing_doc.fields.clone();
+        after_data.insert("id".to_string(), serde_json::Value::String(existing_doc.id.clone()));
         let after_ctx = HookContext {
             collection: slug.to_string(),
             operation: "update".to_string(),
-            data: existing_doc.fields.clone(),
+            data: after_data,
             locale: locale.clone(),
             draft: Some(is_draft),
             context: req_context,
@@ -360,10 +364,12 @@ pub fn update_document(
         )?;
 
         // After-hooks: run inside the same transaction, with CRUD access
+        let mut after_data = doc.fields.clone();
+        after_data.insert("id".to_string(), serde_json::Value::String(doc.id.clone()));
         let after_ctx = HookContext {
             collection: slug.to_string(),
             operation: "update".to_string(),
-            data: doc.fields.clone(),
+            data: after_data,
             locale: locale.clone(),
             draft: Some(is_draft),
             context: req_context,
@@ -413,10 +419,12 @@ pub fn unpublish_document(
     persist_unpublish(&tx, slug, id, def)?;
 
     // Run after_change hooks
+    let mut after_data = doc.fields.clone();
+    after_data.insert("id".to_string(), serde_json::Value::String(id.to_string()));
     let after_ctx = HookContext {
         collection: slug.to_string(),
         operation: "update".to_string(),
-        data: doc.fields.clone(),
+        data: after_data,
         locale: None,
         draft: Some(false),
         context: final_ctx.context,
@@ -549,10 +557,12 @@ pub fn update_global_document(
         )?;
 
         // After-hooks
+        let mut after_data = existing_doc.fields.clone();
+        after_data.insert("id".to_string(), serde_json::Value::String(existing_doc.id.clone()));
         let after_ctx = HookContext {
             collection: slug.to_string(),
             operation: "update".to_string(),
-            data: existing_doc.fields.clone(),
+            data: after_data,
             locale: locale.clone(),
             draft: Some(is_draft),
             context: req_context,
@@ -582,10 +592,12 @@ pub fn update_global_document(
         }
 
         // After-hooks: run inside the same transaction, with CRUD access
+        let mut after_data = doc.fields.clone();
+        after_data.insert("id".to_string(), serde_json::Value::String(doc.id.clone()));
         let after_ctx = HookContext {
             collection: slug.to_string(),
             operation: "update".to_string(),
-            data: doc.fields.clone(),
+            data: after_data,
             locale,
             draft: Some(is_draft),
             context: req_context,

@@ -15,6 +15,10 @@ Eight lifecycle events fire during CRUD operations.
 | `after_delete` | delete | No | Yes | Runs inside the transaction. Cleanup, cascading deletes. Errors roll back the entire operation. |
 | `before_broadcast` | create, update, delete | Yes (data) | No | Can suppress or transform live update events. See [Live Updates](../live-updates/hooks.md). |
 
+## Document ID in Hook Context
+
+In `after_change` and `after_delete` hooks, `context.data.id` contains the document ID. This is useful for queuing jobs or looking up the document after it's been written. In `before_delete` hooks, `context.data.id` is also available.
+
 ## Write Lifecycle (create/update)
 
 ```
