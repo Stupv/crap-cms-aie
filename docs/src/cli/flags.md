@@ -219,13 +219,13 @@ crap-cms make hook <CONFIG> [NAME] [-t <TYPE>] [-c <COLLECTION>] [-l <POSITION>]
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--type` | `-t` | Hook type: `collection`, `field`, or `access` |
-| `--collection` | `-c` | Target collection slug |
+| `--type` | `-t` | Hook type: `collection`, `field`, `access`, or `condition` |
+| `--collection` | `-c` | Target collection or global slug |
 | `--position` | `-l` | Lifecycle position (e.g., `before_change`, `after_read`) |
-| `--field` | `-F` | Target field name (field hooks only) |
+| `--field` | `-F` | Target field name (field hooks only; watched field for condition hooks) |
 | `--force` | — | Overwrite existing file |
 
-Missing flags are resolved via interactive prompts. The wizard lists valid lifecycle positions for the chosen hook type.
+Missing flags are resolved via interactive prompts. The wizard lists collections and globals from the registry (globals are tagged). For non-interactive mode, the slug is auto-detected as a global if it exists in the globals registry.
 
 **Valid positions by type:**
 
@@ -234,6 +234,9 @@ Missing flags are resolved via interactive prompts. The wizard lists valid lifec
 | `collection` | `before_validate`, `before_change`, `after_change`, `before_read`, `after_read`, `before_delete`, `after_delete`, `before_broadcast` |
 | `field` | `before_validate`, `before_change`, `after_change`, `after_read` |
 | `access` | `read`, `create`, `update`, `delete` |
+| `condition` | `table`, `boolean` |
+
+Generated hooks use per-collection typed annotations (`crap.hook.Posts`, `crap.data.Posts`) for IDE support. Delete hooks use the generic `crap.HookContext` since their data only contains the document ID.
 
 ```bash
 # Interactive (prompts for everything)
@@ -250,6 +253,10 @@ crap-cms make hook ./my-project normalize_email \
 # Access hook
 crap-cms make hook ./my-project owner_only \
     -t access -c posts -l read
+
+# Condition hook (client-side table)
+crap-cms make hook ./my-project show_external_url \
+    -t condition -c posts -l table -F post_type
 ```
 
 #### `make job`

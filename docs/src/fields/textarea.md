@@ -9,13 +9,12 @@ Multi-line text field for longer content.
 ## Definition
 
 ```lua
-{
+crap.fields.textarea({
     name = "description",
-    type = "textarea",
     admin = {
         placeholder = "Enter a description...",
     },
-}
+})
 ```
 
 ## Admin Rendering

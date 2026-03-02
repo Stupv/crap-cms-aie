@@ -9,9 +9,8 @@ Single-value selection from predefined options.
 ## Definition
 
 ```lua
-{
+crap.fields.select({
     name = "status",
-    type = "select",
     required = true,
     default_value = "draft",
     options = {
@@ -19,7 +18,7 @@ Single-value selection from predefined options.
         { label = "Published", value = "published" },
         { label = "Archived", value = "archived" },
     },
-}
+})
 ```
 
 ## Options Format

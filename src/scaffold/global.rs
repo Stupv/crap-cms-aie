@@ -42,16 +42,18 @@ pub fn make_global(config_dir: &Path, slug: &str, fields_shorthand: Option<&str>
     lua.push_str("    fields = {\n");
 
     for field in &fields {
-        lua.push_str("        {\n");
+        lua.push_str(&format!("        crap.fields.{}({{\n", field.field_type));
         lua.push_str(&format!("            name = \"{}\",\n", field.name));
-        lua.push_str(&format!("            type = \"{}\",\n", field.field_type));
         if field.required {
             lua.push_str("            required = true,\n");
         }
         if field.localized {
             lua.push_str("            localized = true,\n");
         }
-        lua.push_str("        },\n");
+        if let Some(stub) = super::collection::type_specific_stub(&field.field_type) {
+            lua.push_str(stub);
+        }
+        lua.push_str("        }),\n");
     }
 
     lua.push_str("    },\n");
@@ -82,6 +84,7 @@ mod tests {
         let content = fs::read_to_string(tmp.path().join("globals/site_settings.lua")).unwrap();
         assert!(content.contains("crap.globals.define(\"site_settings\""));
         assert!(content.contains("singular = \"Site Settings\""));
+        assert!(content.contains("crap.fields.text({"));
         assert!(content.contains("name = \"title\""));
         assert!(content.contains("required = true"));
     }
@@ -103,9 +106,10 @@ mod tests {
         make_global(tmp.path(), "nav", Some("title:text:required,links:array"), false).unwrap();
 
         let content = fs::read_to_string(tmp.path().join("globals/nav.lua")).unwrap();
+        assert!(content.contains("crap.fields.text({"));
         assert!(content.contains("name = \"title\""));
+        assert!(content.contains("crap.fields.array({"));
         assert!(content.contains("name = \"links\""));
-        assert!(content.contains("type = \"array\""));
     }
 
     #[test]

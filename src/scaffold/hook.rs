@@ -4,6 +4,8 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 
+use crate::typegen::to_pascal_case;
+
 /// Hook type for the `make hook` command.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HookType {
@@ -64,6 +66,9 @@ pub struct MakeHookOptions<'a> {
     /// For condition hooks: info about the watched field (used to generate
     /// a type-appropriate condition template).
     pub condition_field: Option<ConditionFieldInfo>,
+    /// Whether the target is a global (vs collection). Controls the generated
+    /// hook context type: `crap.hook.global_{slug}` vs `crap.hook.{PascalCase}`.
+    pub is_global: bool,
 }
 
 /// Field info used by condition hook scaffolding to generate
@@ -76,6 +81,17 @@ pub struct ConditionFieldInfo {
     pub field_type: String,
     /// For select fields: the option values (e.g., ["draft", "published"]).
     pub select_options: Vec<String>,
+}
+
+/// Return the typed data annotation for condition hooks.
+/// Collections use `crap.data.{PascalCase}`, globals use `crap.global_data.{PascalCase}`.
+fn condition_data_type(collection: &str, is_global: bool) -> String {
+    let pascal = to_pascal_case(collection);
+    if is_global {
+        format!("crap.global_data.{pascal}")
+    } else {
+        format!("crap.data.{pascal}")
+    }
 }
 
 /// Generate a hook file at `<config_dir>/hooks/<collection>/<name>.lua`.
@@ -122,18 +138,30 @@ pub fn make_hook(opts: &MakeHookOptions) -> Result<()> {
     }
 
     let lua = match opts.hook_type {
-        HookType::Collection => format!(
-            r#"--- {position} hook for {collection}.
----@param context crap.HookContext
----@return crap.HookContext
+        HookType::Collection => {
+            let is_delete = matches!(opts.position, "before_delete" | "after_delete");
+            let context_type = if is_delete {
+                // Delete hooks receive { data = { id = "..." } } — no typed document fields.
+                "crap.HookContext".to_string()
+            } else if opts.is_global {
+                format!("crap.hook.global_{}", opts.collection)
+            } else {
+                format!("crap.hook.{}", to_pascal_case(opts.collection))
+            };
+            format!(
+                r#"--- {position} hook for {collection}.
+---@param context {context_type}
+---@return {context_type}
 return function(context)
     -- TODO: implement
     return context
 end
 "#,
-            position = opts.position,
-            collection = opts.collection,
-        ),
+                position = opts.position,
+                collection = opts.collection,
+                context_type = context_type,
+            )
+        }
         HookType::Field => format!(
             r#"--- {position} field hook for {collection}.{field}.
 ---@param value any
@@ -164,6 +192,7 @@ end
             let field_name = opts.condition_field.as_ref()
                 .map(|cf| cf.name.as_str())
                 .unwrap_or("field_name");
+            let data_type = condition_data_type(opts.collection, opts.is_global);
             format!(
                 r#"--- Display condition for {collection} (server-evaluated).
 ---
@@ -175,7 +204,7 @@ end
 --- returning a condition table instead (evaluated client-side, instant):
 ---   return {{ field = "{field_name}", equals = "value" }}
 ---
----@param data table Current form field values.
+---@param data {data_type} Current form field values.
 ---@return boolean
 return function(data)
     -- TODO: implement
@@ -185,6 +214,7 @@ end
 "#,
                 collection = opts.collection,
                 field_name = field_name,
+                data_type = data_type,
             )
         }
         HookType::Condition => {
@@ -223,6 +253,7 @@ end
     return { field = "field_name", equals = "value" }"#.to_string()
             };
 
+            let data_type = condition_data_type(opts.collection, opts.is_global);
             format!(
                 r#"--- Display condition for {collection} (client-evaluated).
 ---
@@ -233,7 +264,7 @@ end
 ---   equals, not_equals, in, not_in, is_truthy, is_falsy
 ---   Array of conditions = AND (all must be true).
 ---
----@param data table Current form field values.
+---@param data {data_type} Current form field values.
 ---@return table
 return function(data)
 {body}
@@ -241,6 +272,7 @@ end
 "#,
                 collection = opts.collection,
                 body = body,
+                data_type = data_type,
             )
         }
     };
@@ -304,7 +336,7 @@ mod tests {
         field: Option<&'a str>,
         force: bool,
     ) -> MakeHookOptions<'a> {
-        MakeHookOptions { config_dir, name, hook_type, collection, position, field, force, condition_field: None }
+        MakeHookOptions { config_dir, name, hook_type, collection, position, field, force, condition_field: None, is_global: false }
     }
 
     #[test]
@@ -318,8 +350,78 @@ mod tests {
 
         let content = fs::read_to_string(tmp.path().join("hooks/posts/auto_slug.lua")).unwrap();
         assert!(content.contains("before_change hook for posts"));
-        assert!(content.contains("crap.HookContext"));
+        assert!(content.contains("crap.hook.Posts"), "should use typed context, got:\n{content}");
+        assert!(!content.contains("crap.HookContext"), "should not use generic HookContext");
         assert!(content.contains("return function(context)"));
+    }
+
+    #[test]
+    fn test_make_hook_collection_multi_word_slug() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let opts = make_hook_opts(
+            tmp.path(), "validate", HookType::Collection,
+            "blog_posts", "before_validate", None, false,
+        );
+        make_hook(&opts).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("hooks/blog_posts/validate.lua")).unwrap();
+        assert!(content.contains("crap.hook.BlogPosts"), "should PascalCase multi-word slug, got:\n{content}");
+    }
+
+    #[test]
+    fn test_make_hook_global() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut opts = make_hook_opts(
+            tmp.path(), "on_change", HookType::Collection,
+            "site_settings", "before_change", None, false,
+        );
+        opts.is_global = true;
+        make_hook(&opts).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("hooks/site_settings/on_change.lua")).unwrap();
+        assert!(content.contains("crap.hook.global_site_settings"), "should use global hook type, got:\n{content}");
+        assert!(!content.contains("crap.hook.SiteSettings"), "should not use collection-style type");
+    }
+
+    #[test]
+    fn test_make_hook_delete_uses_generic_context() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let opts = make_hook_opts(
+            tmp.path(), "cleanup", HookType::Collection,
+            "posts", "before_delete", None, false,
+        );
+        make_hook(&opts).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("hooks/posts/cleanup.lua")).unwrap();
+        assert!(content.contains("before_delete hook for posts"));
+        assert!(content.contains("crap.HookContext"), "delete hooks should use generic HookContext, got:\n{content}");
+        assert!(!content.contains("crap.hook.Posts"), "delete hooks should not use typed context");
+    }
+
+    #[test]
+    fn test_make_hook_after_delete_uses_generic_context() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let opts = make_hook_opts(
+            tmp.path(), "notify", HookType::Collection,
+            "posts", "after_delete", None, false,
+        );
+        make_hook(&opts).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("hooks/posts/notify.lua")).unwrap();
+        assert!(content.contains("crap.HookContext"), "after_delete should use generic HookContext");
+    }
+
+    #[test]
+    fn test_make_hook_read_uses_typed_context() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let opts = make_hook_opts(
+            tmp.path(), "filter", HookType::Collection,
+            "posts", "after_read", None, false,
+        );
+        make_hook(&opts).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("hooks/posts/filter.lua")).unwrap();
+        assert!(content.contains("crap.hook.Posts"), "read hooks should use typed context, got:\n{content}");
     }
 
     #[test]
@@ -422,6 +524,7 @@ mod tests {
 
         let content = fs::read_to_string(tmp.path().join("hooks/posts/show_url.lua")).unwrap();
         assert!(content.contains("Display condition for posts (client-evaluated)"));
+        assert!(content.contains("@param data crap.data.Posts"), "should use typed data, got:\n{content}");
         assert!(content.contains("@return table"));
         assert!(content.contains("return function(data)"));
         // Generic template when no field info
@@ -482,6 +585,7 @@ mod tests {
 
         let content = fs::read_to_string(tmp.path().join("hooks/posts/show_premium.lua")).unwrap();
         assert!(content.contains("Display condition for posts (server-evaluated)"));
+        assert!(content.contains("@param data crap.data.Posts"), "should use typed data, got:\n{content}");
         assert!(content.contains("@return boolean"));
         assert!(content.contains("PERFORMANCE"));
         assert!(content.contains("server round-trip"));
@@ -544,6 +648,20 @@ mod tests {
         let content = fs::read_to_string(tmp.path().join("hooks/posts/show_if_sel.lua")).unwrap();
         assert!(content.contains(r#"field = "status""#));
         assert!(content.contains("is_truthy = true"));
+    }
+
+    #[test]
+    fn test_make_hook_condition_global_uses_global_data_type() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut opts = make_hook_opts(
+            tmp.path(), "show_if", HookType::Condition,
+            "site_settings", "table", None, false,
+        );
+        opts.is_global = true;
+        make_hook(&opts).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("hooks/site_settings/show_if.lua")).unwrap();
+        assert!(content.contains("@param data crap.global_data.SiteSettings"), "should use global_data type, got:\n{content}");
     }
 
     #[test]

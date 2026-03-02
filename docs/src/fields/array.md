@@ -18,18 +18,17 @@ The join table has columns:
 ## Definition
 
 ```lua
-{
+crap.fields.array({
     name = "slides",
-    type = "array",
     fields = {
-        { name = "title", type = "text", required = true },
-        { name = "image_url", type = "text" },
-        { name = "caption", type = "textarea" },
+        crap.fields.text({ name = "title", required = true }),
+        crap.fields.text({ name = "image_url" }),
+        crap.fields.textarea({ name = "caption" }),
     },
     admin = {
         description = "Image slides for the gallery",
     },
-}
+})
 ```
 
 ## Sub-Fields
@@ -73,18 +72,17 @@ By default, array rows in the admin UI are labeled with the field label and row 
 Set `admin.label_field` to the name of a sub-field. Its value is used as the row title, and updates live as you type.
 
 ```lua
-{
+crap.fields.array({
     name = "slides",
-    type = "array",
     admin = {
         label_field = "title",
     },
     fields = {
-        { name = "title", type = "text", required = true },
-        { name = "image_url", type = "text" },
-        { name = "caption", type = "textarea" },
+        crap.fields.text({ name = "title", required = true }),
+        crap.fields.text({ name = "image_url" }),
+        crap.fields.textarea({ name = "caption" }),
     },
-}
+})
 ```
 
 With this configuration, each row shows the `title` value instead of "Slides 0".
@@ -95,19 +93,18 @@ For computed labels, set `admin.row_label` to a Lua function reference. The func
 
 ```lua
 -- collections/products.lua
-{
+crap.fields.array({
     name = "variants",
-    type = "array",
     admin = {
         row_label = "labels.variant_row",
         label_field = "name", -- fallback if row_label returns nil
     },
     fields = {
-        { name = "name", type = "text", required = true },
-        { name = "sku", type = "text" },
-        { name = "price", type = "number" },
+        crap.fields.text({ name = "name", required = true }),
+        crap.fields.text({ name = "sku" }),
+        crap.fields.number({ name = "price" }),
     },
-}
+})
 ```
 
 ```lua
@@ -138,13 +135,12 @@ return M
 Enforce minimum and maximum row counts. These are validation constraints (like `required`), not just UI hints.
 
 ```lua
-{
+crap.fields.array({
     name = "slides",
-    type = "array",
     min_rows = 1,
     max_rows = 10,
     fields = { ... },
-}
+})
 ```
 
 - **`min_rows`**: Minimum number of items. Validated on create/update (skipped for draft saves).
@@ -157,14 +153,13 @@ Validation runs in `validate_fields()`, shared by admin handlers, gRPC, and Lua 
 Render existing rows collapsed by default on page load. New rows added via the "Add" button are always expanded.
 
 ```lua
-{
+crap.fields.array({
     name = "slides",
-    type = "array",
     admin = {
         init_collapsed = true,
     },
     fields = { ... },
-}
+})
 ```
 
 ## Custom Labels (`labels`)
@@ -172,14 +167,13 @@ Render existing rows collapsed by default on page load. New rows added via the "
 Customize the "Add Row" button text and field header with singular/plural labels.
 
 ```lua
-{
+crap.fields.array({
     name = "slides",
-    type = "array",
     admin = {
         labels = { singular = "Slide", plural = "Slides" },
     },
     fields = { ... },
-}
+})
 ```
 
 With this config, the add button reads "Add Slide" instead of "Add Row".

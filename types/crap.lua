@@ -157,6 +157,218 @@ crap = {}
 --- @field plural?   crap.LocalizedString  Custom plural label for the field header.
 
 
+-- ── Field Factories ────────────────────────────────────────────
+--
+-- `crap.fields.*` factory functions set `type` automatically and return
+-- a plain table — fully backward compatible with raw `{ type = "text", ... }`.
+-- The per-type config classes below give precise autocomplete: only the
+-- properties relevant to that field type appear.
+
+--- Shared base for all field factory configs. You never use this directly —
+--- use the per-type classes via `crap.fields.text()`, `crap.fields.select()`, etc.
+--- @class crap.BaseField
+--- @field name          string            Column name (required).
+--- @field required?     boolean           Validation: must have a value (default: false).
+--- @field unique?       boolean           Unique constraint (default: false).
+--- @field localized?    boolean           Per-locale values (default: false).
+--- @field default_value? any              Default value on create.
+--- @field validate?     string            Lua function ref called as `crap.ValidateFunction`.
+--- @field hooks?        crap.FieldHooks   Per-field lifecycle hooks.
+--- @field access?       crap.FieldAccess  Field-level access control (read/create/update).
+--- @field admin?        crap.FieldAdmin   Admin UI display options.
+
+--- @class crap.TextField : crap.BaseField
+--- @field min_length?  integer  Minimum string length. Validated server-side + HTML minlength.
+--- @field max_length?  integer  Maximum string length. Validated server-side + HTML maxlength.
+--- @field has_many?    boolean  Multi-value tag input. Stored as JSON array in TEXT column.
+
+--- @class crap.NumberField : crap.BaseField
+--- @field min?      number   Minimum value. Validated server-side + HTML min attr.
+--- @field max?      number   Maximum value. Validated server-side + HTML max attr.
+--- @field has_many? boolean  Multi-value tag input. Stored as JSON array.
+
+--- @class crap.TextareaField : crap.BaseField
+--- @field min_length?  integer  Minimum string length.
+--- @field max_length?  integer  Maximum string length.
+
+--- @class crap.RichtextField : crap.BaseField
+
+--- @class crap.SelectField : crap.BaseField
+--- @field options   crap.SelectOption[]  Option list (required).
+--- @field has_many? boolean              Multi-select (default: false).
+
+--- @class crap.RadioField : crap.BaseField
+--- @field options crap.SelectOption[]  Option list (required).
+
+--- @class crap.CheckboxField : crap.BaseField
+
+--- @class crap.DateField : crap.BaseField
+--- @field picker_appearance? crap.PickerAppearance  Input type: "dayOnly" (default), "dayAndTime", "timeOnly", "monthOnly".
+--- @field min_date?          string                 Minimum date (ISO "YYYY-MM-DD").
+--- @field max_date?          string                 Maximum date (ISO "YYYY-MM-DD").
+
+--- @class crap.EmailField : crap.BaseField
+
+--- @class crap.JsonField : crap.BaseField
+
+--- @class crap.CodeField : crap.BaseField
+
+--- @class crap.RelationshipField : crap.BaseField
+--- @field relationship crap.RelationshipConfig  Target collection and cardinality (required).
+
+--- @class crap.UploadField : crap.BaseField
+--- @field relationship? crap.RelationshipConfig  Target upload collection and cardinality.
+
+--- @class crap.ArrayField : crap.BaseField
+--- @field fields    crap.FieldDefinition[]  Sub-field definitions (required).
+--- @field min_rows? integer                 Minimum rows. Validated on create/update.
+--- @field max_rows? integer                 Maximum rows. Admin disables "Add" at max.
+
+--- @class crap.GroupField : crap.BaseField
+--- @field fields crap.FieldDefinition[]  Sub-field definitions (required).
+
+--- @class crap.BlocksField : crap.BaseField
+--- @field blocks    crap.BlockDefinition[]  Block type definitions (required).
+--- @field min_rows? integer                 Minimum rows.
+--- @field max_rows? integer                 Maximum rows.
+
+--- @class crap.RowField : crap.BaseField
+--- @field fields crap.FieldDefinition[]  Sub-field definitions (required). Promoted to parent level (no prefix).
+
+--- @class crap.CollapsibleField : crap.BaseField
+--- @field fields crap.FieldDefinition[]  Sub-field definitions (required). Promoted to parent level (no prefix).
+
+--- @class crap.TabsField : crap.BaseField
+--- @field tabs crap.FieldTab[]  Tab definitions (required). Each tab has a label and fields.
+
+--- @class crap.JoinField : crap.BaseField
+--- @field collection string  Target collection slug (required).
+--- @field on         string  Field on target collection that references this document (required).
+
+--- Field factory functions. Each sets `type` automatically and returns a
+--- `crap.FieldDefinition`-compatible table. Use these instead of raw tables
+--- for precise per-type autocomplete.
+---
+--- Example:
+--- ```lua
+--- crap.collections.define("posts", {
+---     fields = {
+---         crap.fields.text({ name = "title", required = true }),
+---         crap.fields.select({ name = "status", options = {
+---             { label = "Draft", value = "draft" },
+---             { label = "Published", value = "published" },
+---         }}),
+---         crap.fields.relationship({ name = "author", relationship = {
+---             collection = "users",
+---         }}),
+---         crap.fields.blocks({ name = "content", blocks = { ... } }),
+---     },
+--- })
+--- ```
+--- @class crap.fields
+crap.fields = {}
+
+--- Create a text field (single-line string).
+--- @param config crap.TextField
+--- @return crap.FieldDefinition
+function crap.fields.text(config) end
+
+--- Create a number field (integer or float).
+--- @param config crap.NumberField
+--- @return crap.FieldDefinition
+function crap.fields.number(config) end
+
+--- Create a textarea field (multi-line text).
+--- @param config crap.TextareaField
+--- @return crap.FieldDefinition
+function crap.fields.textarea(config) end
+
+--- Create a richtext field (Tiptap editor, stored as JSON).
+--- @param config crap.RichtextField
+--- @return crap.FieldDefinition
+function crap.fields.richtext(config) end
+
+--- Create a select field (dropdown, single or multi).
+--- @param config crap.SelectField
+--- @return crap.FieldDefinition
+function crap.fields.select(config) end
+
+--- Create a radio field (radio button group).
+--- @param config crap.RadioField
+--- @return crap.FieldDefinition
+function crap.fields.radio(config) end
+
+--- Create a checkbox field (boolean true/false).
+--- @param config crap.CheckboxField
+--- @return crap.FieldDefinition
+function crap.fields.checkbox(config) end
+
+--- Create a date field (ISO 8601 date/datetime).
+--- @param config crap.DateField
+--- @return crap.FieldDefinition
+function crap.fields.date(config) end
+
+--- Create an email field (validated email address).
+--- @param config crap.EmailField
+--- @return crap.FieldDefinition
+function crap.fields.email(config) end
+
+--- Create a JSON field (arbitrary JSON blob).
+--- @param config crap.JsonField
+--- @return crap.FieldDefinition
+function crap.fields.json(config) end
+
+--- Create a code field (CodeMirror editor). Set `admin.language` for syntax mode.
+--- @param config crap.CodeField
+--- @return crap.FieldDefinition
+function crap.fields.code(config) end
+
+--- Create a relationship field (reference to another collection).
+--- @param config crap.RelationshipField
+--- @return crap.FieldDefinition
+function crap.fields.relationship(config) end
+
+--- Create an upload field (file upload, references an upload collection).
+--- @param config crap.UploadField
+--- @return crap.FieldDefinition
+function crap.fields.upload(config) end
+
+--- Create an array field (repeatable sub-fields).
+--- @param config crap.ArrayField
+--- @return crap.FieldDefinition
+function crap.fields.array(config) end
+
+--- Create a group field (visual grouping with column prefix).
+--- @param config crap.GroupField
+--- @return crap.FieldDefinition
+function crap.fields.group(config) end
+
+--- Create a blocks field (flexible content blocks).
+--- @param config crap.BlocksField
+--- @return crap.FieldDefinition
+function crap.fields.blocks(config) end
+
+--- Create a row field (layout-only horizontal grouping, no column prefix).
+--- @param config crap.RowField
+--- @return crap.FieldDefinition
+function crap.fields.row(config) end
+
+--- Create a collapsible field (layout-only collapsible section, no column prefix).
+--- @param config crap.CollapsibleField
+--- @return crap.FieldDefinition
+function crap.fields.collapsible(config) end
+
+--- Create a tabs field (layout-only tabbed container, no column prefix).
+--- @param config crap.TabsField
+--- @return crap.FieldDefinition
+function crap.fields.tabs(config) end
+
+--- Create a join field (virtual reverse-relationship, read-only).
+--- @param config crap.JoinField
+--- @return crap.FieldDefinition
+function crap.fields.join(config) end
+
+
 -- ── Collection Types ─────────────────────────────────────────
 
 --- @class crap.CollectionLabels

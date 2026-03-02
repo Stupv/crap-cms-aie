@@ -15,27 +15,26 @@ For example, tabs with sub-fields `title`, `body`, `meta_title`, and `meta_descr
 ## Definition
 
 ```lua
-{
+crap.fields.tabs({
     name = "content_tabs",
-    type = "tabs",
     tabs = {
         {
             label = "Content",
             fields = {
-                { name = "title", type = "text", required = true },
-                { name = "body", type = "richtext" },
+                crap.fields.text({ name = "title", required = true }),
+                crap.fields.richtext({ name = "body" }),
             },
         },
         {
             label = "SEO",
             description = "Search engine optimization settings",
             fields = {
-                { name = "meta_title", type = "text" },
-                { name = "meta_description", type = "textarea" },
+                crap.fields.text({ name = "meta_title" }),
+                crap.fields.textarea({ name = "meta_description" }),
             },
         },
     },
-}
+})
 ```
 
 Each tab has:

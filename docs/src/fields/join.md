@@ -5,7 +5,7 @@ A virtual, read-only field that displays documents from another collection that 
 ## Lua Definition
 
 ```lua
-{ name = "posts", type = "join", collection = "posts", on = "author" }
+crap.fields.join({ name = "posts", collection = "posts", on = "author" })
 ```
 
 This reads as: "Show me all documents in the `posts` collection where `posts.author` equals this document's ID."
@@ -36,8 +36,8 @@ Given an `authors` collection and a `posts` collection where each post has a `re
 return {
     slug = "authors",
     fields = {
-        { name = "name", type = "text", required = true },
-        { name = "posts", type = "join", collection = "posts", on = "author" },
+        crap.fields.text({ name = "name", required = true }),
+        crap.fields.join({ name = "posts", collection = "posts", on = "author" }),
     },
 }
 ```

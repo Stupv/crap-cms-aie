@@ -1,149 +1,86 @@
 crap.collections.define("events", {
-	labels = { singular = "Event", plural = "Events" },
-	timestamps = true,
-	admin = {
-		use_as_title = "title",
-		default_sort = "-start_date",
-		list_searchable_fields = { "title" },
-	},
-	fields = {
-		{
-			name = "title",
-			type = "text",
-			required = true,
-			admin = { placeholder = "Event title" },
-		},
-		{
-			name = "slug",
-			type = "text",
-			required = true,
-			unique = true,
-			hooks = {
-				before_validate = { "hooks.auto_slug" },
-			},
-		},
-		{
-			name = "description",
-			type = "richtext",
-			admin = {
-				features = { "bold", "italic", "link", "bulletList" },
-			},
-		},
-		{
-			name = "hero_image",
-			type = "upload",
-			relationship = { collection = "media" },
-		},
-		-- Date row
-		{
-			name = "date_row",
-			type = "row",
-			fields = {
-				{
-					name = "start_date",
-					type = "date",
-					required = true,
-					picker_appearance = "dayAndTime",
-					admin = { width = "half" },
-				},
-				{
-					name = "end_date",
-					type = "date",
-					picker_appearance = "dayAndTime",
-					admin = { width = "half" },
-				},
-			},
-		},
-		-- Online toggle + conditional URL
-		{
-			name = "online",
-			type = "checkbox",
-			default_value = false,
-		},
-		{
-			name = "event_url",
-			type = "text",
-			admin = {
-				placeholder = "https://zoom.us/...",
-				condition = {
-					field = "online",
-					condition = "equals",
-					value = true,
-				},
-			},
-		},
-		-- Location group
-		{
-			name = "location",
-			type = "group",
-			admin = { label = "Venue" },
-			fields = {
-				{
-					name = "venue_name",
-					type = "text",
-					admin = { placeholder = "Venue name" },
-				},
-				{
-					name = "address",
-					type = "text",
-					admin = { placeholder = "123 Main St" },
-				},
-				{
-					name = "city",
-					type = "text",
-					admin = { width = "half" },
-				},
-				{
-					name = "country",
-					type = "text",
-					admin = { width = "half" },
-				},
-			},
-		},
-		-- Speakers (drawer picker)
-		{
-			name = "speakers",
-			type = "relationship",
-			relationship = { collection = "users", has_many = true },
-			admin = {
-				picker = "drawer",
-				description = "Event speakers / presenters",
-			},
-		},
-		{
-			name = "categories",
-			type = "relationship",
-			relationship = { collection = "categories", has_many = true },
-		},
-		-- Registration (collapsible)
-		{
-			name = "registration",
-			type = "collapsible",
-			admin = { label = "Registration", collapsed = true },
-			fields = {
-				{
-					name = "registration_url",
-					type = "text",
-					admin = { placeholder = "https://..." },
-				},
-				{
-					name = "max_attendees",
-					type = "number",
-					min = 0,
-					admin = { step = "1" },
-				},
-				{
-					name = "registration_deadline",
-					type = "date",
-					picker_appearance = "dayAndTime",
-				},
-			},
-		},
-	},
-	access = {
-		read = "access.anyone",
-		create = "access.editor_or_above",
-		update = "access.editor_or_above",
-		delete = "access.admin_or_director",
-	},
+  labels = { singular = "Event", plural = "Events" },
+  timestamps = true,
+  admin = {
+    use_as_title = "title",
+    default_sort = "-start_date",
+    list_searchable_fields = { "title" },
+  },
+  fields = {
+    crap.fields.text({ name = "title", required = true, admin = { placeholder = "Event title" } }),
+    crap.fields.text({
+      name = "slug",
+      required = true,
+      unique = true,
+      hooks = { before_validate = { "hooks.auto_slug" } },
+    }),
+    crap.fields.richtext({
+      name = "description",
+      admin = { features = { "bold", "italic", "link", "bulletList" } },
+    }),
+    crap.fields.upload({ name = "hero_image", relationship = { collection = "media" } }),
+    -- Date row
+    crap.fields.row({
+      name = "date_row",
+      fields = {
+        crap.fields.date({
+          name = "start_date",
+          required = true,
+          picker_appearance = "dayAndTime",
+          admin = { width = "half" },
+        }),
+        crap.fields.date({
+          name = "end_date",
+          picker_appearance = "dayAndTime",
+          admin = { width = "half" },
+        }),
+      },
+    }),
+    -- Online toggle + conditional URL
+    crap.fields.checkbox({ name = "online", default_value = false }),
+    crap.fields.text({
+      name = "event_url",
+      admin = {
+        placeholder = "https://zoom.us/...",
+        condition = { field = "online", condition = "equals", value = true },
+      },
+    }),
+    -- Location group
+    crap.fields.group({
+      name = "location",
+      admin = { label = "Venue" },
+      fields = {
+        crap.fields.text({ name = "venue_name", admin = { placeholder = "Venue name" } }),
+        crap.fields.text({ name = "address", admin = { placeholder = "123 Main St" } }),
+        crap.fields.text({ name = "city", admin = { width = "half" } }),
+        crap.fields.text({ name = "country", admin = { width = "half" } }),
+      },
+    }),
+    -- Speakers (drawer picker)
+    crap.fields.relationship({
+      name = "speakers",
+      relationship = { collection = "users", has_many = true },
+      admin = { picker = "drawer", description = "Event speakers / presenters" },
+    }),
+    crap.fields.relationship({
+      name = "categories",
+      relationship = { collection = "categories", has_many = true },
+    }),
+    -- Registration (collapsible)
+    crap.fields.collapsible({
+      name = "registration",
+      admin = { label = "Registration", collapsed = true },
+      fields = {
+        crap.fields.text({ name = "registration_url", admin = { placeholder = "https://..." } }),
+        crap.fields.number({ name = "max_attendees", min = 0, admin = { step = "1" } }),
+        crap.fields.date({ name = "registration_deadline", picker_appearance = "dayAndTime" }),
+      },
+    }),
+  },
+  access = {
+    read = "access.anyone",
+    create = "access.editor_or_above",
+    update = "access.editor_or_above",
+    delete = "access.admin_or_director",
+  },
 })

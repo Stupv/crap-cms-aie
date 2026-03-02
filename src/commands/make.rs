@@ -241,24 +241,45 @@ fn make_hook_command(
         }
     };
 
-    // 2. Resolve collection — try loading registry for choices, fall back to text input
-    let collection = match collection {
-        Some(c) => c,
+    // 2. Resolve collection/global — try loading registry for choices, fall back to text input
+    let (collection, is_global) = match collection {
+        Some(c) => {
+            // Auto-detect: check if it's a global slug
+            let is_global = try_load_global_slugs(config_dir)
+                .map(|slugs| slugs.contains(&c))
+                .unwrap_or(false);
+            (c, is_global)
+        }
         None => {
-            let collection_slugs = try_load_collection_slugs(config_dir);
-            if let Some(slugs) = collection_slugs.filter(|s| !s.is_empty()) {
+            let collection_slugs = try_load_collection_slugs(config_dir).unwrap_or_default();
+            let global_slugs = try_load_global_slugs(config_dir).unwrap_or_default();
+
+            if !collection_slugs.is_empty() || !global_slugs.is_empty() {
+                // Build merged list: collections first, then globals tagged
+                let mut items: Vec<String> = collection_slugs.clone();
+                let global_offset = items.len();
+                for g in &global_slugs {
+                    items.push(format!("{} (global)", g));
+                }
+
                 let selection = Select::new()
-                    .with_prompt("Collection")
-                    .items(&slugs)
+                    .with_prompt("Collection / Global")
+                    .items(&items)
                     .default(0)
                     .interact()
                     .context("Failed to read collection selection")?;
-                slugs[selection].clone()
+
+                if selection >= global_offset {
+                    (global_slugs[selection - global_offset].clone(), true)
+                } else {
+                    (collection_slugs[selection].clone(), false)
+                }
             } else {
-                Input::<String>::new()
+                let slug = Input::<String>::new()
                     .with_prompt("Collection slug")
                     .interact_text()
-                    .context("Failed to read collection slug")?
+                    .context("Failed to read collection slug")?;
+                (slug, false)
             }
         }
     };
@@ -384,6 +405,7 @@ fn make_hook_command(
         field: field.as_deref(),
         force,
         condition_field,
+        is_global,
     };
 
     crate::scaffold::make_hook(&opts)
@@ -408,6 +430,17 @@ pub fn try_load_collection_slugs(config_dir: &Path) -> Option<Vec<String>> {
     let registry = crate::hooks::init_lua(&config_dir, &cfg).ok()?;
     let reg = registry.read().ok()?;
     let mut slugs: Vec<String> = reg.collections.keys().cloned().collect();
+    slugs.sort();
+    Some(slugs)
+}
+
+/// Try to load global slugs from the config dir for interactive selection.
+pub fn try_load_global_slugs(config_dir: &Path) -> Option<Vec<String>> {
+    let config_dir = config_dir.canonicalize().ok()?;
+    let cfg = crate::config::CrapConfig::load(&config_dir).ok()?;
+    let registry = crate::hooks::init_lua(&config_dir, &cfg).ok()?;
+    let reg = registry.read().ok()?;
+    let mut slugs: Vec<String> = reg.globals.keys().cloned().collect();
     slugs.sort();
     Some(slugs)
 }

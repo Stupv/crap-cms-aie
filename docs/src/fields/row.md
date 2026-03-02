@@ -15,14 +15,13 @@ This is different from [Group](group.md), which prefixes sub-field columns (`seo
 ## Definition
 
 ```lua
-{
+crap.fields.row({
     name = "name_row",
-    type = "row",
     fields = {
-        { name = "firstname", type = "text", required = true },
-        { name = "lastname", type = "text", required = true },
+        crap.fields.text({ name = "firstname", required = true }),
+        crap.fields.text({ name = "lastname", required = true }),
     },
-}
+})
 ```
 
 ## API Representation

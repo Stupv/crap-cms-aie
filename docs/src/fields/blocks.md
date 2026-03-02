@@ -21,40 +21,39 @@ Unlike arrays (which have typed columns per sub-field), blocks use a single JSON
 ## Definition
 
 ```lua
-{
+crap.fields.blocks({
     name = "content",
-    type = "blocks",
     blocks = {
         {
             type = "hero",
             label = "Hero Section",
             fields = {
-                { name = "heading", type = "text", required = true },
-                { name = "subheading", type = "text" },
-                { name = "image_url", type = "text" },
+                crap.fields.text({ name = "heading", required = true }),
+                crap.fields.text({ name = "subheading" }),
+                crap.fields.text({ name = "image_url" }),
             },
         },
         {
             type = "richtext",
             label = "Rich Text",
             fields = {
-                { name = "body", type = "richtext" },
+                crap.fields.richtext({ name = "body" }),
             },
         },
         {
             type = "cta",
             label = "Call to Action",
             fields = {
-                { name = "text", type = "text", required = true },
-                { name = "url", type = "text", required = true },
-                { name = "style", type = "select", options = {
+                crap.fields.text({ name = "text", required = true }),
+                crap.fields.text({ name = "url", required = true }),
+                crap.fields.select({ name = "style", options = {
                     { label = "Primary", value = "primary" },
                     { label = "Secondary", value = "secondary" },
-                }},
+                }}),
             },
         },
     },
-}
+})
 ```
 
 ## Block Definitions
@@ -116,17 +115,16 @@ By default, block rows display the block type label and row index (e.g., "Hero S
 Set `label_field` on each block definition to a sub-field name. The value of that field is used as the row title, and updates live as you type.
 
 ```lua
-{
+crap.fields.blocks({
     name = "content",
-    type = "blocks",
     blocks = {
         {
             type = "hero",
             label = "Hero Section",
             label_field = "heading",
             fields = {
-                { name = "heading", type = "text", required = true },
-                { name = "subheading", type = "text" },
+                crap.fields.text({ name = "heading", required = true }),
+                crap.fields.text({ name = "subheading" }),
             },
         },
         {
@@ -134,12 +132,12 @@ Set `label_field` on each block definition to a sub-field name. The value of tha
             label = "Image",
             label_field = "caption",
             fields = {
-                { name = "image", type = "upload", relationship = { collection = "media" } },
-                { name = "caption", type = "text" },
+                crap.fields.upload({ name = "image", relationship = { collection = "media" } }),
+                crap.fields.text({ name = "caption" }),
             },
         },
     },
-}
+})
 ```
 
 Each block type can have a different `label_field` — hero blocks show the heading, image blocks show the caption.
@@ -150,14 +148,13 @@ For computed labels across all block types, set `admin.row_label` on the blocks 
 
 ```lua
 -- collections/posts.lua
-{
+crap.fields.blocks({
     name = "content",
-    type = "blocks",
     admin = {
         row_label = "labels.content_block_row",
     },
     blocks = { ... },
-}
+})
 ```
 
 ```lua
@@ -192,13 +189,12 @@ return M
 Enforce minimum and maximum block counts. These are validation constraints, not just UI hints.
 
 ```lua
-{
+crap.fields.blocks({
     name = "content",
-    type = "blocks",
     min_rows = 1,
     max_rows = 20,
     blocks = { ... },
-}
+})
 ```
 
 - **`min_rows`**: Minimum number of blocks. Validated on create/update (skipped for draft saves).
@@ -209,14 +205,13 @@ Enforce minimum and maximum block counts. These are validation constraints, not 
 Render existing block rows collapsed by default on page load. New blocks added via the UI are always expanded.
 
 ```lua
-{
+crap.fields.blocks({
     name = "content",
-    type = "blocks",
     admin = {
         init_collapsed = true,
     },
     blocks = { ... },
-}
+})
 ```
 
 ## Custom Labels (`labels`)
@@ -224,14 +219,13 @@ Render existing block rows collapsed by default on page load. New blocks added v
 Customize the "Add Block" button text with singular/plural labels.
 
 ```lua
-{
+crap.fields.blocks({
     name = "content",
-    type = "blocks",
     admin = {
         labels = { singular = "Section", plural = "Sections" },
     },
     blocks = { ... },
-}
+})
 ```
 
 With this config, the add button reads "Add Section" instead of "Add Block".
@@ -241,9 +235,8 @@ With this config, the add button reads "Add Section" instead of "Add Block".
 Organize blocks into groups in the picker dropdown using `<optgroup>` elements. Ungrouped blocks appear at the top.
 
 ```lua
-{
+crap.fields.blocks({
     name = "content",
-    type = "blocks",
     blocks = {
         {
             type = "hero",
@@ -270,7 +263,7 @@ Organize blocks into groups in the picker dropdown using `<optgroup>` elements. 
             fields = {},
         },
     },
-}
+})
 ```
 
 ## Card Picker
@@ -278,9 +271,8 @@ Organize blocks into groups in the picker dropdown using `<optgroup>` elements. 
 By default, blocks use a dropdown select to choose the block type. Set `admin.picker = "card"` to use a visual card grid instead. This is useful when you have several block types and want a more visual picker.
 
 ```lua
-{
+crap.fields.blocks({
     name = "content",
-    type = "blocks",
     admin = {
         picker = "card",
     },
@@ -296,7 +288,7 @@ By default, blocks use a dropdown select to choose the block type. Set `admin.pi
             fields = { ... },
         },
     },
-}
+})
 ```
 
 Each card shows the block type label and a generic icon. To display custom icons or thumbnails, set `image_url` on individual block definitions:

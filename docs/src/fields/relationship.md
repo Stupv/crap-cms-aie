@@ -7,14 +7,13 @@ Reference to documents in another collection. Supports has-one (single reference
 Stores a single document ID as a `TEXT` column on the parent table.
 
 ```lua
-{
+crap.fields.relationship({
     name = "author",
-    type = "relationship",
     relationship = {
         collection = "users",
         has_many = false,  -- default
     },
-}
+})
 ```
 
 At `depth=0`, the field value is a string ID. At `depth=1+`, it's replaced with the full document object.
@@ -24,14 +23,13 @@ At `depth=0`, the field value is a string ID. At `depth=1+`, it's replaced with 
 Uses a junction table (`{collection}_{field}`) with `parent_id`, `related_id`, and `_order` columns.
 
 ```lua
-{
+crap.fields.relationship({
     name = "tags",
-    type = "relationship",
     relationship = {
         collection = "tags",
         has_many = true,
     },
-}
+})
 ```
 
 At `depth=0`, the field value is an array of string IDs. At `depth=1+`, each ID is replaced with the full document object.
@@ -41,14 +39,13 @@ At `depth=0`, the field value is an array of string IDs. At `depth=1+`, each ID 
 A relationship field can reference documents from multiple collections by setting `collection` to a Lua array of slugs instead of a single string.
 
 ```lua
-{
+crap.fields.relationship({
     name = "related_content",
-    type = "relationship",
     relationship = {
         collection = { "posts", "pages" },
         has_many = false,
     },
-}
+})
 ```
 
 **Has-one storage** — the column stores a composite string in `"collection/id"` format (e.g., `"posts/abc123"`). At `depth=0` the raw composite string is returned. At `depth=1+` it is replaced with the full document object.
@@ -56,14 +53,13 @@ A relationship field can reference documents from multiple collections by settin
 **Has-many storage** — uses a junction table (same as a regular has-many) with an additional `related_collection` TEXT column that records which collection each referenced document belongs to.
 
 ```lua
-{
+crap.fields.relationship({
     name = "featured_items",
-    type = "relationship",
     relationship = {
         collection = { "posts", "pages", "events" },
         has_many = true,
     },
-}
+})
 ```
 
 **Admin UI** — the relationship picker fetches and displays search results grouped by collection, so editors can find and select documents from any of the target collections in one widget.
@@ -98,12 +94,11 @@ Has-one renders as a searchable input. Has-many renders as a multi-select with c
 Add `admin.picker = "drawer"` to enable a browse button next to the search input. Clicking it opens a slide-in drawer panel with a searchable list for browsing documents.
 
 ```lua
-{
+crap.fields.relationship({
     name = "author",
-    type = "relationship",
     relationship = { collection = "users" },
     admin = { picker = "drawer" },
-}
+})
 ```
 
 - Without `picker`: inline search autocomplete only (default behavior)

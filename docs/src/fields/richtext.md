@@ -9,13 +9,12 @@ Rich text field stored as an HTML string.
 ## Definition
 
 ```lua
-{
+crap.fields.richtext({
     name = "content",
-    type = "richtext",
     admin = {
         placeholder = "Write your content...",
     },
-}
+})
 ```
 
 ## Toolbar Configuration
@@ -24,13 +23,12 @@ By default, all toolbar features are enabled. Use `admin.features` to limit whic
 features are available:
 
 ```lua
-{
+crap.fields.richtext({
     name = "content",
-    type = "richtext",
     admin = {
         features = { "bold", "italic", "heading", "link", "bulletList" },
     },
-}
+})
 ```
 
 ### Available Features

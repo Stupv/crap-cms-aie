@@ -13,18 +13,17 @@ For example, a group named `seo` with sub-fields `title` and `description` creat
 ## Definition
 
 ```lua
-{
+crap.fields.group({
     name = "seo",
-    type = "group",
     fields = {
-        { name = "title", type = "text", required = true },
-        { name = "description", type = "textarea" },
-        { name = "no_index", type = "checkbox" },
+        crap.fields.text({ name = "title", required = true }),
+        crap.fields.textarea({ name = "description" }),
+        crap.fields.checkbox({ name = "no_index" }),
     },
     admin = {
         description = "Search engine optimization settings",
     },
-}
+})
 ```
 
 ## Sub-Fields

@@ -9,15 +9,14 @@ Numeric field for integers or floating-point values.
 ## Definition
 
 ```lua
-{
+crap.fields.number({
     name = "price",
-    type = "number",
     required = true,
     default_value = 0,
     admin = {
         placeholder = "0.00",
     },
-}
+})
 ```
 
 ## Multi-Value (`has_many`)
@@ -25,14 +24,13 @@ Numeric field for integers or floating-point values.
 Store multiple numbers as a JSON array in a TEXT column. Renders as a tag-style input in the admin UI.
 
 ```lua
-{
+crap.fields.number({
     name = "scores",
-    type = "number",
     has_many = true,
     min = 0,
     max = 100,
     max_rows = 5,
-}
+})
 ```
 
 - Values are stored as `["10","20","30"]` in the TEXT column

@@ -9,11 +9,10 @@ Boolean field stored as an integer (0 or 1).
 ## Definition
 
 ```lua
-{
+crap.fields.checkbox({
     name = "published",
-    type = "checkbox",
     default_value = false,
-}
+})
 ```
 
 ## Admin Rendering

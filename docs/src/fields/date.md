@@ -10,17 +10,17 @@ Date, datetime, time, or month field with configurable picker appearance and aut
 
 ```lua
 -- Date only (default) — stored as UTC noon to prevent timezone drift
-{ name = "birthday", type = "date" }
-{ name = "birthday", type = "date", picker_appearance = "dayOnly" }
+crap.fields.date({ name = "birthday" })
+crap.fields.date({ name = "birthday", picker_appearance = "dayOnly" })
 
 -- Date and time — stored as full ISO 8601 UTC
-{ name = "published_at", type = "date", picker_appearance = "dayAndTime" }
+crap.fields.date({ name = "published_at", picker_appearance = "dayAndTime" })
 
 -- Time only — stored as HH:MM
-{ name = "reminder", type = "date", picker_appearance = "timeOnly" }
+crap.fields.date({ name = "reminder", picker_appearance = "timeOnly" })
 
 -- Month only — stored as YYYY-MM
-{ name = "birth_month", type = "date", picker_appearance = "monthOnly" }
+crap.fields.date({ name = "birth_month", picker_appearance = "monthOnly" })
 ```
 
 ## Picker Appearance

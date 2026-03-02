@@ -12,48 +12,44 @@ File reference field. Stores a relationship to an upload collection. Supports bo
 Single file (has-one):
 
 ```lua
-{
+crap.fields.upload({
     name = "featured_image",
-    type = "upload",
     relation_to = "media",
-}
+})
 ```
 
 Or using the expanded relationship syntax:
 
 ```lua
-{
+crap.fields.upload({
     name = "featured_image",
-    type = "upload",
     relationship = {
         collection = "media",
         max_depth = 1,
     },
-}
+})
 ```
 
 Multi-file (has-many):
 
 ```lua
-{
+crap.fields.upload({
     name = "gallery",
-    type = "upload",
     relationship = {
         collection = "media",
         has_many = true,
     },
-}
+})
 ```
 
 Or with flat syntax:
 
 ```lua
-{
+crap.fields.upload({
     name = "gallery",
-    type = "upload",
     relation_to = "media",
     has_many = true,
-}
+})
 ```
 
 The target collection should be an upload collection (defined with `upload = true`).
@@ -116,12 +112,11 @@ At `depth=1+`, each ID is populated with the full media document:
 Add `admin.picker = "drawer"` to enable a browse button next to the search input. Clicking it opens a slide-in drawer panel with a thumbnail grid for visually browsing upload documents.
 
 ```lua
-{
+crap.fields.upload({
     name = "featured_image",
-    type = "upload",
     relation_to = "media",
     admin = { picker = "drawer" },
-}
+})
 ```
 
 - Without `picker`: inline search autocomplete only (default behavior)

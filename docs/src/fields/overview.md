@@ -2,6 +2,40 @@
 
 Fields define the schema of a collection or global. Each field maps to a SQLite column (except arrays and has-many relationships, which use join tables).
 
+## Defining Fields
+
+There are two ways to define fields: **factory functions** (recommended) and **plain tables**.
+
+### Factory Functions (Recommended)
+
+`crap.fields.*` functions set the `type` automatically and return a plain table. Your editor shows only the properties relevant to each field type — no `blocks` on a text field, no `options` on a checkbox.
+
+```lua
+fields = {
+    crap.fields.text({ name = "title", required = true }),
+    crap.fields.select({ name = "status", options = {
+        { label = "Draft", value = "draft" },
+        { label = "Published", value = "published" },
+    }}),
+    crap.fields.relationship({ name = "author", relationship = { collection = "users" } }),
+}
+```
+
+### Plain Tables
+
+You can also define fields as plain tables with an explicit `type` key. This is fully supported and equivalent — factories just set `type` for you.
+
+```lua
+fields = {
+    { name = "title", type = "text", required = true },
+    { name = "status", type = "select", options = { ... } },
+}
+```
+
+Both syntaxes can be freely mixed in the same `fields` array.
+
+> **Why factories?** The `types/crap.lua` file ships per-type LuaLS classes (e.g., `crap.SelectField`, `crap.ArrayField`). When you use `crap.fields.select({...})`, your editor autocompletes only the properties that apply to select fields. With plain tables, the single `crap.FieldDefinition` class shows every possible property.
+
 ## Common Properties
 
 Every field type accepts these properties:
@@ -9,19 +43,14 @@ Every field type accepts these properties:
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `name` | string | **required** | Column name. Must be a valid SQL identifier (alphanumeric + underscore). |
-| `type` | string | `"text"` | Field type. See [supported types](#supported-types). |
 | `required` | boolean | `false` | Validation: must have a non-empty value on create/update. |
 | `unique` | boolean | `false` | Unique constraint. Checked in the current transaction. |
 | `localized` | boolean | `false` | Enable per-locale values. Requires [localization](../locale/overview.md) to be configured. |
 | `validate` | string | `nil` | Lua function ref for custom validation (see below). |
 | `default_value` | any | `nil` | Default value applied on create if no value provided. |
-| `options` | SelectOption[] | `{}` | Options for `select` fields. |
 | `admin` | table | `{}` | Admin UI display options. |
 | `hooks` | table | `{}` | Per-field lifecycle hooks. |
 | `access` | table | `{}` | Per-field access control. |
-| `relationship` | table | `nil` | Relationship configuration (for `relationship` fields). |
-| `fields` | FieldDefinition[] | `{}` | Sub-field definitions (for `array` and `group` fields). |
-| `blocks` | BlockDefinition[] | `{}` | Block type definitions (for `blocks` fields). |
 
 ## Supported Types
 
@@ -78,7 +107,7 @@ return M
 
 ```lua
 -- In field definition:
-{ name = "title", type = "text", validate = "hooks.validators.min_length_3" }
+crap.fields.text({ name = "title", validate = "hooks.validators.min_length_3" })
 ```
 
 The context table contains:

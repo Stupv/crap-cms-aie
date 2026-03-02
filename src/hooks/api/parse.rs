@@ -402,7 +402,7 @@ fn inject_upload_fields(fields: &mut Vec<FieldDefinition>, upload: &CollectionUp
     }
 }
 
-fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
+pub(crate) fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
     let mut fields = Vec::new();
 
     for pair in fields_tbl.clone().sequence_values::<Table>() {

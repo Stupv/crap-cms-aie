@@ -9,13 +9,12 @@ Code editor field stored as a plain text string. Renders a CodeMirror 6 editor i
 ## Definition
 
 ```lua
-{
+crap.fields.code({
     name = "metadata",
-    type = "code",
     admin = {
         language = "json", -- "json", "javascript", "html", "css", "python", or "plain"
     },
-}
+})
 ```
 
 ## Admin Options

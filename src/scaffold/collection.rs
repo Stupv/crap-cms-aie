@@ -108,9 +108,8 @@ pub fn make_collection(
     lua.push_str("    fields = {\n");
 
     for field in &fields {
-        lua.push_str("        {\n");
+        lua.push_str(&format!("        crap.fields.{}({{\n", field.field_type));
         lua.push_str(&format!("            name = \"{}\",\n", field.name));
-        lua.push_str(&format!("            type = \"{}\",\n", field.field_type));
         if field.required {
             lua.push_str("            required = true,\n");
         }
@@ -120,7 +119,7 @@ pub fn make_collection(
         if let Some(stub) = type_specific_stub(&field.field_type) {
             lua.push_str(stub);
         }
-        lua.push_str("        },\n");
+        lua.push_str("        }),\n");
     }
 
     lua.push_str("    },\n");
@@ -182,7 +181,7 @@ fn pluralize(s: &str) -> String {
 }
 
 /// Return type-specific Lua stub lines for complex field types.
-fn type_specific_stub(field_type: &str) -> Option<&'static str> {
+pub(crate) fn type_specific_stub(field_type: &str) -> Option<&'static str> {
     match field_type {
         "select" | "radio" => Some(
             "            options = { { label = \"Option 1\", value = \"option_1\" } },\n"
@@ -194,16 +193,16 @@ fn type_specific_stub(field_type: &str) -> Option<&'static str> {
             "            relationship = { collection = \"media\" },\n"
         ),
         "array" => Some(
-            "            fields = { { name = \"item\", type = \"text\" } },\n"
+            "            fields = { crap.fields.text({ name = \"item\" }) },\n"
         ),
         "blocks" => Some(
-            "            blocks = { { type = \"block_type\", label = \"Block\", fields = { { name = \"content\", type = \"text\" } } } },\n"
+            "            blocks = { { type = \"block_type\", label = \"Block\", fields = { crap.fields.text({ name = \"content\" }) } } },\n"
         ),
         "group" | "collapsible" | "row" => Some(
-            "            fields = { { name = \"item\", type = \"text\" } },\n"
+            "            fields = { crap.fields.text({ name = \"item\" }) },\n"
         ),
         "tabs" => Some(
-            "            tabs = { { label = \"Tab 1\", fields = { { name = \"item\", type = \"text\" } } } },\n"
+            "            tabs = { { label = \"Tab 1\", fields = { crap.fields.text({ name = \"item\" }) } } },\n"
         ),
         "join" => Some(
             "            collection = \"TODO\",\n            on = \"TODO\",\n"
@@ -339,8 +338,8 @@ mod tests {
         assert!(content.contains("singular = \"Post\""));
         assert!(content.contains("plural = \"Posts\""));
         assert!(content.contains("timestamps = true"));
+        assert!(content.contains("crap.fields.text({"));
         assert!(content.contains("name = \"title\""));
-        assert!(content.contains("type = \"text\""));
         assert!(content.contains("required = true"));
     }
 
@@ -355,9 +354,11 @@ mod tests {
 
         let content = fs::read_to_string(tmp.path().join("collections/articles.lua")).unwrap();
         assert!(content.contains("timestamps = false"));
+        assert!(content.contains("crap.fields.text({"));
         assert!(content.contains("name = \"headline\""));
+        assert!(content.contains("crap.fields.richtext({"));
         assert!(content.contains("name = \"body\""));
-        assert!(content.contains("type = \"richtext\""));
+        assert!(content.contains("crap.fields.checkbox({"));
         assert!(content.contains("name = \"draft\""));
         assert!(content.contains("use_as_title = \"headline\""));
     }
@@ -484,15 +485,18 @@ mod tests {
         ).unwrap();
 
         let content = fs::read_to_string(tmp.path().join("collections/posts.lua")).unwrap();
+        assert!(content.contains("crap.fields.relationship({"), "relationship factory");
         assert!(content.contains("relationship = { collection = \"TODO\" }"), "relationship stub");
+        assert!(content.contains("crap.fields.select({"), "select factory");
         assert!(content.contains("options = { { label = \"Option 1\", value = \"option_1\" } }"), "select stub");
-        assert!(content.contains("fields = { { name = \"item\", type = \"text\" } }"), "array stub");
-        assert!(content.contains("blocks = {"), "blocks stub");
-        assert!(content.contains("tabs = {"), "tabs stub");
+        assert!(content.contains("fields = { crap.fields.text({ name = \"item\" }) }"), "array sub-field stub");
+        assert!(content.contains("crap.fields.blocks({"), "blocks factory");
+        assert!(content.contains("crap.fields.tabs({"), "tabs factory");
         assert!(content.contains("admin = { language = \"javascript\" }"), "code stub");
         assert!(content.contains("collection = \"TODO\","), "join collection stub");
         assert!(content.contains("on = \"TODO\","), "join on stub");
-        assert!(content.contains("relationship = { collection = \"media\" }"), "upload field stub");
+        assert!(content.contains("crap.fields.upload({"), "upload factory");
+        assert!(content.contains("relationship = { collection = \"media\" }"), "upload relationship stub");
     }
 
     #[test]

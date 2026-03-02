@@ -9,13 +9,12 @@ Arbitrary JSON data stored as a text blob.
 ## Definition
 
 ```lua
-{
+crap.fields.json({
     name = "metadata",
-    type = "json",
     admin = {
         description = "Arbitrary JSON metadata",
     },
-}
+})
 ```
 
 ## Admin Rendering

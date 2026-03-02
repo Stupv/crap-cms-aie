@@ -9,9 +9,8 @@ Single-line string field. The most common field type.
 ## Definition
 
 ```lua
-{
+crap.fields.text({
     name = "title",
-    type = "text",
     required = true,
     unique = true,
     default_value = "Untitled",
@@ -19,7 +18,7 @@ Single-line string field. The most common field type.
         placeholder = "Enter title",
         description = "The display title",
     },
-}
+})
 ```
 
 ## Multi-Value (`has_many`)

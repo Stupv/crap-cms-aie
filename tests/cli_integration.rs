@@ -281,8 +281,8 @@ fn make_collection_default() {
     let content = std::fs::read_to_string(tmp.path().join("collections/posts.lua")).unwrap();
     assert!(content.contains("crap.collections.define(\"posts\""));
     assert!(content.contains("timestamps = true"));
+    assert!(content.contains("crap.fields.text({"));
     assert!(content.contains("name = \"title\""));
-    assert!(content.contains("type = \"text\""));
 }
 
 #[test]
@@ -295,9 +295,10 @@ fn make_collection_fields_shorthand() {
     ).unwrap();
 
     let content = std::fs::read_to_string(tmp.path().join("collections/articles.lua")).unwrap();
+    assert!(content.contains("crap.fields.text({"));
     assert!(content.contains("name = \"title\""));
+    assert!(content.contains("crap.fields.textarea({"));
     assert!(content.contains("name = \"body\""));
-    assert!(content.contains("type = \"textarea\""));
     assert!(content.contains("required = true"));
 }
 
@@ -404,7 +405,7 @@ fn hook_opts<'a>(
     field: Option<&'a str>,
     force: bool,
 ) -> scaffold::MakeHookOptions<'a> {
-    scaffold::MakeHookOptions { config_dir, name, hook_type, collection, position, field, force, condition_field: None }
+    scaffold::MakeHookOptions { config_dir, name, hook_type, collection, position, field, force, condition_field: None, is_global: false }
 }
 
 #[test]
@@ -432,7 +433,7 @@ fn make_hook_collection_hook() {
     scaffold::make_hook(&opts).unwrap();
 
     let content = std::fs::read_to_string(tmp.path().join("hooks/posts/auto_slug.lua")).unwrap();
-    assert!(content.contains("crap.HookContext"));
+    assert!(content.contains("crap.hook.Posts"));
     assert!(content.contains("before_change hook for posts"));
     assert!(content.contains("return function(context)"));
     assert!(content.contains("return context"));

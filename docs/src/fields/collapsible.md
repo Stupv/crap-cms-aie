@@ -13,18 +13,17 @@ For example, a collapsible with sub-fields `meta_title` and `meta_description` c
 ## Definition
 
 ```lua
-{
+crap.fields.collapsible({
     name = "seo_section",
-    type = "collapsible",
     admin = {
         label = "SEO Settings",
         collapsed = true,  -- start collapsed in admin UI
     },
     fields = {
-        { name = "meta_title", type = "text" },
-        { name = "meta_description", type = "textarea" },
+        crap.fields.text({ name = "meta_title" }),
+        crap.fields.textarea({ name = "meta_description" }),
     },
-}
+})
 ```
 
 ## API Representation

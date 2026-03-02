@@ -1,6 +1,6 @@
 --- Collection after_change hook: queue email notification for new inquiries.
----@param context crap.HookContext
----@return crap.HookContext
+---@param context crap.hook.Inquiries
+---@return crap.hook.Inquiries
 return function(context)
 	if context.operation ~= "create" then
 		return context

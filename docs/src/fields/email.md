@@ -9,15 +9,14 @@ Email address field.
 ## Definition
 
 ```lua
-{
+crap.fields.email({
     name = "contact_email",
-    type = "email",
     required = true,
     unique = true,
     admin = {
         placeholder = "user@example.com",
     },
-}
+})
 ```
 
 ## Admin Rendering
