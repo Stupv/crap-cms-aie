@@ -256,7 +256,9 @@ run_oha() {
          | select(.key | test("^[45]")) | .value] | add // 0
     ' 2>/dev/null || echo "0")
     connect_err=$(echo "$output" | jq -r '
-        [.errorDistribution // {} | to_entries[] | .value] | add // 0
+        [.errorDistribution // {} | to_entries[]
+         | select(.key | test("aborted due to deadline") | not)
+         | .value] | add // 0
     ' 2>/dev/null || echo "0")
     local all_err=$((status_err + connect_err))
 

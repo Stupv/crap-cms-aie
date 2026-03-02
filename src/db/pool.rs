@@ -28,9 +28,9 @@ pub fn create_pool(config_dir: &Path, config: &CrapConfig) -> Result<DbPool> {
     let pool = Pool::builder()
         .max_size(config.database.pool_max_size)
         .min_idle(Some(1))
-        .connection_timeout(Duration::from_secs(5))
+        .connection_timeout(Duration::from_secs(config.database.connection_timeout))
         .connection_customizer(Box::new(SqlitePragmas {
-            busy_timeout_ms: config.database.busy_timeout_ms,
+            busy_timeout: config.database.busy_timeout,
         }))
         .test_on_check_out(false)
         .build(manager)
@@ -41,7 +41,7 @@ pub fn create_pool(config_dir: &Path, config: &CrapConfig) -> Result<DbPool> {
 
 #[derive(Debug)]
 struct SqlitePragmas {
-    busy_timeout_ms: u64,
+    busy_timeout: u64,
 }
 
 impl r2d2::CustomizeConnection<rusqlite::Connection, rusqlite::Error> for SqlitePragmas {
@@ -52,7 +52,7 @@ impl r2d2::CustomizeConnection<rusqlite::Connection, rusqlite::Error> for Sqlite
              PRAGMA foreign_keys = ON;
              PRAGMA busy_timeout = {};
              PRAGMA wal_autocheckpoint = 1000;",
-            self.busy_timeout_ms
+            self.busy_timeout
         ))?;
         Ok(())
     }

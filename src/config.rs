@@ -108,6 +108,45 @@ mod serde_duration_option {
     }
 }
 
+/// Serde helper for duration fields stored in milliseconds. Accepts either a raw
+/// integer (milliseconds, backward compatible) or a human-readable duration string
+/// (`"30s"`, `"5m"`, `"2h"`) which is converted to milliseconds.
+mod serde_duration_ms {
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<u64, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum DurationValue {
+            Millis(u64),
+            Human(String),
+        }
+
+        match DurationValue::deserialize(deserializer)? {
+            DurationValue::Millis(ms) => Ok(ms),
+            DurationValue::Human(s) => {
+                let secs = super::parse_duration_string(&s).ok_or_else(|| {
+                    serde::de::Error::custom(format!(
+                        "invalid duration '{}': use an integer (milliseconds) or a string like \"30s\", \"5m\", \"2h\"",
+                        s
+                    ))
+                })?;
+                Ok(secs * 1000)
+            }
+        }
+    }
+
+    pub fn serialize<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(*value)
+    }
+}
+
 /// Parse a human-readable file size string into bytes.
 ///
 /// Supports: `"500B"` (bytes), `"100KB"` (kilobytes), `"50MB"` (megabytes), `"1GB"` (gigabytes).
@@ -571,7 +610,13 @@ pub struct DatabaseConfig {
     /// Maximum number of connections in the pool. Default: 16.
     pub pool_max_size: u32,
     /// SQLite busy timeout in milliseconds. Default: 30000 (30s).
-    pub busy_timeout_ms: u64,
+    /// Accepts integer milliseconds or human-readable string ("30s", "1m").
+    #[serde(with = "serde_duration_ms")]
+    pub busy_timeout: u64,
+    /// Pool connection timeout in seconds. Default: 5.
+    /// Accepts integer seconds or human-readable string ("5s", "10s").
+    #[serde(with = "serde_duration")]
+    pub connection_timeout: u64,
 }
 
 /// Admin UI behavior settings.
@@ -605,7 +650,8 @@ impl Default for DatabaseConfig {
         Self {
             path: "data/crap.db".to_string(),
             pool_max_size: 16,
-            busy_timeout_ms: 30000,
+            busy_timeout: 30000,
+            connection_timeout: 5,
         }
     }
 }
@@ -767,7 +813,7 @@ mod tests {
         assert_eq!(config.server.host, "0.0.0.0");
         assert_eq!(config.database.path, "data/crap.db");
         assert_eq!(config.database.pool_max_size, 16);
-        assert_eq!(config.database.busy_timeout_ms, 30000);
+        assert_eq!(config.database.busy_timeout, 30000);
         assert!(!config.admin.dev_mode);
         assert!(config.admin.require_auth);
         assert!(config.admin.access.is_none());
@@ -1005,6 +1051,39 @@ dev_mode = false
         ).unwrap();
         let config = CrapConfig::load(tmp.path()).unwrap();
         assert_eq!(config.auth.login_lockout_seconds, 300);
+    }
+
+    #[test]
+    fn serde_duration_ms_human_string() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[database]\nbusy_timeout = \"30s\"\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.database.busy_timeout, 30000);
+    }
+
+    #[test]
+    fn serde_duration_ms_integer_backward_compat() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[database]\nbusy_timeout = 15000\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.database.busy_timeout, 15000);
+    }
+
+    #[test]
+    fn connection_timeout_human_string() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[database]\nconnection_timeout = \"10s\"\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert_eq!(config.database.connection_timeout, 10);
     }
 
     #[test]
@@ -1265,11 +1344,11 @@ allow_credentials = true
         let tmp = tempfile::tempdir().expect("tempdir");
         std::fs::write(
             tmp.path().join("crap.toml"),
-            "[database]\npool_max_size = 32\nbusy_timeout_ms = 60000\n",
+            "[database]\npool_max_size = 32\nbusy_timeout = 60000\n",
         ).unwrap();
         let config = CrapConfig::load(tmp.path()).unwrap();
         assert_eq!(config.database.pool_max_size, 32);
-        assert_eq!(config.database.busy_timeout_ms, 60000);
+        assert_eq!(config.database.busy_timeout, 60000);
     }
 
     #[test]

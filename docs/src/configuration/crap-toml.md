@@ -84,7 +84,8 @@ host = "0.0.0.0"        # Bind address
 [database]
 path = "data/crap.db"   # Relative to config dir, or absolute
 pool_max_size = 16       # Max connections in the pool
-busy_timeout_ms = 30000  # SQLite busy timeout in milliseconds (30s)
+busy_timeout = "30s"     # SQLite busy timeout (integer ms or "30s", "1m")
+connection_timeout = 5   # Pool checkout timeout (seconds or "5s")
 
 [admin]
 dev_mode = false         # Reload templates per-request (enable in development)
@@ -167,7 +168,8 @@ allow_credentials = false # Allow cookies/Authorization. Cannot use with ["*"] o
 |-------|------|---------|-------------|
 | `path` | string | `"data/crap.db"` | SQLite database path. Relative paths are resolved from the config directory. Absolute paths are used as-is. |
 | `pool_max_size` | integer | `16` | Maximum number of connections in the SQLite connection pool. |
-| `busy_timeout_ms` | integer | `30000` | SQLite busy timeout in milliseconds. Controls how long a connection waits for locks before returning SQLITE_BUSY. |
+| `busy_timeout` | duration | `30000` (`"30s"`) | SQLite busy timeout in milliseconds. Controls how long a connection waits for locks before returning SQLITE_BUSY. Accepts integer ms or human-readable string (`"30s"`, `"1m"`). |
+| `connection_timeout` | duration | `5` | Pool checkout timeout in seconds. How long `pool.get()` waits for a free connection before returning an error. |
 
 ### `[admin]`
 
