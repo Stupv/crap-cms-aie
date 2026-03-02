@@ -161,7 +161,7 @@ fn setup_app_with_config(
         config,
         config_dir: tmp.path().to_path_buf(),
         pool: db_pool.clone(),
-        registry: registry.clone(),
+        registry: Registry::snapshot(&registry),
         handlebars,
         hook_runner,
         jwt_secret: "test-jwt-secret".to_string(),

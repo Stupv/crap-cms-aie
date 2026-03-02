@@ -6,6 +6,7 @@ use super::collection::{CollectionDefinition, GlobalDefinition};
 use super::job::JobDefinition;
 
 /// Holds all collection, global, and job definitions loaded at startup.
+#[derive(Clone)]
 pub struct Registry {
     pub collections: HashMap<String, CollectionDefinition>,
     pub globals: HashMap<String, GlobalDefinition>,
@@ -67,6 +68,15 @@ impl Registry {
     /// Look up a job definition by slug.
     pub fn get_job(&self, slug: &str) -> Option<&JobDefinition> {
         self.jobs.get(slug)
+    }
+
+    /// Create a read-only `Arc<Registry>` snapshot from a `SharedRegistry`.
+    ///
+    /// Call once after startup (after all `define()` writes) and pass the snapshot
+    /// to hot-path consumers (admin UI, gRPC API) that only read the registry.
+    pub fn snapshot(shared: &SharedRegistry) -> Arc<Registry> {
+        let reg = shared.read().expect("Registry lock poisoned during snapshot");
+        Arc::new(reg.clone())
     }
 }
 
@@ -143,5 +153,20 @@ mod tests {
     fn get_nonexistent_returns_none() {
         let reg = Registry::new();
         assert!(reg.get_global("nonexistent").is_none());
+    }
+
+    #[test]
+    fn snapshot_clones_registry() {
+        let shared = Registry::shared();
+        {
+            let mut reg = shared.write().unwrap();
+            reg.register_collection(make_collection("posts"));
+            reg.register_global(make_global("settings"));
+        }
+        let snap = Registry::snapshot(&shared);
+        assert!(snap.get_collection("posts").is_some());
+        assert!(snap.get_global("settings").is_some());
+        assert_eq!(snap.collections.len(), 1);
+        assert_eq!(snap.globals.len(), 1);
     }
 }

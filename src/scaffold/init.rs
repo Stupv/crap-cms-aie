@@ -63,7 +63,7 @@ pub fn init(dir: Option<PathBuf>, opts: &InitOptions) -> Result<()> {
     // Build crap.toml dynamically from InitOptions
     let mut toml = String::new();
     toml.push_str(&format!(
-        "[server]\nadmin_port = {}\ngrpc_port = {}\nhost = \"0.0.0.0\"\n",
+        "[server]\nadmin_port = {}\ngrpc_port = {}\nhost = \"0.0.0.0\"\n# compression = \"off\"             # \"off\" (default), \"gzip\", \"br\", \"all\"\n# grpc_rate_limit_requests = 0    # per-IP request limit (0 = disabled)\n# grpc_rate_limit_window = 60     # sliding window in seconds (or \"1m\")\n",
         opts.admin_port, opts.grpc_port
     ));
     toml.push_str("\n[database]\npath = \"data/crap.db\"\n");
@@ -90,7 +90,7 @@ pub fn init(dir: Option<PathBuf>, opts: &InitOptions) -> Result<()> {
     toml.push_str("\n# [depth]\n# default_depth = 1              # default relationship population depth for FindByID\n# max_depth = 10                 # hard cap on population depth\n");
     toml.push_str("\n# [upload]\n# max_file_size = \"50MB\"         # global max upload size (integer bytes or \"50MB\", \"1GB\")\n");
     toml.push_str("\n# [email]\n# smtp_host = \"\"                 # SMTP server (empty = email disabled)\n# smtp_port = 587\n# smtp_user = \"\"\n# smtp_pass = \"\"\n# from_address = \"noreply@example.com\"\n# from_name = \"Crap CMS\"\n");
-    toml.push_str("\n# [hooks]\n# on_init = []                   # hook functions to run at startup\n# max_depth = 3                  # max hook recursion depth (hook → CRUD → hook)\n# vm_pool_size = 4               # number of Lua VMs for concurrent hook execution\n");
+    toml.push_str("\n# [hooks]\n# on_init = []                   # hook functions to run at startup\n# max_depth = 3                  # max hook recursion depth (hook → CRUD → hook)\n# vm_pool_size = 8               # number of Lua VMs for concurrent hook execution (default: max(cpus, 4), cap 32)\n");
     toml.push_str("\n# [jobs]\n# poll_interval = 1              # seconds between job queue polls\n# cron_interval = 60             # seconds between cron schedule checks\n");
     toml.push_str("\n# [cors]\n# allowed_origins = []           # empty = CORS disabled; [\"*\"] = allow any origin\n# allowed_methods = [\"GET\", \"POST\", \"PUT\", \"DELETE\", \"PATCH\", \"OPTIONS\"]\n# allowed_headers = [\"Content-Type\", \"Authorization\"]\n# max_age_seconds = 3600\n# allow_credentials = false      # cannot be used with wildcard origin\n");
     toml.push_str("\n# [access]\n# default_deny = false           # when true, collections without access functions deny all\n");

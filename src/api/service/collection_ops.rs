@@ -136,15 +136,12 @@ impl ContentService {
             let docs = runner.apply_after_read_many(&hooks, &fields, &collection, "find", docs);
             // Populate relationships if depth > 0
             if depth > 0 {
-                let reg = registry
-                    .read()
-                    .map_err(|e| anyhow::anyhow!("Registry lock: {}", e))?;
                 let mut docs = docs;
                 for doc in &mut docs {
                     let mut visited = std::collections::HashSet::new();
                     query::populate_relationships(
                         &conn,
-                        &reg,
+                        &registry,
                         &collection,
                         &def_owned,
                         doc,
@@ -248,13 +245,10 @@ impl ContentService {
             // Populate relationships if depth > 0
             if depth > 0 {
                 if let Some(ref mut d) = doc {
-                    let reg = registry
-                        .read()
-                        .map_err(|e| anyhow::anyhow!("Registry lock: {}", e))?;
                     let mut visited = std::collections::HashSet::new();
                     query::populate_relationships(
                         &conn,
-                        &reg,
+                        &registry,
                         &collection,
                         &def_owned,
                         d,

@@ -18,12 +18,8 @@ pub async fn index(
     let mut collection_cards = Vec::new();
     let mut global_cards = Vec::new();
     {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(e) => return Html(format!("<h1>Error</h1><pre>Registry lock poisoned: {}</pre>", e)),
-        };
         let conn = state.pool.get().ok();
-        for (slug, def) in &reg.collections {
+        for (slug, def) in &state.registry.collections {
             let count = crate::db::ops::count_documents(&state.pool, slug, def, &[], None)
                 .unwrap_or(0);
             let last_updated = conn.as_ref().and_then(|c| {
@@ -44,7 +40,7 @@ pub async fn index(
                 "has_versions": def.has_versions(),
             }));
         }
-        for (slug, def) in &reg.globals {
+        for (slug, def) in &state.registry.globals {
             let table_name = format!("_global_{}", slug);
             let last_updated = conn.as_ref().and_then(|c| {
                 c.query_row(

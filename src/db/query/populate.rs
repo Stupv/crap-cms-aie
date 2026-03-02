@@ -1,11 +1,11 @@
 //! Relationship population (depth-based recursive loading).
 
 use anyhow::Result;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::core::{CollectionDefinition, Document};
 use crate::core::field::FieldType;
-use super::read::{find, find_by_id};
+use super::read::{find, find_by_id, find_by_ids};
 use super::{FindQuery, FilterClause, Filter, FilterOp};
 
 /// Parse a polymorphic reference "collection/id" into `(collection, id)`.
@@ -92,21 +92,50 @@ pub fn populate_relationships(
                     }
                     _ => continue,
                 };
+
+                // Group IDs by target collection for batch fetch
+                let mut ids_by_collection: HashMap<String, Vec<String>> = HashMap::new();
+                for item in &items {
+                    if let Some((col, id)) = parse_poly_ref(item) {
+                        if !visited.contains(&(col.clone(), id.clone())) {
+                            ids_by_collection.entry(col).or_default().push(id);
+                        }
+                    }
+                }
+
+                // Batch fetch per collection
+                let mut fetched_map: HashMap<String, HashMap<String, Document>> = HashMap::new();
+                for (col, col_ids) in &ids_by_collection {
+                    if let Some(item_def) = registry.get_collection(col) {
+                        let item_def = item_def.clone();
+                        let fetched = find_by_ids(conn, col, &item_def, col_ids, None)?;
+                        let doc_map: HashMap<String, Document> = fetched.into_iter()
+                            .map(|d| (d.id.clone(), d))
+                            .collect();
+                        fetched_map.insert(col.clone(), doc_map);
+                    }
+                }
+
+                // Reassemble in original order
                 let mut populated = Vec::new();
                 for item in &items {
                     if let Some((col, id)) = parse_poly_ref(item) {
-                        if let Some(item_def) = registry.get_collection(&col) {
-                            let item_def = item_def.clone();
-                            if visited.contains(&(col.clone(), id.clone())) {
-                                populated.push(serde_json::Value::String(item.clone()));
-                                continue;
-                            }
-                            if let Some(mut rd) = find_by_id(conn, &col, &item_def, &id, None)? {
-                                if let Some(ref uc) = item_def.upload {
-                                    if uc.enabled { crate::core::upload::assemble_sizes_object(&mut rd, uc); }
+                        if visited.contains(&(col.clone(), id.clone())) {
+                            populated.push(serde_json::Value::String(item.clone()));
+                            continue;
+                        }
+                        if let Some(col_map) = fetched_map.get_mut(&col) {
+                            if let Some(item_def) = registry.get_collection(&col) {
+                                let item_def = item_def.clone();
+                                if let Some(mut rd) = col_map.remove(&id) {
+                                    if let Some(ref uc) = item_def.upload {
+                                        if uc.enabled { crate::core::upload::assemble_sizes_object(&mut rd, uc); }
+                                    }
+                                    populate_relationships(conn, registry, &col, &item_def, &mut rd, effective_depth - 1, visited, None)?;
+                                    populated.push(document_to_json(&rd, &col));
+                                } else {
+                                    populated.push(serde_json::Value::String(item.clone()));
                                 }
-                                populate_relationships(conn, registry, &col, &item_def, &mut rd, effective_depth - 1, visited, None)?;
-                                populated.push(document_to_json(&rd, &col));
                             } else {
                                 populated.push(serde_json::Value::String(item.clone()));
                             }
@@ -154,13 +183,26 @@ pub fn populate_relationships(
                     _ => continue,
                 };
 
+                // Collect IDs not yet visited for batch fetch
+                let fetch_ids: Vec<String> = ids.iter()
+                    .filter(|id| !visited.contains(&(rel.collection.clone(), id.to_string())))
+                    .cloned()
+                    .collect();
+
+                // Batch fetch all needed documents in one query
+                let fetched = find_by_ids(conn, &rel.collection, &rel_def, &fetch_ids, None)?;
+                let mut fetched_map: HashMap<String, Document> = fetched.into_iter()
+                    .map(|d| (d.id.clone(), d))
+                    .collect();
+
+                // Reassemble in original order
                 let mut populated = Vec::new();
                 for id in &ids {
                     if visited.contains(&(rel.collection.clone(), id.clone())) {
                         populated.push(serde_json::Value::String(id.clone()));
                         continue;
                     }
-                    match find_by_id(conn, &rel.collection, &rel_def, id, None)? {
+                    match fetched_map.remove(id) {
                         Some(mut related_doc) => {
                             if let Some(ref uc) = rel_def.upload {
                                 if uc.enabled {

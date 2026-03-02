@@ -35,15 +35,9 @@ pub async fn edit_form(
     claims: Option<Extension<Claims>>,
     auth_user: Option<Extension<AuthUser>>,
 ) -> impl IntoResponse {
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(e) => return server_error(&state, &format!("Registry lock poisoned: {}", e)).into_response(),
-        };
-        match reg.get_global(&slug) {
-            Some(d) => d.clone(),
-            None => return not_found(&state, &format!("Global '{}' not found", slug)).into_response(),
-        }
+    let def = match state.registry.get_global(&slug) {
+        Some(d) => d.clone(),
+        None => return not_found(&state, &format!("Global '{}' not found", slug)).into_response(),
     };
 
     // Check read access
@@ -162,15 +156,8 @@ pub async fn update_action(
     auth_user: Option<Extension<AuthUser>>,
     Form(mut form_data): Form<HashMap<String, String>>,
 ) -> axum::response::Response {
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(_) => return redirect_response("/admin"),
-        };
-        reg.get_global(&slug).cloned()
-    };
-    let def = match def {
-        Some(d) => d,
+    let def = match state.registry.get_global(&slug) {
+        Some(d) => d.clone(),
         None => return redirect_response("/admin"),
     };
 
@@ -299,15 +286,9 @@ pub async fn list_versions_page(
     claims: Option<Extension<Claims>>,
     auth_user: Option<Extension<AuthUser>>,
 ) -> impl IntoResponse {
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(e) => return server_error(&state, &format!("Registry lock poisoned: {}", e)).into_response(),
-        };
-        match reg.get_global(&slug) {
-            Some(d) => d.clone(),
-            None => return not_found(&state, &format!("Global '{}' not found", slug)).into_response(),
-        }
+    let def = match state.registry.get_global(&slug) {
+        Some(d) => d.clone(),
+        None => return not_found(&state, &format!("Global '{}' not found", slug)).into_response(),
     };
 
     if !def.has_versions() {
@@ -368,15 +349,8 @@ pub async fn restore_version(
     Path((slug, version_id)): Path<(String, String)>,
     auth_user: Option<Extension<AuthUser>>,
 ) -> impl IntoResponse {
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(_) => return redirect_response("/admin"),
-        };
-        reg.get_global(&slug).cloned()
-    };
-    let def = match def {
-        Some(d) => d,
+    let def = match state.registry.get_global(&slug) {
+        Some(d) => d.clone(),
         None => return redirect_response("/admin"),
     };
 

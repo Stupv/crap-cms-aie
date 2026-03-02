@@ -61,13 +61,7 @@ pub async fn login_action(
         return login_error(&state, "Too many login attempts. Please try again later.", &form.email);
     }
 
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(_) => return login_error(&state, "Internal error", &form.email),
-        };
-        reg.get_collection(&form.collection).cloned()
-    };
+    let def = state.registry.get_collection(&form.collection).cloned();
 
     let def = match def {
         Some(d) if d.is_auth_collection() => d,
@@ -227,15 +221,7 @@ pub async fn forgot_password_action(
     let auth_collections = get_auth_collections(&state);
 
     // Try to find user and send reset email in background
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(_) => {
-                return render_forgot_success(&state, &auth_collections);
-            }
-        };
-        reg.get_collection(&form.collection).cloned()
-    };
+    let def = state.registry.get_collection(&form.collection).cloned();
 
     if let Some(def) = def {
         if def.is_auth_collection() && def.auth.as_ref().is_some_and(|a| a.forgot_password) {
@@ -351,11 +337,7 @@ pub async fn reset_password_page(
             Ok(c) => c,
             Err(_) => return false,
         };
-        let reg = match registry.read() {
-            Ok(r) => r,
-            Err(_) => return false,
-        };
-        for def in reg.collections.values() {
+        for def in registry.collections.values() {
             if !def.is_auth_collection() { continue; }
             match query::find_by_reset_token(&conn, &def.slug, def, &token) {
                 Ok(Some((_, exp))) => {
@@ -421,11 +403,9 @@ pub async fn reset_password_action(
 
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        let reg = registry.read()
-            .map_err(|e| anyhow::anyhow!("Registry lock: {}", e))?;
 
         // Search all auth collections for the token
-        for def in reg.collections.values() {
+        for def in registry.collections.values() {
             if !def.is_auth_collection() { continue; }
             if let Some((user, exp)) = query::find_by_reset_token(&conn, &def.slug, def, &token)? {
                 if chrono::Utc::now().timestamp() >= exp {
@@ -493,10 +473,8 @@ pub async fn verify_email(
 
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        let reg = registry.read()
-            .map_err(|e| anyhow::anyhow!("Registry lock: {}", e))?;
 
-        for def in reg.collections.values() {
+        for def in registry.collections.values() {
             if !def.is_auth_collection() { continue; }
             if !def.auth.as_ref().is_some_and(|a| a.verify_email) { continue; }
             if let Some((user, exp)) = query::find_by_verification_token(&conn, &def.slug, def, &token)? {
@@ -565,11 +543,7 @@ fn login_error(state: &AdminState, error: &str, email: &str) -> axum::response::
 
 /// Check if all auth collections have disable_local = true.
 fn all_disable_local(state: &AdminState) -> bool {
-    let reg = match state.registry.read() {
-        Ok(r) => r,
-        Err(_) => return false,
-    };
-    let auth_collections: Vec<_> = reg.collections.values()
+    let auth_collections: Vec<_> = state.registry.collections.values()
         .filter(|def| def.is_auth_collection())
         .collect();
     if auth_collections.is_empty() {
@@ -586,21 +560,13 @@ fn show_forgot_password(state: &AdminState) -> bool {
     if !email::is_configured(&state.config.email) {
         return false;
     }
-    let reg = match state.registry.read() {
-        Ok(r) => r,
-        Err(_) => return false,
-    };
-    reg.collections.values()
+    state.registry.collections.values()
         .filter(|def| def.is_auth_collection())
         .any(|def| def.auth.as_ref().is_some_and(|a| a.forgot_password))
 }
 
 fn get_auth_collections(state: &AdminState) -> Vec<serde_json::Value> {
-    let reg = match state.registry.read() {
-        Ok(r) => r,
-        Err(_) => return Vec::new(),
-    };
-    let mut collections: Vec<_> = reg.collections.values()
+    let mut collections: Vec<_> = state.registry.collections.values()
         .filter(|def| def.is_auth_collection())
         .map(|def| serde_json::json!({
             "slug": def.slug,

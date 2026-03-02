@@ -59,6 +59,45 @@ impl LoginRateLimiter {
     }
 }
 
+/// Per-IP gRPC rate limiter. Sliding-window counter per IP address.
+/// When `max_requests == 0`, rate limiting is disabled (all requests pass).
+pub struct GrpcRateLimiter {
+    requests: Mutex<HashMap<String, Vec<Instant>>>,
+    max_requests: u32,
+    window: Duration,
+}
+
+impl GrpcRateLimiter {
+    /// Create a new rate limiter. `max_requests == 0` disables limiting.
+    pub fn new(max_requests: u32, window_seconds: u64) -> Self {
+        Self {
+            requests: Mutex::new(HashMap::new()),
+            max_requests,
+            window: Duration::from_secs(window_seconds),
+        }
+    }
+
+    /// Check if a request from `ip` is allowed and record it.
+    /// Returns `true` if the request is within the limit (or limiting is disabled).
+    pub fn check_and_record(&self, ip: &str) -> bool {
+        if self.max_requests == 0 {
+            return true;
+        }
+        let mut map = match self.requests.lock() {
+            Ok(m) => m,
+            Err(_) => return true, // fail open on poison
+        };
+        let now = Instant::now();
+        let times = map.entry(ip.to_string()).or_default();
+        times.retain(|t| now.duration_since(*t) < self.window);
+        if times.len() as u32 >= self.max_requests {
+            return false;
+        }
+        times.push(now);
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,5 +146,46 @@ mod tests {
         // After a tiny sleep, all attempts should have expired
         std::thread::sleep(Duration::from_millis(10));
         assert!(!limiter.is_blocked("a@b.com"));
+    }
+
+    // --- GrpcRateLimiter tests ---
+
+    #[test]
+    fn grpc_disabled_allows_all() {
+        let limiter = GrpcRateLimiter::new(0, 60);
+        for _ in 0..1000 {
+            assert!(limiter.check_and_record("1.2.3.4"));
+        }
+    }
+
+    #[test]
+    fn grpc_blocks_at_limit() {
+        let limiter = GrpcRateLimiter::new(3, 60);
+        assert!(limiter.check_and_record("1.2.3.4"));
+        assert!(limiter.check_and_record("1.2.3.4"));
+        assert!(limiter.check_and_record("1.2.3.4"));
+        assert!(!limiter.check_and_record("1.2.3.4"));
+    }
+
+    #[test]
+    fn grpc_different_ips_independent() {
+        let limiter = GrpcRateLimiter::new(2, 60);
+        assert!(limiter.check_and_record("1.2.3.4"));
+        assert!(limiter.check_and_record("1.2.3.4"));
+        assert!(!limiter.check_and_record("1.2.3.4"));
+        // Different IP is still allowed
+        assert!(limiter.check_and_record("5.6.7.8"));
+        assert!(limiter.check_and_record("5.6.7.8"));
+        assert!(!limiter.check_and_record("5.6.7.8"));
+    }
+
+    #[test]
+    fn grpc_window_expiry_resets() {
+        let limiter = GrpcRateLimiter::new(2, 0);
+        assert!(limiter.check_and_record("1.2.3.4"));
+        assert!(limiter.check_and_record("1.2.3.4"));
+        // Window is 0s, so after a tiny sleep all entries expire
+        std::thread::sleep(Duration::from_millis(10));
+        assert!(limiter.check_and_record("1.2.3.4"));
     }
 }

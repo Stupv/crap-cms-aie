@@ -1224,10 +1224,7 @@ pub(super) fn enrich_field_contexts(
     use crate::core::upload;
     use crate::db::query::{self, LocaleContext};
 
-    let reg = match state.registry.read() {
-        Ok(r) => r,
-        Err(_) => return,
-    };
+    let reg = &state.registry;
     let conn = match state.pool.get() {
         Ok(c) => c,
         Err(_) => return,

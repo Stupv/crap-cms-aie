@@ -82,7 +82,8 @@ This prevents infinite loops when collections reference each other (e.g., posts 
 ## Performance Considerations
 
 - `depth=0` requires no extra queries
-- `depth=1` requires one query per relationship field per document
-- Higher depths multiply this exponentially
+- Has-many relationships use batch `IN` queries — one query per relationship field regardless of how many IDs it contains
+- Has-one relationships use one query per field per document
+- Higher depths multiply queries by the number of nested relationship fields
 - Use `max_depth` on fields to limit expensive deep populations
-- `Find` defaults to `depth=0` to avoid N+1 issues on list endpoints
+- `Find` defaults to `depth=0` to avoid extra queries on list endpoints

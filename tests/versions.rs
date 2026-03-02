@@ -123,7 +123,7 @@ fn setup_service(defs: Vec<CollectionDefinition>) -> TestSetup {
 
     let service = ContentService::new(
         db_pool.clone(),
-        registry.clone(),
+        Registry::snapshot(&registry),
         hook_runner.clone(),
         config.auth.secret.clone(),
         &config.depth,

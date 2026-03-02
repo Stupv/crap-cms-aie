@@ -166,7 +166,7 @@ fn setup_service(
 
     let service = ContentService::new(
         db_pool.clone(),
-        registry,
+        Registry::snapshot(&registry),
         hook_runner,
         config.auth.secret.clone(),
         &config.depth,
@@ -2042,7 +2042,7 @@ fn setup_service_with_hook(
 
     let service = ContentService::new(
         db_pool.clone(),
-        registry,
+        Registry::snapshot(&registry),
         hook_runner,
         config.auth.secret.clone(),
         &config.depth,
@@ -2480,7 +2480,7 @@ return M
     let email_renderer =
         Arc::new(EmailRenderer::new(tmp.path()).expect("create email renderer"));
     let service = ContentService::new(
-        db_pool.clone(), registry, hook_runner, config.auth.secret.clone(), &config.depth,
+        db_pool.clone(), Registry::snapshot(&registry), hook_runner, config.auth.secret.clone(), &config.depth,
         config.email.clone(), email_renderer, config.server.clone(), None, config.locale.clone(),
         tmp.path().to_path_buf(),
         std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
@@ -2593,7 +2593,7 @@ return M
     let email_renderer =
         Arc::new(EmailRenderer::new(tmp.path()).expect("create email renderer"));
     let service = ContentService::new(
-        db_pool.clone(), registry, hook_runner, config.auth.secret.clone(), &config.depth,
+        db_pool.clone(), Registry::snapshot(&registry), hook_runner, config.auth.secret.clone(), &config.depth,
         config.email.clone(), email_renderer, config.server.clone(), None, config.locale.clone(),
         tmp.path().to_path_buf(),
         std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
@@ -2685,7 +2685,7 @@ return M
     let email_renderer =
         Arc::new(EmailRenderer::new(tmp.path()).expect("create email renderer"));
     let service = ContentService::new(
-        db_pool.clone(), registry, hook_runner, config.auth.secret.clone(), &config.depth,
+        db_pool.clone(), Registry::snapshot(&registry), hook_runner, config.auth.secret.clone(), &config.depth,
         config.email.clone(), email_renderer, config.server.clone(), None, config.locale.clone(),
         tmp.path().to_path_buf(),
         std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
@@ -2792,7 +2792,7 @@ return M
     let email_renderer =
         Arc::new(EmailRenderer::new(tmp.path()).expect("create email renderer"));
     let service = ContentService::new(
-        db_pool.clone(), registry, hook_runner, config.auth.secret.clone(), &config.depth,
+        db_pool.clone(), Registry::snapshot(&registry), hook_runner, config.auth.secret.clone(), &config.depth,
         config.email.clone(), email_renderer, config.server.clone(), None, config.locale.clone(),
         tmp.path().to_path_buf(),
         std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
@@ -2890,7 +2890,7 @@ return M
     let email_renderer =
         Arc::new(EmailRenderer::new(tmp.path()).expect("create email renderer"));
     let service = ContentService::new(
-        db_pool.clone(), registry, hook_runner, config.auth.secret.clone(), &config.depth,
+        db_pool.clone(), Registry::snapshot(&registry), hook_runner, config.auth.secret.clone(), &config.depth,
         config.email.clone(), email_renderer, config.server.clone(), None, config.locale.clone(),
         tmp.path().to_path_buf(),
         std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
@@ -2997,7 +2997,7 @@ fn setup_service_with_locale(
 
     let service = ContentService::new(
         db_pool.clone(),
-        registry,
+        Registry::snapshot(&registry),
         hook_runner,
         config.auth.secret.clone(),
         &config.depth,

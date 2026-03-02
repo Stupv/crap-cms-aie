@@ -47,7 +47,7 @@ login_lockout_seconds = "5m"
 auto_purge = "7d"
 ```
 
-Fields that support this: `token_expiry`, `login_lockout_seconds`, `reset_token_expiry`, `max_age_seconds`, `poll_interval`, `cron_interval`, `heartbeat_interval`, `auto_purge`.
+Fields that support this: `token_expiry`, `login_lockout_seconds`, `reset_token_expiry`, `max_age_seconds`, `poll_interval`, `cron_interval`, `heartbeat_interval`, `auto_purge`, `grpc_rate_limit_window`.
 
 ## File Size Values
 
@@ -77,6 +77,9 @@ Fields that support this: `max_file_size` (global and per-collection).
 admin_port = 3000       # Admin UI port
 grpc_port = 50051       # gRPC API port
 host = "0.0.0.0"        # Bind address
+# compression = "off"   # "off" (default), "gzip", "br", "all"
+# grpc_rate_limit_requests = 0   # Per-IP request limit (0 = disabled)
+# grpc_rate_limit_window = 60    # Sliding window in seconds (or "1m")
 
 [database]
 path = "data/crap.db"   # Relative to config dir, or absolute
@@ -112,8 +115,8 @@ from_name = "Crap CMS"  # Sender display name
 
 [hooks]
 on_init = []             # Lua function refs to run at startup (with CRUD access)
-vm_pool_size = 4         # Number of Lua VMs for concurrent hook execution
-                         # Default: min(available_parallelism, 8)
+vm_pool_size = 8         # Number of Lua VMs for concurrent hook execution
+                         # Default: max(available_parallelism, 4), capped at 32
 
 [live]
 enabled = true           # Enable SSE + gRPC Subscribe for live mutation events
@@ -154,6 +157,9 @@ allow_credentials = false # Allow cookies/Authorization. Cannot use with ["*"] o
 | `admin_port` | integer | `3000` | Port for the Axum admin UI |
 | `grpc_port` | integer | `50051` | Port for the Tonic gRPC API |
 | `host` | string | `"0.0.0.0"` | Bind address for both servers |
+| `compression` | string | `"off"` | Response compression. `"off"` = disabled (default), `"gzip"` = gzip only, `"br"` = brotli only, `"all"` = gzip + brotli. Most deployments use a reverse proxy (nginx/caddy) for compression, so this is opt-in. |
+| `grpc_rate_limit_requests` | integer | `0` | Maximum number of gRPC requests per IP within the sliding window. `0` = disabled (default). When enabled, requests exceeding the limit receive `ResourceExhausted` status. |
+| `grpc_rate_limit_window` | integer/string | `60` (`"1m"`) | Sliding window duration for rate limiting. Accepts seconds (integer) or human-readable (`"1m"`, `"30s"`). |
 
 ### `[database]`
 
@@ -213,7 +219,7 @@ When configured, email enables password reset ("Forgot password?" link on login)
 |-------|------|---------|-------------|
 | `on_init` | string[] | `[]` | Lua function refs to execute at startup. These run synchronously with CRUD access — failure aborts startup. |
 | `max_depth` | integer | `3` | Maximum hook recursion depth. When Lua CRUD in hooks triggers more hooks, this caps the chain. `0` = never run hooks from Lua CRUD. |
-| `vm_pool_size` | integer | `min(cpus, 8)` | Number of Lua VMs in the pool for concurrent hook execution. Default is the number of available CPU cores capped at 8. |
+| `vm_pool_size` | integer | `max(cpus, 4)` capped at 32 | Number of Lua VMs in the pool for concurrent hook execution. Default is the number of available CPU cores with a floor of 4 and ceiling of 32. |
 
 ### `[live]`
 
@@ -310,5 +316,5 @@ from_name = "My App"
 
 [hooks]
 on_init = ["hooks.seed.run"]
-vm_pool_size = 4
+vm_pool_size = 8
 ```

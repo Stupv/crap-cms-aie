@@ -12,8 +12,8 @@ use axum::routing::MethodRouter;
 use axum::http::{Method, StatusCode};
 use std::path::PathBuf;
 
-use crate::config::CrapConfig;
-use crate::core::SharedRegistry;
+use crate::config::{CrapConfig, CompressionMode};
+use crate::core::Registry;
 use crate::core::auth::{self, AuthUser};
 use crate::core::event::EventBus;
 use crate::db::DbPool;
@@ -31,7 +31,7 @@ pub async fn start(
     config: CrapConfig,
     config_dir: PathBuf,
     pool: DbPool,
-    registry: SharedRegistry,
+    registry: std::sync::Arc<Registry>,
     hook_runner: HookRunner,
     jwt_secret: String,
     event_bus: Option<EventBus>,
@@ -46,11 +46,7 @@ pub async fn start(
     );
 
     // Check if any auth collections exist
-    let has_auth = {
-        let reg = registry.read()
-            .map_err(|e| anyhow::anyhow!("Registry lock poisoned: {}", e))?;
-        reg.collections.values().any(|d| d.is_auth_collection())
-    };
+    let has_auth = registry.collections.values().any(|d| d.is_auth_collection());
 
     let login_limiter = std::sync::Arc::new(
         crate::core::rate_limit::LoginRateLimiter::new(
@@ -145,7 +141,8 @@ pub fn build_router(state: AdminState) -> Router {
         .nest_service("/static", static_assets::overlay_service(config_dir))
         .route("/uploads/{collection_slug}/{filename}", get(uploads::serve_upload))
         .layer(DefaultBodyLimit::max((state.config.upload.max_file_size + 1024 * 1024) as usize))
-        .layer(middleware::from_fn(csrf_middleware));
+        .layer(middleware::from_fn(csrf_middleware))
+        .layer(middleware::from_fn(html_cache_control));
 
     // Add CORS layer if configured (runs before CSRF in request processing)
     let router = if let Some(cors) = state.config.cors.build_layer() {
@@ -154,7 +151,45 @@ pub fn build_router(state: AdminState) -> Router {
         router
     };
 
+    // Add response compression if configured
+    let router = match state.config.server.compression {
+        CompressionMode::Off => router,
+        CompressionMode::Gzip => router.layer(
+            tower_http::compression::CompressionLayer::new()
+                .no_br().no_deflate().no_zstd()
+        ),
+        CompressionMode::Br => router.layer(
+            tower_http::compression::CompressionLayer::new()
+                .no_gzip().no_deflate().no_zstd()
+        ),
+        CompressionMode::All => router.layer(
+            tower_http::compression::CompressionLayer::new()
+        ),
+    };
+
     router.with_state(state)
+}
+
+/// Cache-Control middleware — sets `no-store` on HTML responses to prevent
+/// browsers from back/forward-caching stale admin pages after mutations.
+/// Does not affect static files (CSS/JS/fonts) or uploaded files (images/PDFs)
+/// since those have non-HTML content types.
+// Excluded from coverage: async Axum middleware.
+#[cfg(not(tarpaulin_include))]
+async fn html_cache_control(
+    request: axum::http::Request<axum::body::Body>,
+    next: Next,
+) -> axum::response::Response {
+    let mut response = next.run(request).await;
+    if let Some(ct) = response.headers().get(axum::http::header::CONTENT_TYPE) {
+        if ct.to_str().unwrap_or("").starts_with("text/html") {
+            response.headers_mut().insert(
+                axum::http::header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("no-store"),
+            );
+        }
+    }
+    response
 }
 
 /// CSRF middleware — double-submit cookie pattern.
@@ -301,21 +336,15 @@ async fn auth_middleware(
     }
 
     // Collect custom strategies from all auth collections
-    let auth_defs: Vec<_> = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(_) => return Redirect::to("/admin/login").into_response(),
-        };
-        reg.collections.values()
-            .filter(|d| d.is_auth_collection())
-            .filter(|d| {
-                d.auth.as_ref()
-                    .map(|a| !a.strategies.is_empty())
-                    .unwrap_or(false)
-            })
-            .map(|d| (d.slug.clone(), d.auth.clone().unwrap()))
-            .collect()
-    };
+    let auth_defs: Vec<_> = state.registry.collections.values()
+        .filter(|d| d.is_auth_collection())
+        .filter(|d| {
+            d.auth.as_ref()
+                .map(|a| !a.strategies.is_empty())
+                .unwrap_or(false)
+        })
+        .map(|d| (d.slug.clone(), d.auth.clone().unwrap()))
+        .collect();
 
     if !auth_defs.is_empty() {
         // Build headers map from request (lowercase keys)
@@ -439,14 +468,11 @@ fn admin_denied_response(state: &AdminState) -> axum::response::Response {
 #[cfg(not(tarpaulin_include))]
 pub(crate) fn load_auth_user(
     pool: &DbPool,
-    registry: &SharedRegistry,
+    registry: &Registry,
     claims: &auth::Claims,
     locale_config: &crate::config::LocaleConfig,
 ) -> Option<AuthUser> {
-    let def = {
-        let reg = registry.read().ok()?;
-        reg.get_collection(&claims.collection)?.clone()
-    };
+    let def = registry.get_collection(&claims.collection)?.clone();
     let locale_ctx = query::LocaleContext::from_locale_string(None, locale_config);
     let conn = pool.get().ok()?;
     let doc = query::find_by_id(&conn, &claims.collection, &def, &claims.sub, locale_ctx.as_ref()).ok()??;

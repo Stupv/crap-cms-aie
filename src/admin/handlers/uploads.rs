@@ -39,14 +39,8 @@ pub async fn serve_upload(
     let accepts_webp = accept.contains("image/webp");
 
     // Look up collection access.read
-    let access_read = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-        };
-        reg.get_collection(&collection_slug)
-            .map(|def| def.access.read.clone())
-    };
+    let access_read = state.registry.get_collection(&collection_slug)
+        .map(|def| def.access.read.clone());
 
     // Determine access ref: None means public (collection not found or no access.read)
     let access_ref = match access_read {

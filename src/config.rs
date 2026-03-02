@@ -479,7 +479,7 @@ pub struct HooksConfig {
     /// Max hook recursion depth for Lua CRUD → hook → CRUD chains.
     /// 0 = disable hooks from Lua CRUD entirely. Default: 3.
     pub max_depth: u32,
-    /// Number of Lua VMs in the hook runner pool. Default: min(available_parallelism, 8).
+    /// Number of Lua VMs in the hook runner pool. Default: max(available_parallelism, 4), capped at 32.
     /// Higher values allow more concurrent hook execution.
     pub vm_pool_size: usize,
 }
@@ -490,8 +490,8 @@ impl Default for HooksConfig {
             on_init: Vec::new(),
             max_depth: 3,
             vm_pool_size: std::thread::available_parallelism()
-                .map(|n| n.get().min(8))
-                .unwrap_or(4),
+                .map(|n| n.get().max(4).min(32))
+                .unwrap_or(8),
         }
     }
 }
@@ -531,6 +531,17 @@ impl Default for AuthConfig {
     }
 }
 
+/// Response compression mode for the admin HTTP server.
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum CompressionMode {
+    #[default]
+    Off,
+    Gzip,
+    Br,
+    All,
+}
+
 /// Admin UI and gRPC server bind settings.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -538,6 +549,18 @@ pub struct ServerConfig {
     pub admin_port: u16,
     pub grpc_port: u16,
     pub host: String,
+    /// Enable response compression. Default: off (most deployments use a reverse proxy).
+    /// Options: "off", "gzip", "br", "all".
+    pub compression: CompressionMode,
+    /// Per-IP gRPC rate limit: max requests per window. 0 = disabled (default).
+    pub grpc_rate_limit_requests: u32,
+    /// Sliding window duration in seconds for gRPC rate limiting.
+    #[serde(default = "default_grpc_rate_limit_window", with = "serde_duration")]
+    pub grpc_rate_limit_window: u64,
+}
+
+fn default_grpc_rate_limit_window() -> u64 {
+    60
 }
 
 /// SQLite database path and pool configuration.
@@ -570,6 +593,9 @@ impl Default for ServerConfig {
             admin_port: 3000,
             grpc_port: 50051,
             host: "0.0.0.0".to_string(),
+            compression: CompressionMode::Off,
+            grpc_rate_limit_requests: 0,
+            grpc_rate_limit_window: 60,
         }
     }
 }
@@ -1051,7 +1077,7 @@ dev_mode = false
         let hooks = HooksConfig::default();
         assert!(hooks.on_init.is_empty());
         assert_eq!(hooks.max_depth, 3);
-        assert!(hooks.vm_pool_size >= 1 && hooks.vm_pool_size <= 8);
+        assert!(hooks.vm_pool_size >= 4 && hooks.vm_pool_size <= 32);
     }
 
     #[test]

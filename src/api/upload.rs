@@ -65,15 +65,9 @@ async fn create_upload(
     let auth_user = extract_bearer_user(&state, &headers);
 
     // Look up collection definition
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(_) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Registry error"),
-        };
-        match reg.get_collection(&slug) {
-            Some(d) => d.clone(),
-            None => return json_error(StatusCode::NOT_FOUND, &format!("Collection '{}' not found", slug)),
-        }
+    let def = match state.registry.get_collection(&slug) {
+        Some(d) => d.clone(),
+        None => return json_error(StatusCode::NOT_FOUND, &format!("Collection '{}' not found", slug)),
     };
 
     if !def.is_upload_collection() {
@@ -203,15 +197,9 @@ async fn update_upload(
 ) -> Response {
     let auth_user = extract_bearer_user(&state, &headers);
 
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(_) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Registry error"),
-        };
-        match reg.get_collection(&slug) {
-            Some(d) => d.clone(),
-            None => return json_error(StatusCode::NOT_FOUND, &format!("Collection '{}' not found", slug)),
-        }
+    let def = match state.registry.get_collection(&slug) {
+        Some(d) => d.clone(),
+        None => return json_error(StatusCode::NOT_FOUND, &format!("Collection '{}' not found", slug)),
     };
 
     if !def.is_upload_collection() {
@@ -351,15 +339,9 @@ async fn delete_upload(
 ) -> Response {
     let auth_user = extract_bearer_user(&state, &headers);
 
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(_) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Registry error"),
-        };
-        match reg.get_collection(&slug) {
-            Some(d) => d.clone(),
-            None => return json_error(StatusCode::NOT_FOUND, &format!("Collection '{}' not found", slug)),
-        }
+    let def = match state.registry.get_collection(&slug) {
+        Some(d) => d.clone(),
+        None => return json_error(StatusCode::NOT_FOUND, &format!("Collection '{}' not found", slug)),
     };
 
     if !def.is_upload_collection() {

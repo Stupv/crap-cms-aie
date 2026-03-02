@@ -168,12 +168,7 @@ impl ContentService {
         &self,
         _request: Request<content::ListCollectionsRequest>,
     ) -> Result<Response<content::ListCollectionsResponse>, Status> {
-        let reg = self
-            .registry
-            .read()
-            .map_err(|e| Status::internal(format!("Registry lock poisoned: {}", e)))?;
-
-        let mut collections: Vec<content::CollectionInfo> = reg
+        let mut collections: Vec<content::CollectionInfo> = self.registry
             .collections
             .values()
             .map(|def| content::CollectionInfo {
@@ -195,7 +190,7 @@ impl ContentService {
             .collect();
         collections.sort_by(|a, b| a.slug.cmp(&b.slug));
 
-        let mut globals: Vec<content::GlobalInfo> = reg
+        let mut globals: Vec<content::GlobalInfo> = self.registry
             .globals
             .values()
             .map(|def| content::GlobalInfo {
@@ -311,16 +306,11 @@ impl ContentService {
         };
 
         {
-            let reg = self
-                .registry
-                .read()
-                .map_err(|e| Status::internal(format!("Registry lock poisoned: {}", e)))?;
-
             let user_doc = auth_user.as_ref().map(|u| &u.user_doc);
 
             // Check collection read access
             let target_collections: Vec<String> = if req.collections.is_empty() {
-                reg.collections.keys().cloned().collect()
+                self.registry.collections.keys().cloned().collect()
             } else {
                 req.collections
             };
@@ -331,7 +321,7 @@ impl ContentService {
                 .map_err(|e| Status::internal(format!("DB connection: {}", e)))?;
 
             for slug in &target_collections {
-                if let Some(def) = reg.get_collection(slug) {
+                if let Some(def) = self.registry.get_collection(slug) {
                     match self.hook_runner.check_access(
                         def.access.read.as_deref(),
                         user_doc,
@@ -348,13 +338,13 @@ impl ContentService {
             }
 
             let target_globals: Vec<String> = if req.globals.is_empty() {
-                reg.globals.keys().cloned().collect()
+                self.registry.globals.keys().cloned().collect()
             } else {
                 req.globals
             };
 
             for slug in &target_globals {
-                if let Some(def) = reg.get_global(slug) {
+                if let Some(def) = self.registry.get_global(slug) {
                     match self.hook_runner.check_access(
                         def.access.read.as_deref(),
                         user_doc,
@@ -551,10 +541,7 @@ impl ContentService {
             return Err(Status::unauthenticated("Authentication required"));
         }
 
-        let reg = self.registry.read()
-            .map_err(|e| Status::internal(format!("Registry lock poisoned: {}", e)))?;
-
-        let jobs: Vec<content::JobDefinitionInfo> = reg.jobs.iter().map(|(slug, def)| {
+        let jobs: Vec<content::JobDefinitionInfo> = self.registry.jobs.iter().map(|(slug, def)| {
             content::JobDefinitionInfo {
                 slug: slug.clone(),
                 handler: def.handler.clone(),
@@ -584,12 +571,8 @@ impl ContentService {
         let req = request.into_inner();
 
         // Look up job definition
-        let job_def = {
-            let reg = self.registry.read()
-                .map_err(|e| Status::internal(format!("Registry lock poisoned: {}", e)))?;
-            reg.get_job(&req.slug).cloned()
-                .ok_or_else(|| Status::not_found(format!("Job '{}' not found", req.slug)))?
-        };
+        let job_def = self.registry.get_job(&req.slug).cloned()
+            .ok_or_else(|| Status::not_found(format!("Job '{}' not found", req.slug)))?;
 
         // Check access if defined
         if let Some(ref access_ref) = job_def.access {

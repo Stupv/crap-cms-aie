@@ -31,12 +31,11 @@ pub async fn sse_handler(
 
     if let Some(ref bus) = event_bus {
         let _ = bus; // just to verify it exists
-        let reg = state.registry.read().ok();
-        if let Some(reg) = reg {
+        {
             let user_doc = auth_user.as_ref().map(|ext| &ext.0.user_doc);
 
             if let Ok(conn) = state.pool.get() {
-                for (slug, def) in &reg.collections {
+                for (slug, def) in &state.registry.collections {
                     match state.hook_runner.check_access(
                         def.access.read.as_deref(), user_doc, None, None, &conn,
                     ) {
@@ -47,7 +46,7 @@ pub async fn sse_handler(
                     }
                 }
 
-                for (slug, def) in &reg.globals {
+                for (slug, def) in &state.registry.globals {
                     match state.hook_runner.check_access(
                         def.access.read.as_deref(), user_doc, None, None, &conn,
                     ) {

@@ -1,12 +1,13 @@
 //! gRPC API server (Tonic) implementing the ContentAPI service.
 
+pub mod rate_limit;
 pub mod service;
 pub mod upload;
 
 use anyhow::Result;
 use tonic::transport::Server;
 
-use crate::core::SharedRegistry;
+use crate::core::Registry;
 use crate::core::event::EventBus;
 use crate::db::DbPool;
 use crate::hooks::lifecycle::HookRunner;
@@ -24,7 +25,7 @@ pub mod content {
 pub async fn start_server(
     addr: &str,
     pool: DbPool,
-    registry: SharedRegistry,
+    registry: std::sync::Arc<Registry>,
     hook_runner: HookRunner,
     jwt_secret: String,
     depth_config: &crate::config::DepthConfig,
@@ -54,15 +55,25 @@ pub async fn start_server(
         .register_encoded_file_descriptor_set(content::FILE_DESCRIPTOR_SET)
         .build_v1()?;
 
+    let grpc_limiter = std::sync::Arc::new(
+        crate::core::rate_limit::GrpcRateLimiter::new(
+            config.server.grpc_rate_limit_requests,
+            config.server.grpc_rate_limit_window,
+        )
+    );
+    let rate_limit_layer = rate_limit::GrpcRateLimitLayer::new(grpc_limiter);
+
     if let Some(cors) = config.cors.build_layer() {
         Server::builder()
             .layer(cors)
+            .layer(rate_limit_layer)
             .add_service(reflection_service)
             .add_service(content::content_api_server::ContentApiServer::new(content_service))
             .serve(addr)
             .await?;
     } else {
         Server::builder()
+            .layer(rate_limit_layer)
             .add_service(reflection_service)
             .add_service(content::content_api_server::ContentApiServer::new(content_service))
             .serve(addr)

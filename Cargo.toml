@@ -11,7 +11,7 @@ path = "src/main.rs"
 [dependencies]
 # Web framework
 axum = { version = "0.8", features = ["form", "macros", "query", "multipart"] }
-tower-http = { version = "0.6", features = ["fs", "cors"] }
+tower-http = { version = "0.6", features = ["fs", "cors", "compression-gzip", "compression-br"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 
 # Database
@@ -66,6 +66,9 @@ aes-gcm = "0.10"
 # Cron scheduling
 cron = "0.12"
 
+# Tower (rate limiting layer for gRPC)
+tower = { version = "0.5", features = ["util"] }
+
 # Utilities
 rpassword = "5"
 nanoid = "0.4"
@@ -82,7 +85,6 @@ regex = "1.12.3"
 
 [dev-dependencies]
 tempfile = "3"
-tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 
 [profile.dev.package.image]

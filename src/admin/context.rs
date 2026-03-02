@@ -338,14 +338,7 @@ pub fn build_fields_meta(fields: &[FieldDefinition]) -> Value {
 // ── Internal helpers ──────────────────────────────────────────────────────
 
 fn build_nav_collections(state: &AdminState) -> Value {
-    let reg = match state.registry.read() {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::error!("Registry lock poisoned: {}", e);
-            return json!([]);
-        }
-    };
-    let mut collections: Vec<Value> = reg.collections.values()
+    let mut collections: Vec<Value> = state.registry.collections.values()
         .map(|def| json!({
             "slug": def.slug,
             "display_name": def.display_name(),
@@ -358,14 +351,7 @@ fn build_nav_collections(state: &AdminState) -> Value {
 }
 
 fn build_nav_globals(state: &AdminState) -> Value {
-    let reg = match state.registry.read() {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::error!("Registry lock poisoned: {}", e);
-            return json!([]);
-        }
-    };
-    let mut globals: Vec<Value> = reg.globals.values()
+    let mut globals: Vec<Value> = state.registry.globals.values()
         .map(|def| json!({
             "slug": def.slug,
             "display_name": def.display_name(),
@@ -376,11 +362,7 @@ fn build_nav_globals(state: &AdminState) -> Value {
 }
 
 fn has_auth_collections(state: &AdminState) -> bool {
-    let reg = match state.registry.read() {
-        Ok(r) => r,
-        Err(_) => return false,
-    };
-    reg.collections.values().any(|def| def.is_auth_collection())
+    state.registry.collections.values().any(|def| def.is_auth_collection())
 }
 
 #[cfg(test)]

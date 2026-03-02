@@ -40,18 +40,12 @@ pub async fn list_collections(
     claims: Option<Extension<Claims>>,
 ) -> impl IntoResponse {
     let mut collections = Vec::new();
-    {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(e) => return server_error(&state, &format!("Registry lock poisoned: {}", e)).into_response(),
-        };
-        for (slug, def) in &reg.collections {
-            collections.push(serde_json::json!({
-                "slug": slug,
-                "display_name": def.display_name(),
-                "field_count": def.fields.len(),
-            }));
-        }
+    for (slug, def) in &state.registry.collections {
+        collections.push(serde_json::json!({
+            "slug": slug,
+            "display_name": def.display_name(),
+            "field_count": def.fields.len(),
+        }));
     }
     collections.sort_by(|a, b| a["slug"].as_str().cmp(&b["slug"].as_str()));
 
@@ -74,15 +68,9 @@ pub async fn list_items(
     claims: Option<Extension<Claims>>,
     auth_user: Option<Extension<AuthUser>>,
 ) -> impl IntoResponse {
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(e) => return server_error(&state, &format!("Registry lock poisoned: {}", e)).into_response(),
-        };
-        match reg.get_collection(&slug) {
-            Some(d) => d.clone(),
-            None => return not_found(&state, &format!("Collection '{}' not found", slug)).into_response(),
-        }
+    let def = match state.registry.get_collection(&slug) {
+        Some(d) => d.clone(),
+        None => return not_found(&state, &format!("Collection '{}' not found", slug)).into_response(),
     };
 
     // Check read access
@@ -152,8 +140,9 @@ pub async fn list_items(
     let def_owned = def.clone();
     let read_result = tokio::task::spawn_blocking(move || {
         runner.fire_before_read(&hooks, &slug_owned, "find", HashMap::new())?;
-        let total = ops::count_documents(&pool, &slug_owned, &def_owned, &filters, locale_ctx.as_ref())?;
-        let mut docs = ops::find_documents(&pool, &slug_owned, &def_owned, &find_query, locale_ctx.as_ref())?;
+        let conn = pool.get().context("Failed to get DB connection")?;
+        let total = query::count(&conn, &slug_owned, &def_owned, &filters, locale_ctx.as_ref())?;
+        let mut docs = query::find(&conn, &slug_owned, &def_owned, &find_query, locale_ctx.as_ref())?;
         // Assemble sizes for upload collections
         if let Some(ref upload_config) = def_owned.upload {
             if upload_config.enabled {
@@ -282,15 +271,9 @@ pub async fn create_form(
     claims: Option<Extension<Claims>>,
     auth_user: Option<Extension<AuthUser>>,
 ) -> impl IntoResponse {
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(e) => return server_error(&state, &format!("Registry lock poisoned: {}", e)).into_response(),
-        };
-        match reg.get_collection(&slug) {
-            Some(d) => d.clone(),
-            None => return not_found(&state, &format!("Collection '{}' not found", slug)).into_response(),
-        }
+    let def = match state.registry.get_collection(&slug) {
+        Some(d) => d.clone(),
+        None => return not_found(&state, &format!("Collection '{}' not found", slug)).into_response(),
     };
 
     // Check create access
@@ -368,15 +351,8 @@ pub async fn create_action(
     auth_user: Option<Extension<AuthUser>>,
     request: axum::extract::Request,
 ) -> axum::response::Response {
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(_) => return redirect_response("/admin/collections"),
-        };
-        reg.get_collection(&slug).cloned()
-    };
-    let def = match def {
-        Some(d) => d,
+    let def = match state.registry.get_collection(&slug) {
+        Some(d) => d.clone(),
         None => return redirect_response("/admin/collections"),
     };
 
@@ -570,15 +546,9 @@ pub async fn edit_form(
     claims: Option<Extension<Claims>>,
     auth_user: Option<Extension<AuthUser>>,
 ) -> impl IntoResponse {
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(e) => return server_error(&state, &format!("Registry lock poisoned: {}", e)).into_response(),
-        };
-        match reg.get_collection(&slug) {
-            Some(d) => d.clone(),
-            None => return not_found(&state, &format!("Collection '{}' not found", slug)).into_response(),
-        }
+    let def = match state.registry.get_collection(&slug) {
+        Some(d) => d.clone(),
+        None => return not_found(&state, &format!("Collection '{}' not found", slug)).into_response(),
     };
 
     // Check read access
@@ -798,15 +768,8 @@ pub async fn update_action_post(
     auth_user: Option<Extension<AuthUser>>,
     request: axum::extract::Request,
 ) -> axum::response::Response {
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(_) => return redirect_response("/admin/collections"),
-        };
-        reg.get_collection(&slug).cloned()
-    };
-    let def = match def {
-        Some(d) => d,
+    let def = match state.registry.get_collection(&slug) {
+        Some(d) => d.clone(),
         None => return redirect_response("/admin/collections"),
     };
 
@@ -840,15 +803,8 @@ pub async fn update_action_post(
 }
 
 async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: HashMap<String, String>, file: Option<UploadedFile>, auth_user: &Option<Extension<AuthUser>>) -> axum::response::Response {
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(_) => return redirect_response("/admin/collections"),
-        };
-        reg.get_collection(slug).cloned()
-    };
-    let def = match def {
-        Some(d) => d,
+    let def = match state.registry.get_collection(slug) {
+        Some(d) => d.clone(),
         None => return redirect_response("/admin/collections"),
     };
 
@@ -1056,15 +1012,9 @@ pub async fn delete_confirm(
     claims: Option<Extension<Claims>>,
     auth_user: Option<Extension<AuthUser>>,
 ) -> impl IntoResponse {
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(e) => return server_error(&state, &format!("Registry lock poisoned: {}", e)).into_response(),
-        };
-        match reg.get_collection(&slug) {
-            Some(d) => d.clone(),
-            None => return not_found(&state, &format!("Collection '{}' not found", slug)).into_response(),
-        }
+    let def = match state.registry.get_collection(&slug) {
+        Some(d) => d.clone(),
+        None => return not_found(&state, &format!("Collection '{}' not found", slug)).into_response(),
     };
 
     // Check delete access
@@ -1115,15 +1065,8 @@ pub async fn delete_action_simple(
 }
 
 async fn delete_action_impl(state: &AdminState, slug: &str, id: &str, auth_user: &Option<Extension<AuthUser>>) -> axum::response::Response {
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(_) => return axum::response::Redirect::to("/admin/collections").into_response(),
-        };
-        reg.get_collection(slug).cloned()
-    };
-    let def = match def {
-        Some(d) => d,
+    let def = match state.registry.get_collection(slug) {
+        Some(d) => d.clone(),
         None => return axum::response::Redirect::to("/admin/collections").into_response(),
     };
 
@@ -1178,15 +1121,8 @@ pub async fn restore_version(
     Path((slug, id, version_id)): Path<(String, String, String)>,
     auth_user: Option<Extension<AuthUser>>,
 ) -> impl IntoResponse {
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(_) => return redirect_response("/admin/collections"),
-        };
-        reg.get_collection(&slug).cloned()
-    };
-    let def = match def {
-        Some(d) => d,
+    let def = match state.registry.get_collection(&slug) {
+        Some(d) => d.clone(),
         None => return redirect_response("/admin/collections"),
     };
 
@@ -1239,15 +1175,9 @@ pub async fn list_versions_page(
     claims: Option<Extension<Claims>>,
     auth_user: Option<Extension<AuthUser>>,
 ) -> impl IntoResponse {
-    let def = {
-        let reg = match state.registry.read() {
-            Ok(r) => r,
-            Err(e) => return server_error(&state, &format!("Registry lock poisoned: {}", e)).into_response(),
-        };
-        match reg.get_collection(&slug) {
-            Some(d) => d.clone(),
-            None => return not_found(&state, &format!("Collection '{}' not found", slug)).into_response(),
-        }
+    let def = match state.registry.get_collection(&slug) {
+        Some(d) => d.clone(),
+        None => return not_found(&state, &format!("Collection '{}' not found", slug)).into_response(),
     };
 
     if !def.has_versions() {
@@ -1360,8 +1290,7 @@ pub async fn search_collection(
     Path(slug): Path<String>,
     axum::extract::Query(params): axum::extract::Query<SearchQuery>,
 ) -> impl IntoResponse {
-    let registry = state.registry.read().unwrap();
-    let Some(def) = registry.get_collection(&slug) else {
+    let Some(def) = state.registry.get_collection(&slug) else {
         return axum::Json(serde_json::json!([]));
     };
     let title_field = def.title_field().map(|s| s.to_string());

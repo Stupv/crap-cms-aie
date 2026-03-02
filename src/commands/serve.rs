@@ -133,6 +133,10 @@ pub async fn run(config_dir: &Path) -> Result<()> {
         }
     }
 
+    // Snapshot the registry for hot-path consumers (admin UI + gRPC).
+    // HookRunner + scheduler keep the SharedRegistry (which is only read at runtime anyway).
+    let registry_snapshot = crate::core::Registry::snapshot(&registry);
+
     // Create EventBus for live updates (if enabled)
     let event_bus = if cfg.live.enabled {
         let bus = crate::core::event::EventBus::new(cfg.live.channel_capacity);
@@ -155,7 +159,7 @@ pub async fn run(config_dir: &Path) -> Result<()> {
         cfg.clone(),
         config_dir.clone(),
         pool.clone(),
-        registry.clone(),
+        registry_snapshot.clone(),
         hook_runner.clone(),
         jwt_secret.clone(),
         event_bus.clone(),
@@ -164,7 +168,7 @@ pub async fn run(config_dir: &Path) -> Result<()> {
     let grpc_handle = crate::api::start_server(
         &grpc_addr,
         pool.clone(),
-        registry.clone(),
+        registry_snapshot,
         hook_runner.clone(),
         jwt_secret,
         &cfg.depth,

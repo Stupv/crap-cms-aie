@@ -18,7 +18,7 @@ use crate::core::auth::AuthUser;
 use crate::core::email::EmailRenderer;
 use crate::core::event::EventBus;
 use crate::core::rate_limit::LoginRateLimiter;
-use crate::core::SharedRegistry;
+use crate::core::Registry;
 use crate::db::query::AccessResult;
 use crate::db::DbPool;
 use crate::db::query;
@@ -28,7 +28,7 @@ use crate::hooks::lifecycle::HookRunner;
 /// Implements the gRPC ContentAPI service (Find, Create, Update, Delete, Login, etc.).
 pub struct ContentService {
     pool: DbPool,
-    registry: SharedRegistry,
+    registry: std::sync::Arc<Registry>,
     hook_runner: HookRunner,
     jwt_secret: String,
     default_depth: i32,
@@ -51,7 +51,7 @@ impl ContentService {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         pool: DbPool,
-        registry: SharedRegistry,
+        registry: std::sync::Arc<Registry>,
         hook_runner: HookRunner,
         jwt_secret: String,
         depth_config: &crate::config::DepthConfig,
@@ -84,11 +84,7 @@ impl ContentService {
 
     #[allow(clippy::result_large_err)]
     fn get_collection_def(&self, slug: &str) -> Result<crate::core::CollectionDefinition, Status> {
-        let reg = self
-            .registry
-            .read()
-            .map_err(|e| Status::internal(format!("Registry lock poisoned: {}", e)))?;
-        reg.get_collection(slug)
+        self.registry.get_collection(slug)
             .cloned()
             .ok_or_else(|| Status::not_found(format!("Collection '{}' not found", slug)))
     }
@@ -98,11 +94,7 @@ impl ContentService {
         &self,
         slug: &str,
     ) -> Result<crate::core::collection::GlobalDefinition, Status> {
-        let reg = self
-            .registry
-            .read()
-            .map_err(|e| Status::internal(format!("Registry lock poisoned: {}", e)))?;
-        reg.get_global(slug)
+        self.registry.get_global(slug)
             .cloned()
             .ok_or_else(|| Status::not_found(format!("Global '{}' not found", slug)))
     }
@@ -114,10 +106,7 @@ impl ContentService {
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.strip_prefix("Bearer "))?;
         let claims = crate::core::auth::validate_token(token, &self.jwt_secret).ok()?;
-        let def = {
-            let reg = self.registry.read().ok()?;
-            reg.get_collection(&claims.collection)?.clone()
-        };
+        let def = self.registry.get_collection(&claims.collection)?.clone();
         let conn = self.pool.get().ok()?;
         let doc = query::find_by_id(&conn, &claims.collection, &def, &claims.sub, None).ok()??;
         Some(AuthUser {

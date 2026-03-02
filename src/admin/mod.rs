@@ -12,7 +12,7 @@ use std::sync::Arc;
 use handlebars::Handlebars;
 
 use crate::config::CrapConfig;
-use crate::core::SharedRegistry;
+use crate::core::Registry;
 use crate::core::email::EmailRenderer;
 use crate::core::event::EventBus;
 use crate::core::rate_limit::LoginRateLimiter;
@@ -26,7 +26,7 @@ pub struct AdminState {
     pub config: CrapConfig,
     pub config_dir: PathBuf,
     pub pool: DbPool,
-    pub registry: SharedRegistry,
+    pub registry: Arc<Registry>,
     pub handlebars: Arc<Handlebars<'static>>,
     pub hook_runner: HookRunner,
     pub jwt_secret: String,
