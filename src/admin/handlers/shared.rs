@@ -68,6 +68,10 @@ pub(super) fn check_access_or_forbid(
     id: Option<&str>,
     data: Option<&HashMap<String, serde_json::Value>>,
 ) -> Result<AccessResult, axum::response::Response> {
+    // No access function configured = always allowed (skip pool.get + VM acquire)
+    if access_ref.is_none() {
+        return Ok(AccessResult::Allowed);
+    }
     let user_doc = get_user_doc(auth_user);
     let conn = state.pool.get()
         .map_err(|_| forbidden(state, "Database error").into_response())?;

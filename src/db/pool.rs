@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use std::path::Path;
+use std::time::Duration;
 
 use crate::config::CrapConfig;
 
@@ -27,10 +28,11 @@ pub fn create_pool(config_dir: &Path, config: &CrapConfig) -> Result<DbPool> {
     let pool = Pool::builder()
         .max_size(config.database.pool_max_size)
         .min_idle(Some(1))
+        .connection_timeout(Duration::from_secs(5))
         .connection_customizer(Box::new(SqlitePragmas {
             busy_timeout_ms: config.database.busy_timeout_ms,
         }))
-        .test_on_check_out(true)
+        .test_on_check_out(false)
         .build(manager)
         .context("Failed to create connection pool")?;
 

@@ -45,6 +45,7 @@ async fn embedded_static(uri: Uri) -> Response {
             Response::builder()
                 .status(StatusCode::OK)
                 .header(header::CONTENT_TYPE, content_type)
+                .header(header::CACHE_CONTROL, "public, max-age=3600")
                 .body(Body::from(file.contents().to_vec()))
                 .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
         }

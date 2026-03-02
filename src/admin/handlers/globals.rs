@@ -74,9 +74,9 @@ pub async fn edit_form(
         Err(e) => return server_error(&state, &format!("Task error: {}", e)).into_response(),
     };
 
-    // Strip field-level read-denied fields
+    // Strip field-level read-denied fields (skip pool.get if no field-level access configured)
     let mut doc_fields = document.fields.clone();
-    {
+    if def.fields.iter().any(|f| f.access.read.is_some()) {
         let user_doc = get_user_doc(&auth_user);
         if let Ok(conn) = state.pool.get() {
             let denied = state.hook_runner.check_field_read_access(&def.fields, user_doc, &conn);
@@ -191,8 +191,8 @@ pub async fn update_action(
         form_locale.as_deref(), &state.config.locale,
     );
 
-    // Strip field-level update-denied fields
-    {
+    // Strip field-level update-denied fields (skip pool.get if no field-level access configured)
+    if def.fields.iter().any(|f| f.access.update.is_some()) {
         let user_doc = get_user_doc(&auth_user);
         if let Ok(conn) = state.pool.get() {
             let denied = state.hook_runner.check_field_write_access(&def.fields, user_doc, "update", &conn);

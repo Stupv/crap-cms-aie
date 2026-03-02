@@ -16,7 +16,7 @@ use vm_pool::VmPool;
 
 use anyhow::{Context, Result};
 use mlua::{Lua, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -115,6 +115,10 @@ pub(super) struct DefaultDeny(pub(super) bool);
 #[derive(Clone)]
 pub struct HookRunner {
     pool: Arc<VmPool>,
+    /// Cached set of event names that have globally-registered hooks (from init.lua).
+    /// Since hooks are only registered during VM creation (init.lua), this set is immutable.
+    /// Allows skipping VM acquisition when no registered hooks exist for an event.
+    registered_events: Arc<HashSet<String>>,
 }
 
 /// Create and fully initialize a single Lua VM with package paths, API, CRUD functions,
@@ -192,9 +196,24 @@ impl HookRunner {
             vms.push(create_lua_vm(config_dir, registry.clone(), config, i + 1)?);
         }
 
+        // Cache which events have globally-registered hooks (from init.lua).
+        // All VMs execute the same init.lua, so checking any VM suffices.
+        let registered_events = scan_registered_events(&vms[0]);
+        if !registered_events.is_empty() {
+            tracing::info!("HookRunner: registered events: {:?}", registered_events);
+        }
+
         Ok(Self {
             pool: Arc::new(VmPool::new(vms)),
+            registered_events: Arc::new(registered_events),
         })
+    }
+
+    /// Check if any globally-registered hooks exist for the given event.
+    /// Uses the cached set — no VM acquisition needed.
+    #[inline]
+    pub fn has_registered_hooks_for(&self, event: &str) -> bool {
+        self.registered_events.contains(event)
     }
 
     /// Run all hooks for a given event, mutating the context.
@@ -207,6 +226,11 @@ impl HookRunner {
         mut context: HookContext,
     ) -> Result<HookContext> {
         let hook_refs = get_hook_refs(hooks, &event);
+
+        // Skip VM acquisition entirely when no work to do
+        if hook_refs.is_empty() && !self.has_registered_hooks_for(event.as_str()) {
+            return Ok(context);
+        }
 
         let lua = self.pool.acquire()
             .map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -237,6 +261,11 @@ impl HookRunner {
         user: Option<&Document>,
     ) -> Result<HookContext> {
         let hook_refs = get_hook_refs(hooks, &event);
+
+        // Skip VM acquisition entirely when no work to do
+        if hook_refs.is_empty() && !self.has_registered_hooks_for(event.as_str()) {
+            return Ok(context);
+        }
 
         let lua = self.pool.acquire()
             .map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -314,6 +343,11 @@ impl HookRunner {
         collection: &str,
         operation: &str,
     ) -> Result<()> {
+        // Skip VM acquisition if no fields have hooks for this event
+        if !has_field_hooks_for_event(fields, &event) {
+            return Ok(());
+        }
+
         let lua = self.pool.acquire()
             .map_err(|e| anyhow::anyhow!("{}", e))?;
 
@@ -334,6 +368,11 @@ impl HookRunner {
         conn: &rusqlite::Connection,
         user: Option<&Document>,
     ) -> Result<()> {
+        // Skip VM acquisition if no fields have hooks for this event
+        if !has_field_hooks_for_event(fields, &event) {
+            return Ok(());
+        }
+
         let lua = self.pool.acquire()
             .map_err(|e| anyhow::anyhow!("{}", e))?;
 
@@ -394,6 +433,7 @@ impl HookRunner {
     }
 
     /// Fire after_read hooks on a list of documents.
+    /// Acquires a single VM for the entire batch instead of one per document.
     pub fn apply_after_read_many(
         &self,
         hooks: &CollectionHooks,
@@ -404,13 +444,24 @@ impl HookRunner {
     ) -> Vec<Document> {
         let has_field_hooks = fields.iter()
             .any(|f| !f.hooks.after_read.is_empty());
+        let has_collection_hooks = !hooks.after_read.is_empty();
+        let has_registered = self.has_registered_hooks_for("after_read");
 
-        if !has_field_hooks && hooks.after_read.is_empty() {
+        // No hooks at all — skip VM acquisition entirely
+        if !has_field_hooks && !has_collection_hooks && !has_registered {
             return docs;
         }
 
+        let lua = match self.pool.acquire() {
+            Ok(l) => l,
+            Err(e) => {
+                tracing::warn!("VM pool error in apply_after_read_many: {}", e);
+                return docs;
+            }
+        };
+
         docs.into_iter()
-            .map(|doc| self.apply_after_read(hooks, fields, collection, operation, doc))
+            .map(|doc| apply_after_read_inner(&lua, hooks, fields, collection, operation, doc))
             .collect()
     }
 
@@ -495,14 +546,8 @@ impl HookRunner {
     ) -> Result<Option<HashMap<String, serde_json::Value>>> {
         let hook_refs = get_hook_refs(hooks, &HookEvent::BeforeBroadcast);
 
-        // If no collection-level or registered hooks, pass through
-        let has_registered = {
-            let lua = self.pool.acquire()
-                .map_err(|e| anyhow::anyhow!("{}", e))?;
-            has_registered_hooks(&lua, "before_broadcast")
-        };
-
-        if hook_refs.is_empty() && !has_registered {
+        // Skip VM acquisition entirely when no work to do
+        if hook_refs.is_empty() && !self.has_registered_hooks_for("before_broadcast") {
             return Ok(Some(data));
         }
 
@@ -515,8 +560,6 @@ impl HookRunner {
             context: HashMap::new(),
         };
 
-        // run_hooks handles both collection-level hook refs and global registered hooks.
-        // We need to check if any hook returns false/nil to suppress.
         let lua = self.pool.acquire()
             .map_err(|e| anyhow::anyhow!("{}", e))?;
 
@@ -718,17 +761,29 @@ impl HookRunner {
         form_data: &serde_json::Value,
     ) -> Option<DisplayConditionResult> {
         let lua = self.pool.acquire().ok()?;
-        let func = resolve_hook_function(&lua, func_ref).ok()?;
-        let data_lua = crate::hooks::api::json_to_lua(&lua, form_data).ok()?;
-        match func.call::<Value>(data_lua) {
-            Ok(Value::Boolean(b)) => Some(DisplayConditionResult::Bool(b)),
-            Ok(val @ Value::Table(_)) => {
-                let json = crate::hooks::api::lua_to_json(&lua, &val).ok()?;
-                let visible = evaluate_condition_table(&json, form_data);
-                Some(DisplayConditionResult::Table { condition: json, visible })
-            }
-            _ => None, // error or nil → show field (safe default)
+        call_display_condition_with_lua(&lua, func_ref, form_data)
+    }
+
+    /// Evaluate display conditions for multiple fields using a single VM acquisition.
+    /// Returns a map from func_ref to the evaluation result.
+    pub fn call_display_conditions_batch(
+        &self,
+        conditions: &[(&str, &serde_json::Value)],
+    ) -> HashMap<String, DisplayConditionResult> {
+        if conditions.is_empty() {
+            return HashMap::new();
         }
+        let lua = match self.pool.acquire() {
+            Ok(l) => l,
+            Err(_) => return HashMap::new(),
+        };
+        let mut results = HashMap::new();
+        for &(func_ref, form_data) in conditions {
+            if let Some(result) = call_display_condition_with_lua(&lua, func_ref, form_data) {
+                results.insert(func_ref.to_string(), result);
+            }
+        }
+        results
     }
 
     /// Run `before_render` hooks on the template context.
@@ -736,6 +791,11 @@ impl HookRunner {
     /// Lua table and return the (potentially modified) context. No CRUD access.
     /// On error: logs warning, returns original context unmodified.
     pub fn run_before_render(&self, mut context: serde_json::Value) -> serde_json::Value {
+        // Skip VM acquisition entirely when no before_render hooks are registered
+        if !self.has_registered_hooks_for("before_render") {
+            return context;
+        }
+
         let lua = match self.pool.acquire() {
             Ok(l) => l,
             Err(e) => {
@@ -837,6 +897,10 @@ impl HookRunner {
         user: Option<&Document>,
         conn: &rusqlite::Connection,
     ) -> Vec<String> {
+        // Skip VM acquisition if no fields have read access functions
+        if fields.iter().all(|f| f.access.read.is_none()) {
+            return Vec::new();
+        }
         let lua = match self.pool.acquire() {
             Ok(l) => l,
             Err(_) => return Vec::new(),
@@ -860,6 +924,15 @@ impl HookRunner {
         operation: &str,
         conn: &rusqlite::Connection,
     ) -> Vec<String> {
+        // Skip VM acquisition if no fields have write access functions for this operation
+        let has_write_access = fields.iter().any(|f| match operation {
+            "create" => f.access.create.is_some(),
+            "update" => f.access.update.is_some(),
+            _ => false,
+        });
+        if !has_write_access {
+            return Vec::new();
+        }
         let lua = match self.pool.acquire() {
             Ok(l) => l,
             Err(_) => return Vec::new(),
@@ -1155,6 +1228,57 @@ fn has_registered_hooks(lua: &Lua, event: &str) -> bool {
         Ok(Value::Table(t)) => t.raw_len() > 0,
         _ => false,
     }
+}
+
+/// Inner implementation of display condition evaluation — operates on a locked `&Lua`.
+fn call_display_condition_with_lua(
+    lua: &Lua,
+    func_ref: &str,
+    form_data: &serde_json::Value,
+) -> Option<DisplayConditionResult> {
+    let func = resolve_hook_function(lua, func_ref).ok()?;
+    let data_lua = crate::hooks::api::json_to_lua(lua, form_data).ok()?;
+    match func.call::<Value>(data_lua) {
+        Ok(Value::Boolean(b)) => Some(DisplayConditionResult::Bool(b)),
+        Ok(val @ Value::Table(_)) => {
+            let json = crate::hooks::api::lua_to_json(lua, &val).ok()?;
+            let visible = evaluate_condition_table(&json, form_data);
+            Some(DisplayConditionResult::Table { condition: json, visible })
+        }
+        _ => None, // error or nil → show field (safe default)
+    }
+}
+
+/// Check if any fields have hooks registered for the given field-level event.
+fn has_field_hooks_for_event(fields: &[FieldDefinition], event: &FieldHookEvent) -> bool {
+    fields.iter().any(|f| {
+        let hooks = &f.hooks;
+        match event {
+            FieldHookEvent::BeforeValidate => !hooks.before_validate.is_empty(),
+            FieldHookEvent::BeforeChange => !hooks.before_change.is_empty(),
+            FieldHookEvent::AfterChange => !hooks.after_change.is_empty(),
+            FieldHookEvent::AfterRead => !hooks.after_read.is_empty(),
+        }
+    })
+}
+
+/// Scan a Lua VM's `_crap_event_hooks` table and return the set of event names
+/// that have at least one registered handler. Called once during HookRunner::new().
+fn scan_registered_events(lua: &Lua) -> HashSet<String> {
+    let mut events = HashSet::new();
+    let globals = lua.globals();
+    let event_hooks: mlua::Table = match globals.get("_crap_event_hooks") {
+        Ok(t) => t,
+        Err(_) => return events,
+    };
+    for pair in event_hooks.pairs::<String, Value>() {
+        if let Ok((key, Value::Table(t))) = pair {
+            if t.raw_len() > 0 {
+                events.insert(key);
+            }
+        }
+    }
+    events
 }
 
 /// Call a before_broadcast hook ref. Returns Some(context) to continue, None to suppress.

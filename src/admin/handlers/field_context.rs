@@ -681,25 +681,36 @@ pub(super) fn apply_display_conditions(
 ) {
     use crate::hooks::lifecycle::DisplayConditionResult;
 
-    let defs_iter: Box<dyn Iterator<Item = &crate::core::field::FieldDefinition>> = if filter_hidden {
-        Box::new(field_defs.iter().filter(|f| !f.admin.hidden))
+    let defs: Vec<&crate::core::field::FieldDefinition> = if filter_hidden {
+        field_defs.iter().filter(|f| !f.admin.hidden).collect()
     } else {
-        Box::new(field_defs.iter())
+        field_defs.iter().collect()
     };
 
-    for (ctx, field_def) in fields.iter_mut().zip(defs_iter) {
+    // Collect all conditions that need evaluation
+    let conditions: Vec<(&str, &serde_json::Value)> = defs.iter()
+        .filter_map(|fd| fd.admin.condition.as_deref().map(|c| (c, form_data)))
+        .collect();
+
+    if conditions.is_empty() {
+        return;
+    }
+
+    // Evaluate all conditions in a single VM acquisition
+    let results = hook_runner.call_display_conditions_batch(&conditions);
+
+    for (ctx, field_def) in fields.iter_mut().zip(defs.iter()) {
         if let Some(ref cond_ref) = field_def.admin.condition {
-            match hook_runner.call_display_condition(cond_ref, form_data) {
-                Some(DisplayConditionResult::Bool(visible)) => {
-                    ctx["condition_visible"] = serde_json::json!(visible);
-                    ctx["condition_ref"] = serde_json::json!(cond_ref);
-                }
-                Some(DisplayConditionResult::Table { condition, visible }) => {
-                    ctx["condition_visible"] = serde_json::json!(visible);
-                    ctx["condition_json"] = condition;
-                }
-                None => {
-                    // Lua error -> show field (safe default)
+            if let Some(result) = results.get(cond_ref.as_str()) {
+                match result {
+                    DisplayConditionResult::Bool(visible) => {
+                        ctx["condition_visible"] = serde_json::json!(visible);
+                        ctx["condition_ref"] = serde_json::json!(cond_ref);
+                    }
+                    DisplayConditionResult::Table { condition, visible } => {
+                        ctx["condition_visible"] = serde_json::json!(visible);
+                        ctx["condition_json"] = condition.clone();
+                    }
                 }
             }
         }

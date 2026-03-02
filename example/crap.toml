@@ -5,9 +5,10 @@ host = "0.0.0.0"
 
 [database]
 path = "data/crap.db"
+pool_max_size = 64
 
 [admin]
-dev_mode = true
+dev_mode = false
 
 [auth]
 # secret auto-generated on first start
@@ -51,6 +52,7 @@ max_age = 3600
 
 [hooks]
 on_init = ["hooks.on_init"]
+vm_pool_size = 16
 
 [meridian]
 studio_name = "Meridian Studio"

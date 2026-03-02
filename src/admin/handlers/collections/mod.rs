@@ -173,13 +173,15 @@ pub async fn list_items(
     };
 
     // Strip field-level read-denied fields from documents
-    let denied_fields = {
+    let denied_fields = if def.fields.iter().any(|f| f.access.read.is_some()) {
         let user_doc = get_user_doc(&auth_user);
         let conn = match state.pool.get() {
             Ok(c) => c,
             Err(_) => return server_error(&state, "Database error").into_response(),
         };
         state.hook_runner.check_field_read_access(&def.fields, user_doc, &conn)
+    } else {
+        Vec::new()
     };
     let documents: Vec<_> = documents.into_iter().map(|mut doc| {
         for field_name in &denied_fields {
@@ -441,8 +443,8 @@ pub async fn create_action(
         }
     }
 
-    // Strip field-level create-denied fields
-    {
+    // Strip field-level create-denied fields (skip pool.get if no field-level access configured)
+    if def.fields.iter().any(|f| f.access.create.is_some()) {
         let user_doc = get_user_doc(&auth_user);
         if let Ok(conn) = state.pool.get() {
             let denied = state.hook_runner.check_field_write_access(&def.fields, user_doc, "create", &conn);
@@ -631,8 +633,8 @@ pub async fn edit_form(
         Err(e) => return server_error(&state, &format!("Task error: {}", e)).into_response(),
     };
 
-    // Strip field-level read-denied fields
-    {
+    // Strip field-level read-denied fields (skip pool.get if no field-level access configured)
+    if def.fields.iter().any(|f| f.access.read.is_some()) {
         let user_doc = get_user_doc(&auth_user);
         if let Ok(conn) = state.pool.get() {
             let denied = state.hook_runner.check_field_read_access(&def.fields, user_doc, &conn);
@@ -911,8 +913,8 @@ async fn do_update(state: &AdminState, slug: &str, id: &str, mut form_data: Hash
         }
     }
 
-    // Strip field-level update-denied fields
-    {
+    // Strip field-level update-denied fields (skip pool.get if no field-level access configured)
+    if def.fields.iter().any(|f| f.access.update.is_some()) {
         let user_doc = get_user_doc(auth_user);
         if let Ok(conn) = state.pool.get() {
             let denied = state.hook_runner.check_field_write_access(&def.fields, user_doc, "update", &conn);
