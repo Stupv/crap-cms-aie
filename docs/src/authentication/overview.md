@@ -19,7 +19,11 @@ Crap CMS provides built-in authentication via auth-enabled collections. Any coll
 
 ## Activation
 
-Auth middleware only activates when at least one auth collection exists. If no auth collections are defined, the admin UI and API remain fully open.
+Auth middleware activates when at least one auth collection exists **or** when `admin.require_auth` is `true` (the default). This means:
+
+- **`require_auth = true` (default):** If no auth collections are defined, the admin shows a "Setup Required" page. Create an auth collection and bootstrap a user to proceed.
+- **`require_auth = false`:** If no auth collections are defined, the admin is fully open (dev/prototyping mode).
+- **Auth collection exists:** Standard authentication applies. Optionally, `admin.access` can further restrict which authenticated users can access the admin panel.
 
 ## Quick Setup
 

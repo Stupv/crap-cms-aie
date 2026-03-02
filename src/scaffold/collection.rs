@@ -6,16 +6,16 @@ use std::path::Path;
 
 /// Valid field types for collection definitions.
 pub const VALID_FIELD_TYPES: &[&str] = &[
-    "text", "number", "textarea", "select", "checkbox", "date",
-    "email", "json", "richtext", "relationship", "array", "group",
-    "upload", "blocks", "row",
+    "text", "number", "textarea", "select", "radio", "checkbox", "date",
+    "email", "json", "richtext", "code", "relationship", "array", "group",
+    "upload", "blocks", "row", "collapsible", "tabs", "join",
 ];
 
-struct FieldStub {
-    name: String,
-    field_type: String,
-    required: bool,
-    localized: bool,
+pub(crate) struct FieldStub {
+    pub(crate) name: String,
+    pub(crate) field_type: String,
+    pub(crate) required: bool,
+    pub(crate) localized: bool,
 }
 
 /// Generate a collection Lua file at `<config_dir>/collections/<slug>.lua`.
@@ -77,16 +77,33 @@ pub fn make_collection(
     lua.push_str(&format!("    timestamps = {},\n", timestamps));
     if auth {
         lua.push_str("    auth = true,\n");
+        lua.push_str("    -- Full auth config (uncomment and customize):\n");
+        lua.push_str("    -- auth = {\n");
+        lua.push_str("    --     verify_email = false,\n");
+        lua.push_str("    --     strategies = {},\n");
+        lua.push_str("    -- },\n");
     }
     if upload {
         lua.push_str("    upload = true,\n");
+        lua.push_str("    -- Full upload config (uncomment and customize):\n");
+        lua.push_str("    -- upload = {\n");
+        lua.push_str("    --     mime_types = { \"image/*\", \"application/pdf\" },\n");
+        lua.push_str("    --     max_file_size = \"50MB\",\n");
+        lua.push_str("    --     image_sizes = {\n");
+        lua.push_str("    --         { name = \"thumbnail\", width = 300, height = 300, fit = \"cover\" },\n");
+        lua.push_str("    --     },\n");
+        lua.push_str("    -- },\n");
     }
     if versions {
         lua.push_str("    versions = true,\n");
     }
+    let use_as_title = if auth { "email" } else { title_field };
     lua.push_str("    admin = {\n");
-    lua.push_str(&format!("        use_as_title = \"{}\",\n",
-        if auth { "email" } else { title_field }));
+    lua.push_str(&format!("        use_as_title = \"{}\",\n", use_as_title));
+    if !no_timestamps {
+        lua.push_str("        default_sort = \"-created_at\",\n");
+    }
+    lua.push_str(&format!("        list_searchable_fields = {{ \"{}\" }},\n", use_as_title));
     lua.push_str("    },\n");
     lua.push_str("    fields = {\n");
 
@@ -100,10 +117,19 @@ pub fn make_collection(
         if field.localized {
             lua.push_str("            localized = true,\n");
         }
+        if let Some(stub) = type_specific_stub(&field.field_type) {
+            lua.push_str(stub);
+        }
         lua.push_str("        },\n");
     }
 
     lua.push_str("    },\n");
+    lua.push_str("    -- access = {\n");
+    lua.push_str("    --     read   = \"access.anyone\",\n");
+    lua.push_str("    --     create = \"access.authenticated\",\n");
+    lua.push_str("    --     update = \"access.authenticated\",\n");
+    lua.push_str("    --     delete = \"access.admin_only\",\n");
+    lua.push_str("    -- },\n");
     lua.push_str("})\n");
 
     fs::write(&file_path, &lua)
@@ -136,7 +162,10 @@ fn pluralize(s: &str) -> String {
         return s.to_string();
     }
     let lower = s.to_lowercase();
-    if lower.ends_with("s") || lower.ends_with("x") || lower.ends_with("z")
+    if lower.ends_with("z") && !lower.ends_with("zz") {
+        // Single trailing z doubles before -es: Quiz → Quizzes
+        format!("{}zes", s)
+    } else if lower.ends_with("s") || lower.ends_with("x") || lower.ends_with("zz")
         || lower.ends_with("sh") || lower.ends_with("ch")
     {
         format!("{}es", s)
@@ -152,11 +181,45 @@ fn pluralize(s: &str) -> String {
     }
 }
 
+/// Return type-specific Lua stub lines for complex field types.
+fn type_specific_stub(field_type: &str) -> Option<&'static str> {
+    match field_type {
+        "select" | "radio" => Some(
+            "            options = { { label = \"Option 1\", value = \"option_1\" } },\n"
+        ),
+        "relationship" => Some(
+            "            relationship = { collection = \"TODO\" },\n"
+        ),
+        "upload" => Some(
+            "            relationship = { collection = \"media\" },\n"
+        ),
+        "array" => Some(
+            "            fields = { { name = \"item\", type = \"text\" } },\n"
+        ),
+        "blocks" => Some(
+            "            blocks = { { type = \"block_type\", label = \"Block\", fields = { { name = \"content\", type = \"text\" } } } },\n"
+        ),
+        "group" | "collapsible" | "row" => Some(
+            "            fields = { { name = \"item\", type = \"text\" } },\n"
+        ),
+        "tabs" => Some(
+            "            tabs = { { label = \"Tab 1\", fields = { { name = \"item\", type = \"text\" } } } },\n"
+        ),
+        "join" => Some(
+            "            collection = \"TODO\",\n            on = \"TODO\",\n"
+        ),
+        "code" => Some(
+            "            admin = { language = \"javascript\" },\n"
+        ),
+        _ => None,
+    }
+}
+
 /// Parse inline field shorthand: "title:text:required,status:select,body:textarea:localized"
 ///
 /// Modifiers after the type are order-independent flags: `required`, `localized`.
 /// E.g., `"title:text:required:localized"` or `"title:text:localized:required"`.
-fn parse_fields_shorthand(s: &str) -> Result<Vec<FieldStub>> {
+pub(crate) fn parse_fields_shorthand(s: &str) -> Result<Vec<FieldStub>> {
 
     let mut fields = Vec::new();
     for part in s.split(',') {
@@ -323,7 +386,7 @@ mod tests {
     #[test]
     fn test_pluralize_more_cases() {
         assert_eq!(pluralize(""), "");
-        assert_eq!(pluralize("Quiz"), "Quizes");
+        assert_eq!(pluralize("Quiz"), "Quizzes");
         assert_eq!(pluralize("Brush"), "Brushes");
         assert_eq!(pluralize("Church"), "Churches");
         assert_eq!(pluralize("Boy"), "Boys");
@@ -375,6 +438,20 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_fields_shorthand_new_types() {
+        // Verify all newer field types are accepted
+        let fields = parse_fields_shorthand(
+            "buttons:radio,section:collapsible,panels:tabs,snippet:code,related:join"
+        ).unwrap();
+        assert_eq!(fields.len(), 5);
+        assert_eq!(fields[0].field_type, "radio");
+        assert_eq!(fields[1].field_type, "collapsible");
+        assert_eq!(fields[2].field_type, "tabs");
+        assert_eq!(fields[3].field_type, "code");
+        assert_eq!(fields[4].field_type, "join");
+    }
+
+    #[test]
     fn test_make_collection_invalid_slug() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let result = make_collection(tmp.path(), "Bad Slug", None, false, false, false, false, false);
@@ -395,5 +472,90 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         make_collection(tmp.path(), "posts", None, false, false, false, false, false).unwrap();
         assert!(make_collection(tmp.path(), "posts", None, false, false, false, false, true).is_ok());
+    }
+
+    #[test]
+    fn test_complex_field_type_stubs() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_collection(
+            tmp.path(), "posts",
+            Some("author:relationship,status:select,body:array,layout:blocks,meta:group,content:tabs,snippet:code,related:join,pic:upload,style:radio,section:collapsible,cols:row"),
+            false, false, false, false, false,
+        ).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("collections/posts.lua")).unwrap();
+        assert!(content.contains("relationship = { collection = \"TODO\" }"), "relationship stub");
+        assert!(content.contains("options = { { label = \"Option 1\", value = \"option_1\" } }"), "select stub");
+        assert!(content.contains("fields = { { name = \"item\", type = \"text\" } }"), "array stub");
+        assert!(content.contains("blocks = {"), "blocks stub");
+        assert!(content.contains("tabs = {"), "tabs stub");
+        assert!(content.contains("admin = { language = \"javascript\" }"), "code stub");
+        assert!(content.contains("collection = \"TODO\","), "join collection stub");
+        assert!(content.contains("on = \"TODO\","), "join on stub");
+        assert!(content.contains("relationship = { collection = \"media\" }"), "upload field stub");
+    }
+
+    #[test]
+    fn test_access_block_in_output() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_collection(tmp.path(), "posts", None, false, false, false, false, false).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("collections/posts.lua")).unwrap();
+        assert!(content.contains("-- access = {"));
+        assert!(content.contains("--     read   = \"access.anyone\""));
+        assert!(content.contains("--     create = \"access.authenticated\""));
+        assert!(content.contains("--     delete = \"access.admin_only\""));
+    }
+
+    #[test]
+    fn test_admin_block_expanded() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_collection(tmp.path(), "posts", None, false, false, false, false, false).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("collections/posts.lua")).unwrap();
+        assert!(content.contains("default_sort = \"-created_at\""));
+        assert!(content.contains("list_searchable_fields = { \"title\" }"));
+    }
+
+    #[test]
+    fn test_admin_block_no_default_sort_without_timestamps() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_collection(tmp.path(), "posts", None, true, false, false, false, false).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("collections/posts.lua")).unwrap();
+        assert!(!content.contains("default_sort"), "no default_sort when timestamps disabled");
+        assert!(content.contains("list_searchable_fields"));
+    }
+
+    #[test]
+    fn test_upload_comment_block() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_collection(tmp.path(), "media", None, false, false, true, false, false).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("collections/media.lua")).unwrap();
+        assert!(content.contains("upload = true"));
+        assert!(content.contains("-- Full upload config (uncomment and customize):"));
+        assert!(content.contains("--     mime_types"));
+        assert!(content.contains("--     max_file_size"));
+        assert!(content.contains("--     image_sizes"));
+    }
+
+    #[test]
+    fn test_auth_comment_block() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_collection(tmp.path(), "users", None, false, true, false, false, false).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("collections/users.lua")).unwrap();
+        assert!(content.contains("auth = true"));
+        assert!(content.contains("-- Full auth config (uncomment and customize):"));
+        assert!(content.contains("--     verify_email"));
+        assert!(content.contains("--     strategies"));
+    }
+
+    #[test]
+    fn test_pluralize_z_doubling() {
+        assert_eq!(pluralize("Quiz"), "Quizzes");
+        assert_eq!(pluralize("Fuzz"), "Fuzzes"); // double z stays
+        assert_eq!(pluralize("Buzz"), "Buzzes");
     }
 }

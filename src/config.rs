@@ -556,6 +556,12 @@ pub struct DatabaseConfig {
 #[serde(default)]
 pub struct AdminConfig {
     pub dev_mode: bool,
+    /// When true (default), block admin panel if no auth collection exists.
+    /// Set to false for open dev mode with no authentication.
+    pub require_auth: bool,
+    /// Optional Lua function ref that gates admin panel access.
+    /// Checked after successful authentication. None = any authenticated user.
+    pub access: Option<String>,
 }
 
 impl Default for ServerConfig {
@@ -582,6 +588,8 @@ impl Default for AdminConfig {
     fn default() -> Self {
         Self {
             dev_mode: false,
+            require_auth: true,
+            access: None,
         }
     }
 }
@@ -735,6 +743,8 @@ mod tests {
         assert_eq!(config.database.pool_max_size, 16);
         assert_eq!(config.database.busy_timeout_ms, 30000);
         assert!(!config.admin.dev_mode);
+        assert!(config.admin.require_auth);
+        assert!(config.admin.access.is_none());
         assert!(!config.access.default_deny);
     }
 
@@ -1171,6 +1181,40 @@ allow_credentials = true
         // Other fields should be defaults
         assert_eq!(config.server.grpc_port, 50051);
         assert_eq!(config.database.path, "data/crap.db");
+    }
+
+    #[test]
+    fn admin_config_defaults() {
+        let admin = AdminConfig::default();
+        assert!(!admin.dev_mode);
+        assert!(admin.require_auth);
+        assert!(admin.access.is_none());
+    }
+
+    #[test]
+    fn admin_config_from_toml() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[admin]\ndev_mode = true\nrequire_auth = false\naccess = \"access.admin_panel\"\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert!(config.admin.dev_mode);
+        assert!(!config.admin.require_auth);
+        assert_eq!(config.admin.access, Some("access.admin_panel".to_string()));
+    }
+
+    #[test]
+    fn admin_config_partial_toml_uses_defaults() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            tmp.path().join("crap.toml"),
+            "[admin]\ndev_mode = true\n",
+        ).unwrap();
+        let config = CrapConfig::load(tmp.path()).unwrap();
+        assert!(config.admin.dev_mode);
+        assert!(config.admin.require_auth); // default
+        assert!(config.admin.access.is_none()); // default
     }
 
     #[test]

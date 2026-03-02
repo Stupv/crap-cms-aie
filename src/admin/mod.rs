@@ -33,6 +33,7 @@ pub struct AdminState {
     pub email_renderer: Arc<EmailRenderer>,
     pub event_bus: Option<EventBus>,
     pub login_limiter: Arc<LoginRateLimiter>,
+    pub has_auth: bool,
 }
 
 impl AdminState {

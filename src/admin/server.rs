@@ -70,9 +70,10 @@ pub async fn start(
         email_renderer,
         event_bus,
         login_limiter,
+        has_auth,
     };
 
-    let app = build_router(state, has_auth);
+    let app = build_router(state);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
@@ -86,7 +87,8 @@ pub async fn start(
 // Excluded from coverage: requires full AdminState (HookRunner with Lua VM, DB pool,
 // Handlebars registry, etc). Tested indirectly through CLI integration tests.
 #[cfg(not(tarpaulin_include))]
-pub fn build_router(state: AdminState, has_auth: bool) -> Router {
+pub fn build_router(state: AdminState) -> Router {
+    let has_auth = state.has_auth;
     // Build method routers explicitly to handle multiple methods on same path
     let slug_methods: MethodRouter<AdminState> = MethodRouter::new()
         .get(collections::list_items)
@@ -120,8 +122,9 @@ pub fn build_router(state: AdminState, has_auth: bool) -> Router {
         .route("/admin/globals/{slug}/versions/{version_id}/restore", post(globals::restore_version))
         .route("/admin/events", get(events::sse_handler));
 
-    // Only apply auth middleware if auth collections exist
-    let protected = if has_auth {
+    // Apply auth middleware if auth collections exist OR require_auth is set
+    let needs_auth_layer = has_auth || state.config.admin.require_auth;
+    let protected = if needs_auth_layer {
         protected.layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
     } else {
         protected
@@ -254,6 +257,10 @@ fn ensure_csrf_cookie(
 /// Auth middleware — extracts JWT from `crap_session` cookie, validates it,
 /// and stores `Claims` in request extensions. If JWT is invalid/missing,
 /// tries custom auth strategies before redirecting to login.
+///
+/// Also enforces two admin access gates:
+/// 1. If no auth collections exist and `require_auth` is true, shows "setup required" page.
+/// 2. If `admin.access` is configured, checks the Lua function after authentication.
 // Excluded from coverage: async Axum middleware requiring full server state (pool, registry,
 // HookRunner, JWT secret) and spawned blocking tasks for Lua auth strategies.
 #[cfg(not(tarpaulin_include))]
@@ -262,6 +269,15 @@ async fn auth_middleware(
     mut request: axum::http::Request<axum::body::Body>,
     next: Next,
 ) -> axum::response::Response {
+    // Gate 1: No auth collections but require_auth is on → setup required
+    if !state.has_auth && state.config.admin.require_auth {
+        return auth_required_response(&state);
+    }
+
+    // If no auth collections and require_auth is false, this middleware
+    // wouldn't be applied (needs_auth_layer is false), so we're safe to
+    // proceed assuming auth collections exist from here.
+
     let cookie_header = request.headers()
         .get(axum::http::header::COOKIE)
         .and_then(|v| v.to_str().ok())
@@ -273,6 +289,10 @@ async fn auth_middleware(
         if let Ok(claims) = auth::validate_token(t, &state.jwt_secret) {
             // Try to load full user document for access control
             if let Some(auth_user) = load_auth_user(&state.pool, &state.registry, &claims, &state.config.locale) {
+                // Gate 2: Check admin.access Lua function
+                if let Some(response) = check_admin_gate(&state, &auth_user).await {
+                    return response;
+                }
                 request.extensions_mut().insert(auth_user);
             }
             request.extensions_mut().insert(claims);
@@ -351,6 +371,10 @@ async fn auth_middleware(
 
         if let Ok(Some((claims, _secret))) = strategy_result {
             if let Some(auth_user) = load_auth_user(&state.pool, &state.registry, &claims, &state.config.locale) {
+                // Gate 2: Check admin.access Lua function
+                if let Some(response) = check_admin_gate(&state, &auth_user).await {
+                    return response;
+                }
                 request.extensions_mut().insert(auth_user);
             }
             request.extensions_mut().insert(claims);
@@ -359,6 +383,53 @@ async fn auth_middleware(
     }
 
     Redirect::to("/admin/login").into_response()
+}
+
+/// Gate 2: Check `admin.access` Lua function. Returns a 403 response if the user
+/// is denied, or None if access is allowed (or no access function is configured).
+// Excluded from coverage: requires HookRunner + DB pool for Lua access check.
+#[cfg(not(tarpaulin_include))]
+async fn check_admin_gate(state: &AdminState, auth_user: &AuthUser) -> Option<axum::response::Response> {
+    let access_ref = state.config.admin.access.as_deref()?;
+
+    let pool = state.pool.clone();
+    let hook_runner = state.hook_runner.clone();
+    let user_doc = auth_user.user_doc.clone();
+    let access_ref = access_ref.to_string();
+
+    let result = tokio::task::spawn_blocking(move || {
+        let conn = pool.get().ok()?;
+        Some(hook_runner.check_access(Some(&access_ref), Some(&user_doc), None, None, &conn))
+    }).await;
+
+    match result {
+        Ok(Some(Ok(crate::db::query::AccessResult::Denied))) => {
+            Some(admin_denied_response(state))
+        }
+        Ok(Some(Err(e))) => {
+            tracing::error!("admin.access check failed: {}", e);
+            Some(admin_denied_response(state))
+        }
+        _ => None, // Allowed or Constrained — pass through
+    }
+}
+
+/// Render the "setup required" page (no auth collection exists, require_auth is on).
+fn auth_required_response(state: &AdminState) -> axum::response::Response {
+    let data = serde_json::json!({});
+    match state.render("errors/auth_required", &data) {
+        Ok(html) => (StatusCode::SERVICE_UNAVAILABLE, axum::response::Html(html)).into_response(),
+        Err(_) => (StatusCode::SERVICE_UNAVAILABLE, "Setup required: no auth collection configured").into_response(),
+    }
+}
+
+/// Render the "access denied" page (user authenticated but not authorized for admin).
+fn admin_denied_response(state: &AdminState) -> axum::response::Response {
+    let data = serde_json::json!({});
+    match state.render("errors/admin_denied", &data) {
+        Ok(html) => (StatusCode::FORBIDDEN, axum::response::Html(html)).into_response(),
+        Err(_) => (StatusCode::FORBIDDEN, "Access denied").into_response(),
+    }
 }
 
 /// Load the full user document for an authenticated user.

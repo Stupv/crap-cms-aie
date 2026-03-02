@@ -6,7 +6,7 @@ use std::path::Path;
 
 /// Scaffold a job Lua file in `jobs/<slug>.lua`.
 ///
-/// Generates `crap.jobs.define()` with the handler function stub.
+/// Generates a module with a `run` handler, followed by `crap.jobs.define()`.
 pub fn make_job(
     config_dir: &Path,
     slug: &str,
@@ -59,25 +59,27 @@ pub fn make_job(
     let config_body = config_lines.join("\n");
 
     let lua = format!(
-        r#"crap.jobs.define("{slug}", {{
-{config_body}
-}})
-
+        r#"--- {label} job handler.
 local M = {{}}
 
----@param ctx crap.JobHandlerContext
+---@param context crap.JobHandlerContext
 ---@return table?
-function M.run(ctx)
-    -- ctx.data = input data from queue() or {{}} for cron
-    -- ctx.job  = {{ slug, attempt, max_attempts }}
+function M.run(context)
+    -- context.data = input data from queue() or {{}} for cron
+    -- context.job  = {{ slug, attempt, max_attempts }}
     -- Full CRUD access: crap.collections.find(), .create(), etc.
 
     -- TODO: implement
     return nil
 end
 
+crap.jobs.define("{slug}", {{
+{config_body}
+}})
+
 return M
 "#,
+        label = label,
         slug = slug,
         config_body = config_body,
     );
@@ -102,4 +104,105 @@ return M
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_make_job_default() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_job(tmp.path(), "cleanup", None, None, None, None, false).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("jobs/cleanup.lua")).unwrap();
+        assert!(content.contains("local M = {}"));
+        assert!(content.contains("function M.run(context)"));
+        assert!(content.contains("crap.jobs.define(\"cleanup\""));
+        assert!(content.contains("handler = \"jobs.cleanup.run\""));
+        assert!(content.contains("return M"));
+    }
+
+    #[test]
+    fn test_make_job_with_schedule() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_job(tmp.path(), "nightly", Some("0 3 * * *"), None, None, None, false).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("jobs/nightly.lua")).unwrap();
+        assert!(content.contains("schedule = \"0 3 * * *\""));
+    }
+
+    #[test]
+    fn test_make_job_with_queue() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_job(tmp.path(), "email_send", None, Some("email"), None, None, false).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("jobs/email_send.lua")).unwrap();
+        assert!(content.contains("queue = \"email\""));
+    }
+
+    #[test]
+    fn test_make_job_with_options() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_job(tmp.path(), "import", None, None, Some(3), Some(300), false).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("jobs/import.lua")).unwrap();
+        assert!(content.contains("retries = 3"));
+        assert!(content.contains("timeout = 300"));
+    }
+
+    #[test]
+    fn test_make_job_refuses_overwrite() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_job(tmp.path(), "cleanup", None, None, None, None, false).unwrap();
+        let result = make_job(tmp.path(), "cleanup", None, None, None, None, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("--force"));
+    }
+
+    #[test]
+    fn test_make_job_force_overwrite() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_job(tmp.path(), "cleanup", None, None, None, None, false).unwrap();
+        assert!(make_job(tmp.path(), "cleanup", None, None, None, None, true).is_ok());
+    }
+
+    #[test]
+    fn test_make_job_invalid_slug() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let result = make_job(tmp.path(), "Bad Slug", None, None, None, None, false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_make_job_ordering() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_job(tmp.path(), "sync", None, None, None, None, false).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("jobs/sync.lua")).unwrap();
+        let module_pos = content.find("local M = {}").expect("local M = {} not found");
+        let define_pos = content.find("crap.jobs.define").expect("crap.jobs.define not found");
+        let return_pos = content.rfind("return M").expect("return M not found");
+        assert!(module_pos < define_pos, "module should come before define");
+        assert!(define_pos < return_pos, "define should come before return M");
+    }
+
+    #[test]
+    fn test_make_job_default_queue_not_emitted() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_job(tmp.path(), "cleanup", None, Some("default"), None, None, false).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("jobs/cleanup.lua")).unwrap();
+        assert!(!content.contains("queue ="), "default queue should not be emitted");
+    }
+
+    #[test]
+    fn test_make_job_default_timeout_not_emitted() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_job(tmp.path(), "cleanup", None, None, None, Some(60), false).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("jobs/cleanup.lua")).unwrap();
+        assert!(!content.contains("timeout ="), "default timeout (60) should not be emitted");
+    }
 }

@@ -70,6 +70,10 @@ pub enum MakeAction {
         /// Global slug (e.g., "site_settings"). Prompted if omitted.
         slug: Option<String>,
 
+        /// Inline field shorthand (e.g., "title:text:required,tagline:textarea")
+        #[arg(short = 'F', long)]
+        fields: Option<String>,
+
         /// Overwrite existing file
         #[arg(short, long)]
         force: bool,

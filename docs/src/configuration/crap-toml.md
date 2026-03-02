@@ -85,6 +85,8 @@ busy_timeout_ms = 30000  # SQLite busy timeout in milliseconds (30s)
 
 [admin]
 dev_mode = false         # Reload templates per-request (enable in development)
+require_auth = true      # Block admin when no auth collection exists (default: true)
+# access = "access.admin_panel"  # Lua function: which users can access the admin UI
 
 [auth]
 secret = ""              # JWT signing key. Empty = auto-generated and persisted to data/.jwt_secret
@@ -166,6 +168,8 @@ allow_credentials = false # Allow cookies/Authorization. Cannot use with ["*"] o
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `dev_mode` | boolean | `false` | When true, templates are reloaded from disk on every request. The scaffold sets this to `true` for new projects. Set to `false` in production for cached templates. |
+| `require_auth` | boolean | `true` | When true and no auth collection exists, the admin panel shows a "Setup Required" page (HTTP 503) instead of being open. Set to `false` for fully open dev mode without authentication. |
+| `access` | string | — | Lua function ref (e.g., `"access.admin_panel"`) that gates admin panel access. Called after successful authentication with `{ user }` context. Return `true` to allow, `false`/`nil` to deny (HTTP 403). |
 
 ### `[auth]`
 
@@ -280,6 +284,8 @@ path = "/var/lib/crap/production.db"
 
 [admin]
 dev_mode = false
+# require_auth = true
+# access = "access.admin_panel"
 
 [auth]
 secret = "a-very-long-random-string-for-jwt-signing"

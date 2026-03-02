@@ -65,5 +65,9 @@
   "version": "Version",
   "shared_field": "Shared across locales",
   "view_all_versions": "View all versions",
-  "last_updated": "Last updated"
+  "last_updated": "Last updated",
+  "error_admin_access_denied_title": "Access Denied",
+  "error_admin_access_denied": "Your account does not have permission to access the admin panel.",
+  "error_auth_required_title": "Setup Required",
+  "error_auth_required": "No authentication collection has been configured. Create an auth collection to enable admin access."
 }

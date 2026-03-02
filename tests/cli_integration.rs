@@ -360,7 +360,7 @@ fn make_collection_roundtrip() {
 #[test]
 fn make_global_creates_file() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    scaffold::make_global(tmp.path(), "site_settings", false).unwrap();
+    scaffold::make_global(tmp.path(), "site_settings", None, false).unwrap();
 
     let path = tmp.path().join("globals/site_settings.lua");
     assert!(path.exists());
@@ -371,8 +371,8 @@ fn make_global_creates_file() {
 #[test]
 fn make_global_refuses_overwrite() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    scaffold::make_global(tmp.path(), "settings", false).unwrap();
-    let result = scaffold::make_global(tmp.path(), "settings", false);
+    scaffold::make_global(tmp.path(), "settings", None, false).unwrap();
+    let result = scaffold::make_global(tmp.path(), "settings", None, false);
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("--force"));
 }
@@ -383,7 +383,7 @@ fn make_global_roundtrip() {
     let config_dir = tmp.path().join("project");
     scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
 
-    scaffold::make_global(&config_dir, "navigation", false).unwrap();
+    scaffold::make_global(&config_dir, "navigation", None, false).unwrap();
 
     let cfg = CrapConfig::load(&config_dir).unwrap();
     let registry = hooks::init_lua(&config_dir, &cfg).unwrap();
@@ -462,7 +462,7 @@ fn make_hook_access_hook() {
     );
     scaffold::make_hook(&opts).unwrap();
 
-    let content = std::fs::read_to_string(tmp.path().join("hooks/posts/admin_only.lua")).unwrap();
+    let content = std::fs::read_to_string(tmp.path().join("access/admin_only.lua")).unwrap();
     assert!(content.contains("crap.AccessContext"));
     assert!(content.contains("return true"));
 }
@@ -1593,7 +1593,7 @@ fn make_job_creates_lua_file() {
     let content = std::fs::read_to_string(&path).unwrap();
     assert!(content.contains("crap.jobs.define(\"cleanup\""));
     assert!(content.contains("jobs.cleanup.run"));
-    assert!(content.contains("function M.run(ctx)"));
+    assert!(content.contains("function M.run(context)"));
 }
 
 #[test]

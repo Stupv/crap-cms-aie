@@ -186,6 +186,13 @@ pub fn blueprint_use(name: &str, dir: Option<PathBuf>) -> Result<()> {
     copy_dir_recursive(&source, &target, &[])
         .with_context(|| format!("Failed to copy blueprint '{}' to '{}'", name, target.display()))?;
 
+    // Write types/crap.lua — blueprints skip the types/ dir during save,
+    // so we regenerate it from the compiled-in source.
+    let types_dir = target.join("types");
+    fs::create_dir_all(&types_dir).context("Failed to create types/")?;
+    fs::write(types_dir.join("crap.lua"), super::init::LUA_API_TYPES)
+        .context("Failed to write types/crap.lua")?;
+
     let abs = target.canonicalize().unwrap_or_else(|_| target.clone());
     println!("Created project from blueprint '{}': {}", name, abs.display());
     println!();
@@ -632,6 +639,34 @@ mod tests {
             deserialized.created_at.as_deref(),
             Some("2026-02-28T12:00:00+00:00")
         );
+    }
+
+    #[test]
+    fn test_blueprint_use_writes_types() {
+        // Simulate a blueprint_use by copying a blueprint and verifying types/crap.lua
+        let tmp = tempfile::tempdir().expect("tempdir");
+
+        // Create a fake blueprint source (no types/ — just like a real blueprint)
+        let bp_source = tmp.path().join("blueprint");
+        fs::create_dir_all(bp_source.join("collections")).unwrap();
+        fs::write(bp_source.join("crap.toml"), "[server]\nadmin_port = 3000\n").unwrap();
+        fs::write(bp_source.join("collections/posts.lua"), "-- posts").unwrap();
+
+        // Copy it like blueprint_use does
+        let target = tmp.path().join("new-project");
+        fs::create_dir_all(&target).unwrap();
+        copy_dir_recursive(&bp_source, &target, &[]).unwrap();
+
+        // Write types like blueprint_use does
+        let types_dir = target.join("types");
+        fs::create_dir_all(&types_dir).unwrap();
+        fs::write(types_dir.join("crap.lua"), crate::scaffold::init::LUA_API_TYPES).unwrap();
+
+        // Verify types/crap.lua exists and is non-empty
+        let types_file = target.join("types/crap.lua");
+        assert!(types_file.exists(), "types/crap.lua should exist after blueprint use");
+        let content = fs::read_to_string(&types_file).unwrap();
+        assert!(!content.is_empty(), "types/crap.lua should be non-empty");
     }
 
     #[test]

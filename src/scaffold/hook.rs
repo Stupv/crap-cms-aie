@@ -103,11 +103,17 @@ pub fn make_hook(opts: &MakeHookOptions) -> Result<()> {
         anyhow::bail!("Field hooks require --field to be specified");
     }
 
-    let hooks_dir = opts.config_dir.join("hooks").join(opts.collection);
+    let (hooks_dir, file_path) = if opts.hook_type == HookType::Access {
+        let dir = opts.config_dir.join("access");
+        let path = dir.join(format!("{}.lua", opts.name));
+        (dir, path)
+    } else {
+        let dir = opts.config_dir.join("hooks").join(opts.collection);
+        let path = dir.join(format!("{}.lua", opts.name));
+        (dir, path)
+    };
     fs::create_dir_all(&hooks_dir)
-        .context("Failed to create hooks/ subdirectory")?;
-
-    let file_path = hooks_dir.join(format!("{}.lua", opts.name));
+        .context("Failed to create hook subdirectory")?;
     if file_path.exists() && !opts.force {
         anyhow::bail!(
             "File '{}' already exists — use --force to overwrite",
@@ -242,7 +248,11 @@ end
     fs::write(&file_path, &lua)
         .with_context(|| format!("Failed to write {}", file_path.display()))?;
 
-    let hook_ref = format!("hooks.{}.{}", opts.collection, opts.name);
+    let hook_ref = if opts.hook_type == HookType::Access {
+        format!("access.{}", opts.name)
+    } else {
+        format!("hooks.{}.{}", opts.collection, opts.name)
+    };
 
     println!("Created {}", file_path.display());
     println!();
@@ -336,7 +346,10 @@ mod tests {
         );
         make_hook(&opts).unwrap();
 
-        let content = fs::read_to_string(tmp.path().join("hooks/posts/admin_only.lua")).unwrap();
+        // Access hooks go to access/ dir, not hooks/<collection>/
+        let file_path = tmp.path().join("access/admin_only.lua");
+        assert!(file_path.exists(), "access hook should be in access/ dir");
+        let content = fs::read_to_string(&file_path).unwrap();
         assert!(content.contains("read access control for posts"));
         assert!(content.contains("crap.AccessContext"));
         assert!(content.contains("return true"));

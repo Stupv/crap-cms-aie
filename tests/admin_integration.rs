@@ -116,6 +116,7 @@ fn setup_app(
     let mut config = CrapConfig::default();
     config.database.path = "test.db".to_string();
     config.auth.secret = "test-jwt-secret".to_string();
+    config.admin.require_auth = false; // tests default to open admin
     setup_app_with_config(collections, globals, config)
 }
 
@@ -167,9 +168,10 @@ fn setup_app_with_config(
         email_renderer,
         event_bus: None,
         login_limiter: std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
+        has_auth,
     };
 
-    let router = build_router(state, has_auth);
+    let router = build_router(state);
 
     TestApp {
         _tmp: tmp,
@@ -4982,5 +4984,50 @@ async fn cors_non_matching_origin_not_reflected() {
     assert!(
         resp.headers().get("access-control-allow-origin").is_none(),
         "Non-matching origin should not get CORS header"
+    );
+}
+
+// ── Admin Access Gate Tests ─────────────────────────────────────────────
+
+#[tokio::test]
+async fn require_auth_blocks_when_no_auth_collection() {
+    // require_auth = true (default) with no auth collection → 503 "setup required"
+    let mut config = CrapConfig::default();
+    config.database.path = "test.db".to_string();
+    config.auth.secret = "test-jwt-secret".to_string();
+    config.admin.require_auth = true;
+
+    let app = setup_app_with_config(vec![make_posts_def()], vec![], config);
+    let resp = app.router
+        .oneshot(Request::get("/admin").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "require_auth=true with no auth collection should return 503"
+    );
+    let body = body_string(resp.into_body()).await;
+    assert!(body.contains("Setup Required") || body.contains("setup required") || body.contains("auth"),
+        "Response should mention setup/auth requirement");
+}
+
+#[tokio::test]
+async fn require_auth_false_allows_open_admin() {
+    // require_auth = false with no auth collection → open admin (200)
+    let mut config = CrapConfig::default();
+    config.database.path = "test.db".to_string();
+    config.auth.secret = "test-jwt-secret".to_string();
+    config.admin.require_auth = false;
+
+    let app = setup_app_with_config(vec![make_posts_def()], vec![], config);
+    let resp = app.router
+        .oneshot(Request::get("/admin").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "require_auth=false with no auth collection should allow access"
     );
 }

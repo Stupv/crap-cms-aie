@@ -5,7 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 
 /// Embedded Lua API type definitions — compiled into the binary.
-const LUA_API_TYPES: &str = include_str!("../../types/crap.lua");
+pub(crate) const LUA_API_TYPES: &str = include_str!("../../types/crap.lua");
 
 /// Options for `init()`. Controls what gets written to `crap.toml`.
 pub struct InitOptions {
@@ -50,7 +50,8 @@ pub fn init(dir: Option<PathBuf>, opts: &InitOptions) -> Result<()> {
     fs::create_dir_all(&target)
         .with_context(|| format!("Failed to create directory '{}'", target.display()))?;
 
-    for subdir in &["collections", "globals", "hooks", "templates", "static", "migrations", "types"] {
+    for subdir in &["collections", "globals", "hooks", "access", "jobs", "plugins",
+                    "templates", "static", "migrations", "types"] {
         fs::create_dir_all(target.join(subdir))
             .with_context(|| format!("Failed to create {}/", subdir))?;
     }
@@ -66,7 +67,7 @@ pub fn init(dir: Option<PathBuf>, opts: &InitOptions) -> Result<()> {
         opts.admin_port, opts.grpc_port
     ));
     toml.push_str("\n[database]\npath = \"data/crap.db\"\n");
-    toml.push_str("\n[admin]\ndev_mode = true\n");
+    toml.push_str("\n[admin]\ndev_mode = true\n# require_auth = true               # block admin when no auth collection exists (default: true)\n# access = \"access.admin_panel\"     # Lua function: which users can access the admin UI\n");
     toml.push_str(&format!(
         "\n[auth]\nsecret = \"{}\"\n# token_expiry = 7200           # seconds, default 2 hours\n",
         opts.auth_secret
@@ -86,18 +87,32 @@ pub fn init(dir: Option<PathBuf>, opts: &InitOptions) -> Result<()> {
         ));
     }
 
+    toml.push_str("\n# [depth]\n# default_depth = 1              # default relationship population depth for FindByID\n# max_depth = 10                 # hard cap on population depth\n");
+    toml.push_str("\n# [upload]\n# max_file_size = \"50MB\"         # global max upload size (integer bytes or \"50MB\", \"1GB\")\n");
+    toml.push_str("\n# [email]\n# smtp_host = \"\"                 # SMTP server (empty = email disabled)\n# smtp_port = 587\n# smtp_user = \"\"\n# smtp_pass = \"\"\n# from_address = \"noreply@example.com\"\n# from_name = \"Crap CMS\"\n");
+    toml.push_str("\n# [hooks]\n# on_init = []                   # hook functions to run at startup\n# max_depth = 3                  # max hook recursion depth (hook → CRUD → hook)\n# vm_pool_size = 4               # number of Lua VMs for concurrent hook execution\n");
+    toml.push_str("\n# [jobs]\n# poll_interval = 1              # seconds between job queue polls\n# cron_interval = 60             # seconds between cron schedule checks\n");
+    toml.push_str("\n# [cors]\n# allowed_origins = []           # empty = CORS disabled; [\"*\"] = allow any origin\n# allowed_methods = [\"GET\", \"POST\", \"PUT\", \"DELETE\", \"PATCH\", \"OPTIONS\"]\n# allowed_headers = [\"Content-Type\", \"Authorization\"]\n# max_age_seconds = 3600\n# allow_credentials = false      # cannot be used with wildcard origin\n");
+    toml.push_str("\n# [access]\n# default_deny = false           # when true, collections without access functions deny all\n");
+
     fs::write(&toml_path, &toml)
         .context("Failed to write crap.toml")?;
 
-    // init.lua — empty entry point with comments
+    // init.lua — entry point with commented examples
     fs::write(
         target.join("init.lua"),
         r#"-- init.lua — runs once at startup.
--- Register global hooks, set up shared state, or log startup info.
+-- Register global hooks, load plugins, or set up shared state.
 
-crap.log.info("Crap CMS initializing...")
+-- Example: register a global hook that runs for ALL collections
+-- crap.hooks.register("after_change", function(context)
+--     crap.log.info("Document changed: " .. context.collection .. "/" .. (context.data.id or ""))
+-- end)
 
-crap.log.info("init.lua loaded successfully")
+-- Example: load a plugin module
+-- require("plugins.seo")
+
+crap.log.info("init.lua loaded")
 "#,
     )
     .context("Failed to write init.lua")?;
@@ -120,6 +135,13 @@ crap.log.info("init.lua loaded successfully")
         "data/\nuploads/\ntypes/\ndata/.jwt_secret\n",
     )
     .context("Failed to write .gitignore")?;
+
+    // stylua.toml — Lua formatter config
+    fs::write(
+        target.join("stylua.toml"),
+        "indent_type = \"Spaces\"\nindent_width = 2\n",
+    )
+    .context("Failed to write stylua.toml")?;
 
     let abs = target.canonicalize().unwrap_or_else(|_| target.clone());
     println!("Scaffolded config directory: {}", abs.display());
@@ -144,11 +166,18 @@ mod tests {
         assert!(target.join("collections").is_dir());
         assert!(target.join("globals").is_dir());
         assert!(target.join("hooks").is_dir());
+        assert!(target.join("access").is_dir());
+        assert!(target.join("jobs").is_dir());
+        assert!(target.join("plugins").is_dir());
         assert!(target.join("templates").is_dir());
         assert!(target.join("static").is_dir());
         assert!(target.join("migrations").is_dir());
         assert!(target.join("types").is_dir());
         assert!(target.join("types/crap.lua").exists());
+        assert!(target.join("stylua.toml").exists());
+        let stylua = fs::read_to_string(target.join("stylua.toml")).unwrap();
+        assert!(stylua.contains("indent_type"));
+        assert!(stylua.contains("indent_width"));
     }
 
     #[test]
@@ -170,6 +199,14 @@ mod tests {
         assert!(content.contains("secret = \"test-secret-123\""));
         // No active [locale] section when locales is empty
         assert!(content.contains("# [locale]"));
+        // Commented config sections for discoverability
+        assert!(content.contains("# [depth]"));
+        assert!(content.contains("# [upload]"));
+        assert!(content.contains("# [email]"));
+        assert!(content.contains("# [hooks]"));
+        assert!(content.contains("# [jobs]"));
+        assert!(content.contains("# [cors]"));
+        assert!(content.contains("# [access]"));
     }
 
     #[test]

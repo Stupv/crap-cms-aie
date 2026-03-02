@@ -99,3 +99,4 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)', 'cfg(tarpauli
 [profile.release]
 lto = true
 codegen-units = 1
+strip = true

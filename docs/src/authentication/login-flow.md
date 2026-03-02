@@ -3,13 +3,15 @@
 ## Admin UI Flow
 
 1. User visits any `/admin/*` route
-2. Auth middleware checks for `crap_session` HttpOnly cookie (includes `Secure` flag when `dev_mode = false`)
-3. If no valid cookie, redirects to `/admin/login`
-4. User submits email + password (protected by CSRF double-submit cookie)
-5. Server checks rate limiting — too many failed attempts for this email triggers a temporary lockout
-6. Server verifies credentials against the auth collection (constant-time, even for non-existent users)
-7. On success: clears rate limit counter, sets `crap_session` cookie with JWT, redirects to `/admin`
-8. On failure: records failed attempt, re-renders login page with error
+2. **Gate 1: `require_auth` check** — if no auth collections exist and `require_auth` is `true` (default), returns a "Setup Required" page (HTTP 503). Set `require_auth = false` in `[admin]` for open dev mode.
+3. Auth middleware checks for `crap_session` HttpOnly cookie (includes `Secure` flag when `dev_mode = false`)
+4. If no valid cookie, tries custom auth strategies, then redirects to `/admin/login`
+5. **Gate 2: `admin.access` check** — if an `access` Lua function is configured in `[admin]`, it runs after successful authentication. If the function returns `false`/`nil`, the user sees an "Access Denied" page (HTTP 403) with a logout button.
+6. User submits email + password (protected by CSRF double-submit cookie)
+7. Server checks rate limiting — too many failed attempts for this email triggers a temporary lockout
+8. Server verifies credentials against the auth collection (constant-time, even for non-existent users)
+9. On success: clears rate limit counter, sets `crap_session` cookie with JWT, redirects to `/admin`
+10. On failure: records failed attempt, re-renders login page with error
 
 **Public admin routes** (no auth required):
 - `/admin/login`

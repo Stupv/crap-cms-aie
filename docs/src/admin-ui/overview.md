@@ -6,7 +6,25 @@ Crap CMS includes a built-in admin UI served via Axum with Handlebars templates 
 
 Default: [http://localhost:3000/admin](http://localhost:3000/admin)
 
-When auth collections are configured, the admin UI requires login. Without auth collections, it's fully open.
+Access to the admin panel is controlled by two gates:
+
+1. **`require_auth`** (default: `true`) — when no auth collection exists, the admin shows a "Setup Required" page (HTTP 503) instead of being open. Set `require_auth = false` in `[admin]` for fully open dev mode.
+2. **`access`** (optional Lua function ref) — checked after successful authentication. Gates which authenticated users can access the admin panel. Return `true` to allow, `false`/`nil` to show "Access Denied" (HTTP 403).
+
+```toml
+[admin]
+require_auth = true                     # block admin if no auth collection (default)
+access = "access.admin_panel"           # only allow users passing this function
+```
+
+```lua
+-- access/admin_panel.lua
+return function(ctx)
+    return ctx.user and ctx.user.role == "admin"
+end
+```
+
+When auth collections are configured and no `access` function is set, any authenticated user can access the admin.
 
 **Security features:**
 - CSRF protection on all forms and HTMX requests (double-submit cookie pattern)

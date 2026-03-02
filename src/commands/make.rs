@@ -10,7 +10,7 @@ pub fn run(action: super::MakeAction) -> Result<()> {
         super::MakeAction::Collection { config, slug, fields, no_timestamps, auth, upload, versions, no_input, force } => {
             make_collection_command(&config, slug, fields, no_timestamps, auth, upload, versions, !no_input, force)
         }
-        super::MakeAction::Global { config, slug, force } => {
+        super::MakeAction::Global { config, slug, fields, force } => {
             let slug = match slug {
                 Some(s) => s,
                 None => {
@@ -24,7 +24,7 @@ pub fn run(action: super::MakeAction) -> Result<()> {
                         .context("Failed to read global slug")?
                 }
             };
-            crate::scaffold::make_global(&config, &slug, force)
+            crate::scaffold::make_global(&config, &slug, fields.as_deref(), force)
         }
         super::MakeAction::Hook { config, name, hook_type, collection, position, field, force } => {
             make_hook_command(&config, name, hook_type, collection, position, field, force)

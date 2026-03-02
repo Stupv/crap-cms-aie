@@ -10,10 +10,11 @@ Crap CMS provides opt-in access control at both collection and field levels. Acc
 
 If no access control is configured, everything is allowed. This is fully backward compatible with existing setups.
 
-## Two Levels
+## Three Levels
 
-1. **Collection-level** — controls who can read, create, update, or delete documents in a collection. See [Collection-Level](collection-level.md).
-2. **Field-level** — controls which fields are visible or writable per-user. See [Field-Level](field-level.md).
+1. **Admin panel-level** — `admin.access` in `crap.toml`. A Lua function that gates access to the entire admin UI, checked after login. See [Admin UI](../admin-ui/overview.md#access).
+2. **Collection-level** — controls who can read, create, update, or delete documents in a collection. See [Collection-Level](collection-level.md).
+3. **Field-level** — controls which fields are visible or writable per-user. See [Field-Level](field-level.md).
 
 ## Access Function Context
 
