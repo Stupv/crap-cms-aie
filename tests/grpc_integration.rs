@@ -366,7 +366,7 @@ async fn delete_document() {
 }
 
 #[tokio::test]
-async fn find_with_filters() {
+async fn find_with_where() {
     let ts = setup_service(vec![make_posts_def()], vec![]);
 
     for (title, status) in &[("A", "draft"), ("B", "published"), ("C", "published")] {
@@ -381,14 +381,12 @@ async fn find_with_filters() {
             .unwrap();
     }
 
-    // Filter by status=published using legacy filters map
+    // Filter by status=published using where clause
     let resp = ts
         .service
         .find(Request::new(content::FindRequest {
             collection: "posts".to_string(),
-            filters: [("status".to_string(), "published".to_string())]
-                .into_iter()
-                .collect(),
+            r#where: Some(r#"{"status": "published"}"#.to_string()),
             ..Default::default()
         }))
         .await
@@ -3664,7 +3662,6 @@ async fn update_many_with_filter() {
             collection: "posts".to_string(),
             r#where: Some(r#"{"status": "draft"}"#.to_string()),
             data: Some(make_struct(&[("status", "published")])),
-            filters: Default::default(),
             locale: None,
             draft: None,
         }))
@@ -3679,7 +3676,6 @@ async fn update_many_with_filter() {
         .count(Request::new(content::CountRequest {
             collection: "posts".to_string(),
             r#where: Some(r#"{"status": "published"}"#.to_string()),
-            filters: Default::default(),
             locale: None,
             draft: None,
         }))
@@ -3690,7 +3686,7 @@ async fn update_many_with_filter() {
 }
 
 #[tokio::test]
-async fn delete_many_with_filter() {
+async fn delete_many_with_where() {
     let ts = setup_service(vec![make_posts_def()], vec![]);
 
     for (title, status) in &[
@@ -3716,7 +3712,6 @@ async fn delete_many_with_filter() {
         .delete_many(Request::new(content::DeleteManyRequest {
             collection: "posts".to_string(),
             r#where: Some(r#"{"status": "draft"}"#.to_string()),
-            filters: Default::default(),
         }))
         .await
         .unwrap()
@@ -3728,7 +3723,6 @@ async fn delete_many_with_filter() {
         .service
         .count(Request::new(content::CountRequest {
             collection: "posts".to_string(),
-            filters: Default::default(),
             r#where: None,
             locale: None,
             draft: None,
@@ -4151,7 +4145,7 @@ async fn count_with_documents() {
 }
 
 #[tokio::test]
-async fn count_with_filters() {
+async fn count_with_where() {
     let ts = setup_service(vec![make_posts_def()], vec![]);
 
     for (title, status) in &[("A", "draft"), ("B", "published"), ("C", "published")] {
@@ -4170,9 +4164,7 @@ async fn count_with_filters() {
         .service
         .count(Request::new(content::CountRequest {
             collection: "posts".to_string(),
-            filters: [("status".to_string(), "published".to_string())]
-                .into_iter()
-                .collect(),
+            r#where: Some(r#"{"status": "published"}"#.to_string()),
             ..Default::default()
         }))
         .await
@@ -4252,9 +4244,7 @@ async fn update_many_basic() {
         .service
         .update_many(Request::new(content::UpdateManyRequest {
             collection: "posts".to_string(),
-            filters: [("status".to_string(), "draft".to_string())]
-                .into_iter()
-                .collect(),
+            r#where: Some(r#"{"status": "draft"}"#.to_string()),
             data: Some(make_struct(&[("status", "published")])),
             ..Default::default()
         }))
@@ -4266,7 +4256,7 @@ async fn update_many_basic() {
 }
 
 #[tokio::test]
-async fn update_many_with_where() {
+async fn update_many_with_where_partial() {
     let ts = setup_service(vec![make_posts_def()], vec![]);
 
     for (title, status) in &[("A", "draft"), ("B", "published"), ("C", "draft")] {
@@ -4304,9 +4294,7 @@ async fn update_many_no_matches() {
         .service
         .update_many(Request::new(content::UpdateManyRequest {
             collection: "posts".to_string(),
-            filters: [("status".to_string(), "nonexistent".to_string())]
-                .into_iter()
-                .collect(),
+            r#where: Some(r#"{"status": "nonexistent"}"#.to_string()),
             data: Some(make_struct(&[("status", "published")])),
             ..Default::default()
         }))
@@ -4337,10 +4325,7 @@ async fn delete_many_basic() {
         .service
         .delete_many(Request::new(content::DeleteManyRequest {
             collection: "posts".to_string(),
-            filters: [("status".to_string(), "draft".to_string())]
-                .into_iter()
-                .collect(),
-            ..Default::default()
+            r#where: Some(r#"{"status": "draft"}"#.to_string()),
         }))
         .await
         .unwrap()
@@ -4363,7 +4348,7 @@ async fn delete_many_basic() {
 }
 
 #[tokio::test]
-async fn delete_many_with_where() {
+async fn delete_many_with_where_partial() {
     let ts = setup_service(vec![make_posts_def()], vec![]);
 
     for (title, status) in &[("A", "draft"), ("B", "published"), ("C", "draft")] {
@@ -4400,10 +4385,7 @@ async fn delete_many_no_matches() {
         .service
         .delete_many(Request::new(content::DeleteManyRequest {
             collection: "posts".to_string(),
-            filters: [("status".to_string(), "nonexistent".to_string())]
-                .into_iter()
-                .collect(),
-            ..Default::default()
+            r#where: Some(r#"{"status": "nonexistent"}"#.to_string()),
         }))
         .await
         .unwrap()

@@ -9,7 +9,7 @@ function M.run(context)
   local projects = crap.collections.find("projects", { limit = 0 })
   ---@type crap.find_result.Inquiries
   local inquiries = crap.collections.find("inquiries", {
-    filters = { status = "new" },
+    where = { status = "new" },
     limit = 0,
   })
 

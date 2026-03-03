@@ -65,7 +65,7 @@ function M.run(ctx)
 
     -- Full CRUD access:
     local result = crap.collections.find("posts", {
-        filters = { status = "expired" }
+        where = { status = "expired" }
     })
 
     -- Return value is stored as the job result (optional)

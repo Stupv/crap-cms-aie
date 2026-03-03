@@ -476,7 +476,7 @@ function crap.fields.join(config) end
 --- Example:
 --- ```lua
 --- crap.collections.find("posts", {
----     filters = {
+---     where = {
 ---         status = "published",                     -- shorthand for equals
 ---         title = { contains = "hello" },
 ---         created_at = { greater_than = "2024-01-01" },
@@ -504,13 +504,14 @@ function crap.fields.join(config) end
 --- A single OR group — an object of field filters that are AND-ed together.
 
 --- @class crap.FindQuery
---- @field filters?        table<string, crap.FilterValue>  Field filters. String values = equals, table values = operators. Use `["or"]` key for OR groups. Keys support dot notation for nested fields: `"seo.title"` (group), `"variants.color"` (array sub-field), `"content.body"` (block sub-field), `"content._block_type"` (block type), `"tags.id"` (has-many relationship).
+--- @field where?           table<string, crap.FilterValue>  Field filters. String values = equals, table values = operators. Use `["or"]` key for OR groups. Keys support dot notation for nested fields: `"seo.title"` (group), `"variants.color"` (array sub-field), `"content.body"` (block sub-field), `"content._block_type"` (block type), `"tags.id"` (has-many relationship).
 --- @field order_by?       string                 Sort field (prefix with "-" for desc).
 --- @field limit?          integer                Max results to return.
 --- @field offset?         integer                Number of results to skip.
 --- @field depth?          integer                Population depth for relationship fields (default: 0). 0 = IDs only.
 --- @field locale?         string                 Locale code for localized fields (e.g., "en", "de", "all"). Nil = default locale.
 --- @field select?         string[]               Fields to return. Nil/empty = all fields. Always includes id, created_at, updated_at.
+--- @field draft?          boolean                Include draft documents (versioned collections only). Default: false.
 --- @field overrideAccess? boolean                Skip access control checks (default: true). Set to false to enforce collection-level and field-level access for the current user.
 
 --- @class crap.FindResult
@@ -538,7 +539,7 @@ function crap.fields.join(config) end
 --- Return `true` to allow, `false`/`nil` to deny, or a filter table (read only)
 --- to allow with query constraints.
 ---
---- Filter table format (same as `crap.collections.find()` filters):
+--- Filter table format (same as `crap.collections.find()` `where`):
 --- ```lua
 --- function M.own_or_admin(ctx)
 ---     if ctx.user == nil then return false end
@@ -643,7 +644,7 @@ function crap.collections.update(collection, id, data, opts) end
 function crap.collections.delete(collection, id, opts) end
 
 --- @class crap.CountQuery
---- @field filters?        table<string, crap.FilterValue>  Field filters. Supports dot notation for nested fields (same as FindQuery).
+--- @field where?          table<string, crap.FilterValue>  Field filters. Supports dot notation for nested fields (same as FindQuery).
 --- @field locale?         string                 Locale code for localized fields.
 --- @field overrideAccess? boolean                Skip access control checks (default: true).
 --- @field draft?          boolean                Include draft documents (default: false).
@@ -656,7 +657,7 @@ function crap.collections.delete(collection, id, opts) end
 function crap.collections.count(collection, query) end
 
 --- @class crap.UpdateManyQuery
---- @field filters?        table<string, crap.FilterValue>  Field filters to match documents. Supports dot notation for nested fields (same as FindQuery).
+--- @field where?          table<string, crap.FilterValue>  Field filters to match documents. Supports dot notation for nested fields (same as FindQuery).
 --- @field locale?         string                 Locale code for localized fields.
 --- @field overrideAccess? boolean                Skip access control checks (default: true).
 --- @field draft?          boolean                Include draft documents (default: false).
@@ -673,7 +674,7 @@ function crap.collections.count(collection, query) end
 function crap.collections.update_many(collection, query, data, opts) end
 
 --- @class crap.DeleteManyQuery
---- @field filters?        table<string, crap.FilterValue>  Field filters to match documents. Supports dot notation for nested fields (same as FindQuery).
+--- @field where?          table<string, crap.FilterValue>  Field filters to match documents. Supports dot notation for nested fields (same as FindQuery).
 --- @field locale?         string                 Locale code for localized fields.
 --- @field overrideAccess? boolean                Skip access control checks (default: true).
 

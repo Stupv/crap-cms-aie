@@ -7,7 +7,7 @@ Filters are used in `crap.collections.find()` queries and in access control cons
 String values are treated as `equals`:
 
 ```lua
-{ filters = { status = "published" } }
+{ where = { status = "published" } }
 -- SQL: WHERE status = 'published'
 ```
 
@@ -16,7 +16,7 @@ String values are treated as `equals`:
 Use a table to specify an operator:
 
 ```lua
-{ filters = { title = { contains = "hello" } } }
+{ where = { title = { contains = "hello" } } }
 -- SQL: WHERE title LIKE '%hello%'
 ```
 
@@ -44,7 +44,7 @@ Use a table to specify an operator:
 ```lua
 -- Published posts containing "hello"
 crap.collections.find("posts", {
-    filters = {
+    where = {
         status = "published",
         title = { contains = "hello" },
     },
@@ -52,28 +52,28 @@ crap.collections.find("posts", {
 
 -- Posts created after a date
 crap.collections.find("posts", {
-    filters = {
+    where = {
         created_at = { greater_than = "2024-01-01" },
     },
 })
 
 -- Posts with specific statuses
 crap.collections.find("posts", {
-    filters = {
+    where = {
         status = { ["in"] = { "draft", "published" } },
     },
 })
 
 -- Posts without a category
 crap.collections.find("posts", {
-    filters = {
+    where = {
         category = { not_exists = true },
     },
 })
 
 -- Posts with wildcard title match
 crap.collections.find("posts", {
-    filters = {
+    where = {
         title = { like = "Hello%" },
     },
 })
@@ -85,7 +85,7 @@ Multiple filters are combined with AND:
 
 ```lua
 crap.collections.find("posts", {
-    filters = {
+    where = {
         status = "published",
         created_at = { greater_than = "2024-01-01" },
         title = { contains = "update" },
@@ -101,7 +101,7 @@ Use the `["or"]` key to combine groups of conditions with OR logic. Each element
 ```lua
 -- title contains "hello" OR category = "news"
 crap.collections.find("posts", {
-    filters = {
+    where = {
         ["or"] = {
             { title = { contains = "hello" } },
             { category = "news" },
@@ -116,7 +116,7 @@ OR can combine with top-level AND filters:
 ```lua
 -- status = "published" AND (title contains "hello" OR title contains "world")
 crap.collections.find("posts", {
-    filters = {
+    where = {
         status = "published",
         ["or"] = {
             { title = { contains = "hello" } },
@@ -132,7 +132,7 @@ Each OR element can have multiple fields (AND-ed within the group):
 ```lua
 -- (status = "published" AND title contains "hello") OR (status = "draft")
 crap.collections.find("posts", {
-    filters = {
+    where = {
         ["or"] = {
             { status = "published", title = { contains = "hello" } },
             { status = "draft" },
@@ -149,6 +149,6 @@ crap.collections.find("posts", {
 Filter values are always converted to strings for SQL parameter binding. Numbers and booleans are stringified:
 
 ```lua
-{ filters = { count = 42 } }       -- equals "42"
-{ filters = { active = true } }    -- equals "true"
+{ where = { count = 42 } }       -- equals "42"
+{ where = { active = true } }    -- equals "true"
 ```

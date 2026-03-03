@@ -8,7 +8,7 @@ return function(context)
 
   ---@type crap.find_result.Users
   local result = crap.collections.find("users", {
-    filters = { role = "admin" },
+    where = { role = "admin" },
   })
 
   local admin_count = result and result.total or 0

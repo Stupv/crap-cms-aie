@@ -47,7 +47,7 @@ function M.api_key_check(ctx)
 
     -- Look up user by API key
     local result = crap.collections.find(ctx.collection, {
-        filters = { api_key = key },
+        where = { api_key = key },
         limit = 1,
     })
 

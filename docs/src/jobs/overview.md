@@ -37,7 +37,7 @@ function M.run(ctx)
     -- ctx.job = { slug, attempt, max_attempts }
     -- Full CRUD access available
     local expired = crap.collections.find("posts", {
-        filters = { expires_at = { less_than = os.date("!%Y-%m-%dT%H:%M:%SZ") } }
+        where = { expires_at = { less_than = os.date("!%Y-%m-%dT%H:%M:%SZ") } }
     })
     for _, doc in ipairs(expired.documents) do
         crap.collections.delete("posts", doc.id)

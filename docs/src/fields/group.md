@@ -63,7 +63,7 @@ Use dot notation to filter on group sub-fields. The dot syntax is converted to t
 
 ```lua
 crap.collections.find("pages", {
-    filters = {
+    where = {
         ["seo.title"] = { contains = "SEO" },
         ["seo.no_index"] = "0",
     },

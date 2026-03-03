@@ -57,7 +57,7 @@ Find documents matching a query. Returns a result table with `documents` and `to
 
 ```lua
 local result = crap.collections.find("posts", {
-    filters = {
+    where = {
         status = "published",
         title = { contains = "hello" },
     },
@@ -79,12 +79,14 @@ end
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `filters` | table | `{}` | Field filters. See [Filter Operators](filter-operators.md). Supports `["or"]` key for OR groups. |
+| `where` | table | `{}` | Field filters. See [Filter Operators](filter-operators.md). Supports `["or"]` key for OR groups. |
 | `order_by` | string | `nil` | Sort field. Prefix with `-` for descending. |
 | `limit` | integer | `nil` | Max results to return. |
 | `offset` | integer | `nil` | Number of results to skip. |
 | `depth` | integer | `0` | Population depth for relationship fields. |
 | `select` | string[] | `nil` | Fields to return. `nil` = all fields. Always includes `id`, `created_at`, `updated_at`. |
+| `draft` | boolean | `false` | Include draft documents. Only affects versioned collections with `drafts = true`. |
+| `locale` | string | `nil` | Locale code for localized fields (e.g., `"en"`, `"de"`). |
 | `overrideAccess` | boolean | `true` | Skip access control checks. Set to `false` to enforce collection-level and field-level access for the current user. |
 
 ## crap.collections.find_by_id(collection, id, opts?)
@@ -112,6 +114,8 @@ local doc = crap.collections.find_by_id("posts", "abc123", { select = { "title",
 |-------|------|---------|-------------|
 | `depth` | integer | `0` | Population depth for relationship fields. |
 | `select` | string[] | `nil` | Fields to return. `nil` = all fields. Always includes `id`. |
+| `draft` | boolean | `false` | Return the latest draft version snapshot instead of the published main-table data. Only affects versioned collections with `drafts = true`. |
+| `locale` | string | `nil` | Locale code for localized fields (e.g., `"en"`, `"de"`). |
 | `overrideAccess` | boolean | `true` | Skip access control checks. Set to `false` to enforce collection-level and field-level access for the current user. |
 
 ## crap.collections.create(collection, data, opts?)
@@ -256,7 +260,7 @@ When you set `overrideAccess = false`, the function enforces the same access rul
 ```lua
 -- Example: fetch only posts the current user is allowed to see
 local result = crap.collections.find("posts", {
-    filters = { status = "published" },
+    where = { status = "published" },
     overrideAccess = false,
 })
 ```
@@ -270,7 +274,7 @@ Count documents matching a query. Returns an integer count.
 ```lua
 local n = crap.collections.count("posts")
 local published = crap.collections.count("posts", {
-    filters = { status = "published" },
+    where = { status = "published" },
 })
 ```
 
@@ -278,7 +282,7 @@ local published = crap.collections.count("posts", {
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `filters` | table | `{}` | Field filters. Same syntax as `find`. |
+| `where` | table | `{}` | Field filters. Same syntax as `find`. |
 | `locale` | string | `nil` | Locale code for localized fields. |
 | `overrideAccess` | boolean | `true` | Skip access control checks. |
 | `draft` | boolean | `false` | Include draft documents. |
@@ -295,7 +299,7 @@ Does **not** fire per-document hooks (before_change, after_change, etc.).
 
 ```lua
 local result = crap.collections.update_many("posts", {
-    filters = { status = "draft" },
+    where = { status = "draft" },
 }, {
     status = "published",
 })
@@ -306,7 +310,7 @@ print(result.modified)  -- number of updated documents
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `filters` | table | `{}` | Field filters to match documents. |
+| `where` | table | `{}` | Field filters to match documents. |
 | `locale` | string | `nil` | Locale code for localized fields. |
 | `overrideAccess` | boolean | `true` | Skip access control checks. |
 | `draft` | boolean | `false` | Include draft documents. |
@@ -327,13 +331,13 @@ Does **not** fire per-document hooks (before_delete, after_delete, etc.).
 
 ```lua
 local result = crap.collections.delete_many("posts", {
-    filters = { status = "archived" },
+    where = { status = "archived" },
 })
 print(result.deleted)  -- number of deleted documents
 
 -- With access control enforcement
 local result = crap.collections.delete_many("posts", {
-    filters = { status = "archived" },
+    where = { status = "archived" },
     overrideAccess = false,
 })
 ```
@@ -342,5 +346,5 @@ local result = crap.collections.delete_many("posts", {
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `filters` | table | `{}` | Field filters to match documents. |
+| `where` | table | `{}` | Field filters to match documents. |
 | `overrideAccess` | boolean | `true` | Skip access control checks. |

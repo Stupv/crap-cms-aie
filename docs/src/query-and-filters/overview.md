@@ -71,7 +71,7 @@ Multiple filters are combined with AND:
 
 ```lua
 crap.collections.find("posts", {
-    filters = {
+    where = {
         status = "published",
         created_at = { greater_than = "2024-01-01" },
         title = { contains = "update" },
@@ -86,8 +86,7 @@ crap.collections.find("posts", {
 ```bash
 grpcurl -plaintext -d '{
     "collection": "posts",
-    "filters": { "status": "published" },
-    "where": "{\"created_at\":{\"greater_than\":\"2024-01-01\"},\"title\":{\"contains\":\"update\"}}",
+    "where": "{\"status\":\"published\",\"created_at\":{\"greater_than\":\"2024-01-01\"},\"title\":{\"contains\":\"update\"}}",
     "order_by": "-created_at",
     "limit": "10"
 }' localhost:50051 crap.ContentAPI/Find
@@ -102,7 +101,7 @@ Use the `or` key to combine groups of conditions with OR logic. Each element in 
 ```lua
 -- title contains "hello" OR category = "news"
 crap.collections.find("posts", {
-    filters = {
+    where = {
         ["or"] = {
             { title = { contains = "hello" } },
             { category = "news" },
@@ -112,7 +111,7 @@ crap.collections.find("posts", {
 
 -- status = "published" AND (title contains "hello" OR title contains "world")
 crap.collections.find("posts", {
-    filters = {
+    where = {
         status = "published",
         ["or"] = {
             { title = { contains = "hello" } },
@@ -123,7 +122,7 @@ crap.collections.find("posts", {
 
 -- Multi-condition groups: (status = "published" AND title contains "hello") OR (status = "draft")
 crap.collections.find("posts", {
-    filters = {
+    where = {
         ["or"] = {
             { status = "published", title = { contains = "hello" } },
             { status = "draft" },
@@ -232,7 +231,7 @@ You can also filter directly on `_status`:
 
 ```lua
 crap.collections.find("articles", {
-    filters = { _status = "draft" },
+    where = { _status = "draft" },
 })
 ```
 
@@ -250,7 +249,7 @@ Group sub-fields can be filtered using dot notation. Internally, `seo.meta_title
 
 ```lua
 crap.collections.find("pages", {
-    filters = {
+    where = {
         ["seo.meta_title"] = { contains = "SEO" },
     },
 })
@@ -274,7 +273,7 @@ Filter by sub-field values in array rows. Uses an `EXISTS` subquery against the 
 ```lua
 -- Find products where any variant has color "red"
 crap.collections.find("products", {
-    filters = {
+    where = {
         ["variants.color"] = "red",
     },
 })
@@ -282,7 +281,7 @@ crap.collections.find("products", {
 -- Group-in-array: filter by a group sub-field within array rows
 -- (uses json_extract on the JSON column in the join table)
 crap.collections.find("products", {
-    filters = {
+    where = {
         ["variants.dimensions.width"] = "10",
     },
 })
@@ -297,21 +296,21 @@ Filter by field values inside block rows. Uses `json_extract` on the block `data
 ```lua
 -- Find posts where any content block has body containing "hello"
 crap.collections.find("posts", {
-    filters = {
+    where = {
         ["content.body"] = { contains = "hello" },
     },
 })
 
 -- Filter by block type
 crap.collections.find("posts", {
-    filters = {
+    where = {
         ["content._block_type"] = "image",
     },
 })
 
 -- Group-in-block: filter by a group sub-field within block data
 crap.collections.find("posts", {
-    filters = {
+    where = {
         ["content.meta.author"] = "Alice",
     },
 })
@@ -326,7 +325,7 @@ Filter by related document IDs. Uses an `EXISTS` subquery against the relationsh
 ```lua
 -- Find posts that have tag "tag-123"
 crap.collections.find("posts", {
-    filters = {
+    where = {
         ["tags.id"] = "tag-123",
     },
 })
@@ -340,7 +339,7 @@ Nested field filters can be freely combined with regular column filters and OR g
 
 ```lua
 crap.collections.find("products", {
-    filters = {
+    where = {
         status = "published",
         ["variants.color"] = "red",
         ["or"] = {

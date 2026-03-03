@@ -45,7 +45,7 @@ grpcurl -plaintext -d '{
 find_posts_published() {
 grpcurl -plaintext -d '{
   "collection": "posts",
-  "filters": { "status": "published" }
+  "where": "{\"status\": \"published\"}"
 }' "$ADDR" crap.ContentAPI/Find
 }
 
@@ -769,15 +769,15 @@ grpcurl -plaintext -d '{
 }' "$ADDR" crap.ContentAPI/Count
 }
 
-# Count posts with filter
+# Count posts with where clause
 count_posts_published() {
 grpcurl -plaintext -d '{
   "collection": "posts",
-  "filters": { "status": "published" }
+  "where": "{\"status\":\"published\"}"
 }' "$ADDR" crap.ContentAPI/Count
 }
 
-# Count posts with where clause
+# Count posts with where clause (operator syntax)
 count_posts_where() {
 grpcurl -plaintext -d '{
   "collection": "posts",
@@ -789,12 +789,12 @@ grpcurl -plaintext -d '{
 update_many_posts() {
 grpcurl -plaintext -d '{
   "collection": "posts",
-  "filters": { "status": "draft" },
+  "where": "{\"status\":\"draft\"}",
   "data": { "status": "published" }
 }' "$ADDR" crap.ContentAPI/UpdateMany
 }
 
-# Update many with where clause
+# Update many with where clause (operator syntax)
 update_many_posts_where() {
 grpcurl -plaintext -d '{
   "collection": "posts",
@@ -807,11 +807,11 @@ grpcurl -plaintext -d '{
 delete_many_posts() {
 grpcurl -plaintext -d '{
   "collection": "posts",
-  "filters": { "status": "archived" }
+  "where": "{\"status\":\"archived\"}"
 }' "$ADDR" crap.ContentAPI/DeleteMany
 }
 
-# Delete many with where clause
+# Delete many with where clause (operator syntax)
 delete_many_posts_where() {
 grpcurl -plaintext -d '{
   "collection": "posts",

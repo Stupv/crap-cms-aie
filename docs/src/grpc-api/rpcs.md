@@ -9,13 +9,14 @@ Find documents in a collection with filtering, sorting, and pagination.
 ```protobuf
 message FindRequest {
   string collection = 1;
-  map<string, string> filters = 2;      // simple key=value filters
+  optional string where = 2;            // JSON where clause
   optional string order_by = 3;          // "-field" for descending
   optional int64 limit = 4;
   optional int64 offset = 5;
-  optional string where = 6;            // JSON where clause (advanced)
-  optional int32 depth = 7;             // population depth (default: 0)
-  optional bool draft = 10;             // true = include drafts (versioned collections)
+  optional int32 depth = 6;             // population depth (default: 0)
+  optional string locale = 7;           // locale code for localized fields
+  repeated string select = 8;           // fields to return (empty = all)
+  optional bool draft = 9;             // true = include drafts (versioned collections)
 }
 
 message FindResponse {
@@ -27,7 +28,7 @@ message FindResponse {
 ```bash
 grpcurl -plaintext -d '{
     "collection": "posts",
-    "filters": { "status": "published" },
+    "where": "{\"status\": \"published\"}",
     "order_by": "-created_at",
     "limit": "10",
     "depth": 1
@@ -43,6 +44,8 @@ message FindByIDRequest {
   string collection = 1;
   string id = 2;
   optional int32 depth = 3;  // default: depth.default_depth from crap.toml
+  optional string locale = 4;  // locale code for localized fields
+  repeated string select = 5;  // fields to return (empty = all)
   optional bool draft = 6;   // true = return latest version (may be draft)
 }
 

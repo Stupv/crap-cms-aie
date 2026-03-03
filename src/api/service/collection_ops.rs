@@ -37,20 +37,10 @@ impl ContentService {
             return Err(Status::permission_denied("Read access denied"));
         }
 
-        // Parse filters: prefer `where` JSON field, fall back to legacy `filters` map
+        // Parse `where` JSON clause
         let mut filters = if let Some(ref where_json) = req.r#where {
             parse_where_json(where_json)
                 .map_err(|e| Status::invalid_argument(format!("Invalid where clause: {}", e)))?
-        } else if !req.filters.is_empty() {
-            req.filters
-                .iter()
-                .map(|(k, v)| {
-                    FilterClause::Single(Filter {
-                        field: k.clone(),
-                        op: FilterOp::Equals(v.clone()),
-                    })
-                })
-                .collect()
         } else {
             Vec::new()
         };
@@ -634,16 +624,6 @@ impl ContentService {
         let mut filters = if let Some(ref where_json) = req.r#where {
             parse_where_json(where_json)
                 .map_err(|e| Status::invalid_argument(format!("Invalid where clause: {}", e)))?
-        } else if !req.filters.is_empty() {
-            req.filters
-                .iter()
-                .map(|(k, v)| {
-                    FilterClause::Single(Filter {
-                        field: k.clone(),
-                        op: FilterOp::Equals(v.clone()),
-                    })
-                })
-                .collect()
         } else {
             Vec::new()
         };
@@ -697,16 +677,6 @@ impl ContentService {
         let mut filters = if let Some(ref where_json) = req.r#where {
             parse_where_json(where_json)
                 .map_err(|e| Status::invalid_argument(format!("Invalid where clause: {}", e)))?
-        } else if !req.filters.is_empty() {
-            req.filters
-                .iter()
-                .map(|(k, v)| {
-                    FilterClause::Single(Filter {
-                        field: k.clone(),
-                        op: FilterOp::Equals(v.clone()),
-                    })
-                })
-                .collect()
         } else {
             Vec::new()
         };
@@ -805,16 +775,6 @@ impl ContentService {
         let mut filters = if let Some(ref where_json) = req.r#where {
             parse_where_json(where_json)
                 .map_err(|e| Status::invalid_argument(format!("Invalid where clause: {}", e)))?
-        } else if !req.filters.is_empty() {
-            req.filters
-                .iter()
-                .map(|(k, v)| {
-                    FilterClause::Single(Filter {
-                        field: k.clone(),
-                        op: FilterOp::Equals(v.clone()),
-                    })
-                })
-                .collect()
         } else {
             Vec::new()
         };

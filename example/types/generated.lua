@@ -40,7 +40,7 @@
 ---@field operation string
 ---@field data crap.data.Categories
 
----@class crap.filters.Categories
+---@class crap.where.Categories
 ---@field id? crap.FilterValue
 ---@field title? crap.FilterValue
 ---@field slug? crap.FilterValue
@@ -54,7 +54,7 @@
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Categories
----@field filters? crap.filters.Categories
+---@field where? crap.where.Categories
 ---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"description"|"-description"|"parent"|"-parent"|"color"|"-color"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
@@ -110,7 +110,7 @@
 ---@field operation string
 ---@field data crap.data.Clients
 
----@class crap.filters.Clients
+---@class crap.where.Clients
 ---@field id? crap.FilterValue
 ---@field company_name? crap.FilterValue
 ---@field logo? crap.FilterValue
@@ -128,7 +128,7 @@
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Clients
----@field filters? crap.filters.Clients
+---@field where? crap.where.Clients
 ---@field order_by? "id"|"-id"|"company_name"|"-company_name"|"logo"|"-logo"|"website"|"-website"|"since"|"-since"|"contact_name"|"-contact_name"|"contact_email"|"-contact_email"|"contact_phone"|"-contact_phone"|"industry"|"-industry"|"notes"|"-notes"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
@@ -192,7 +192,7 @@
 ---@field operation string
 ---@field data crap.data.Events
 
----@class crap.filters.Events
+---@class crap.where.Events
 ---@field id? crap.FilterValue
 ---@field title? crap.FilterValue
 ---@field slug? crap.FilterValue
@@ -216,7 +216,7 @@
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Events
----@field filters? crap.filters.Events
+---@field where? crap.where.Events
 ---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"description"|"-description"|"hero_image"|"-hero_image"|"start_date"|"-start_date"|"end_date"|"-end_date"|"online"|"-online"|"event_url"|"-event_url"|"location__venue_name"|"-location__venue_name"|"location__address"|"-location__address"|"location__city"|"-location__city"|"location__country"|"-location__country"|"registration_url"|"-registration_url"|"max_attendees"|"-max_attendees"|"registration_deadline"|"-registration_deadline"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
@@ -272,7 +272,7 @@
 ---@field operation string
 ---@field data crap.data.Inquiries
 
----@class crap.filters.Inquiries
+---@class crap.where.Inquiries
 ---@field id? crap.FilterValue
 ---@field name? crap.FilterValue
 ---@field email? crap.FilterValue
@@ -289,7 +289,7 @@
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Inquiries
----@field filters? crap.filters.Inquiries
+---@field where? crap.where.Inquiries
 ---@field order_by? "id"|"-id"|"name"|"-name"|"email"|"-email"|"company"|"-company"|"phone"|"-phone"|"service"|"-service"|"budget_range"|"-budget_range"|"message"|"-message"|"status"|"-status"|"assigned_to"|"-assigned_to"|"internal_notes"|"-internal_notes"|"metadata"|"-metadata"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
@@ -381,7 +381,7 @@
 ---@field operation string
 ---@field data crap.data.Media
 
----@class crap.filters.Media
+---@class crap.where.Media
 ---@field id? crap.FilterValue
 ---@field filename? crap.FilterValue
 ---@field mime_type? crap.FilterValue
@@ -416,7 +416,7 @@
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Media
----@field filters? crap.filters.Media
+---@field where? crap.where.Media
 ---@field order_by? "id"|"-id"|"filename"|"-filename"|"mime_type"|"-mime_type"|"filesize"|"-filesize"|"width"|"-width"|"height"|"-height"|"url"|"-url"|"thumbnail_url"|"-thumbnail_url"|"thumbnail_width"|"-thumbnail_width"|"thumbnail_height"|"-thumbnail_height"|"thumbnail_webp_url"|"-thumbnail_webp_url"|"thumbnail_avif_url"|"-thumbnail_avif_url"|"card_url"|"-card_url"|"card_width"|"-card_width"|"card_height"|"-card_height"|"card_webp_url"|"-card_webp_url"|"card_avif_url"|"-card_avif_url"|"hero_url"|"-hero_url"|"hero_width"|"-hero_width"|"hero_height"|"-hero_height"|"hero_webp_url"|"-hero_webp_url"|"hero_avif_url"|"-hero_avif_url"|"og_url"|"-og_url"|"og_width"|"-og_width"|"og_height"|"-og_height"|"og_webp_url"|"-og_webp_url"|"og_avif_url"|"-og_avif_url"|"alt"|"-alt"|"caption"|"-caption"|"credit"|"-credit"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
@@ -464,7 +464,7 @@
 ---@field operation string
 ---@field data crap.data.Pages
 
----@class crap.filters.Pages
+---@class crap.where.Pages
 ---@field id? crap.FilterValue
 ---@field title? crap.FilterValue
 ---@field slug? crap.FilterValue
@@ -477,7 +477,7 @@
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Pages
----@field filters? crap.filters.Pages
+---@field where? crap.where.Pages
 ---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"parent"|"-parent"|"template"|"-template"|"show_in_nav"|"-show_in_nav"|"nav_order"|"-nav_order"|"_status"|"-_status"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
@@ -543,7 +543,7 @@
 ---@field operation string
 ---@field data crap.data.Posts
 
----@class crap.filters.Posts
+---@class crap.where.Posts
 ---@field id? crap.FilterValue
 ---@field title? crap.FilterValue
 ---@field slug? crap.FilterValue
@@ -565,7 +565,7 @@
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Posts
----@field filters? crap.filters.Posts
+---@field where? crap.where.Posts
 ---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"excerpt"|"-excerpt"|"post_type"|"-post_type"|"published_at"|"-published_at"|"external_url"|"-external_url"|"author"|"-author"|"hero_image"|"-hero_image"|"content"|"-content"|"reading_time"|"-reading_time"|"featured"|"-featured"|"pinned"|"-pinned"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"_status"|"-_status"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
@@ -641,7 +641,7 @@
 ---@field operation string
 ---@field data crap.data.Projects
 
----@class crap.filters.Projects
+---@class crap.where.Projects
 ---@field id? crap.FilterValue
 ---@field title? crap.FilterValue
 ---@field slug? crap.FilterValue
@@ -664,7 +664,7 @@
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Projects
----@field filters? crap.filters.Projects
+---@field where? crap.where.Projects
 ---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"excerpt"|"-excerpt"|"status"|"-status"|"priority"|"-priority"|"featured"|"-featured"|"start_date"|"-start_date"|"end_date"|"-end_date"|"hero_image"|"-hero_image"|"client"|"-client"|"budget"|"-budget"|"published_at"|"-published_at"|"external_url"|"-external_url"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"_status"|"-_status"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
@@ -724,7 +724,7 @@
 ---@field operation string
 ---@field data crap.data.Services
 
----@class crap.filters.Services
+---@class crap.where.Services
 ---@field id? crap.FilterValue
 ---@field title? crap.FilterValue
 ---@field slug? crap.FilterValue
@@ -744,7 +744,7 @@
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Services
----@field filters? crap.filters.Services
+---@field where? crap.where.Services
 ---@field order_by? "id"|"-id"|"title"|"-title"|"slug"|"-slug"|"description"|"-description"|"icon"|"-icon"|"active"|"-active"|"sort_order"|"-sort_order"|"pricing_type"|"-pricing_type"|"price_range__min_price"|"-price_range__min_price"|"price_range__max_price"|"-price_range__max_price"|"price_range__currency"|"-price_range__currency"|"hero_image"|"-hero_image"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
@@ -786,7 +786,7 @@
 ---@field operation string
 ---@field data crap.data.Tags
 
----@class crap.filters.Tags
+---@class crap.where.Tags
 ---@field id? crap.FilterValue
 ---@field name? crap.FilterValue
 ---@field slug? crap.FilterValue
@@ -798,7 +798,7 @@
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Tags
----@field filters? crap.filters.Tags
+---@field where? crap.where.Tags
 ---@field order_by? "id"|"-id"|"name"|"-name"|"slug"|"-slug"|"tag_type"|"-tag_type"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
@@ -850,7 +850,7 @@
 ---@field operation string
 ---@field data crap.data.Testimonials
 
----@class crap.filters.Testimonials
+---@class crap.where.Testimonials
 ---@field id? crap.FilterValue
 ---@field author_name? crap.FilterValue
 ---@field author_title? crap.FilterValue
@@ -867,7 +867,7 @@
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Testimonials
----@field filters? crap.filters.Testimonials
+---@field where? crap.where.Testimonials
 ---@field order_by? "id"|"-id"|"author_name"|"-author_name"|"author_title"|"-author_title"|"company"|"-company"|"author_photo"|"-author_photo"|"quote"|"-quote"|"rating"|"-rating"|"project"|"-project"|"featured"|"-featured"|"seo__meta_title"|"-seo__meta_title"|"seo__meta_description"|"-seo__meta_description"|"seo__no_index"|"-seo__no_index"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer
@@ -915,7 +915,7 @@
 ---@field operation string
 ---@field data crap.data.Users
 
----@class crap.filters.Users
+---@class crap.where.Users
 ---@field id? crap.FilterValue
 ---@field email? crap.FilterValue
 ---@field name? crap.FilterValue
@@ -927,7 +927,7 @@
 ---@field updated_at? crap.FilterValue
 
 ---@class crap.query.Users
----@field filters? crap.filters.Users
+---@field where? crap.where.Users
 ---@field order_by? "id"|"-id"|"email"|"-email"|"name"|"-name"|"role"|"-role"|"skills"|"-skills"|"avatar"|"-avatar"|"bio"|"-bio"|"created_at"|"-created_at"|"updated_at"|"-updated_at"
 ---@field limit? integer
 ---@field offset? integer

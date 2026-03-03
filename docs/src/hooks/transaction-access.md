@@ -22,7 +22,7 @@ Inside hooks with CRUD access:
 
 ```lua
 -- Collections
-crap.collections.find("posts", { filters = { status = "published" } })
+crap.collections.find("posts", { where = { status = "published" } })
 crap.collections.find_by_id("posts", "abc123")
 crap.collections.create("audit_log", { action = "update", target = ctx.data.id })
 crap.collections.update("posts", id, { view_count = views + 1 })

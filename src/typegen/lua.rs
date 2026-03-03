@@ -116,9 +116,9 @@ fn render_collection(out: &mut String, col: &CollectionDefinition) {
     writeln!(out, "---@field data crap.data.{pascal}").unwrap();
     out.push('\n');
 
-    // crap.filters.* — typed filter keys
+    // crap.where.* — typed filter keys
     let columns = get_column_names(col);
-    writeln!(out, "---@class crap.filters.{pascal}").unwrap();
+    writeln!(out, "---@class crap.where.{pascal}").unwrap();
     for col_name in &columns {
         writeln!(out, "---@field {col_name}? crap.FilterValue").unwrap();
     }
@@ -126,7 +126,7 @@ fn render_collection(out: &mut String, col: &CollectionDefinition) {
 
     // crap.query.* — typed query options
     writeln!(out, "---@class crap.query.{pascal}").unwrap();
-    writeln!(out, "---@field filters? crap.filters.{pascal}").unwrap();
+    writeln!(out, "---@field where? crap.where.{pascal}").unwrap();
     let order_by_union: Vec<String> = columns
         .iter()
         .flat_map(|c| [format!("\"{c}\""), format!("\"-{c}\"")])
@@ -459,7 +459,7 @@ mod tests {
         assert!(out.contains("---@class crap.field_hook.Posts"));
         assert!(out.contains("---@field data crap.data.Posts"));
         assert!(out.contains("---@field field_name string"));
-        assert!(out.contains("---@class crap.filters.Posts"));
+        assert!(out.contains("---@class crap.where.Posts"));
         assert!(out.contains("---@class crap.query.Posts"));
     }
 

@@ -515,7 +515,7 @@ fn lua_crud_delete() {
 }
 
 #[test]
-fn lua_crud_find_with_filters() {
+fn lua_crud_find_with_where() {
     let (_tmp, pool, _reg, runner) = setup_with_db();
     let result = eval_lua_db(&runner, &pool, r#"
         crap.collections.create("articles", {
@@ -536,7 +536,7 @@ fn lua_crud_find_with_filters() {
 
         -- Filter by status = published
         local result = crap.collections.find("articles", {
-            filters = { status = "published" },
+            where = { status = "published" },
         })
         if result.total ~= 2 then
             return "WRONG_TOTAL:" .. tostring(result.total)
@@ -544,7 +544,7 @@ fn lua_crud_find_with_filters() {
 
         -- Filter by status = draft
         local drafts = crap.collections.find("articles", {
-            filters = { status = "draft" },
+            where = { status = "draft" },
         })
         if drafts.total ~= 1 then
             return "WRONG_DRAFT_TOTAL:" .. tostring(drafts.total)
@@ -1077,7 +1077,7 @@ fn lua_find_with_where_clause() {
         })
 
         local result = crap.collections.find("articles", {
-            filters = { status = { equals = "published" } },
+            where = { status = { equals = "published" } },
         })
         if result.total ~= 1 then
             return "WRONG_TOTAL:" .. tostring(result.total)
@@ -1427,14 +1427,14 @@ fn lua_count_with_documents() {
 }
 
 #[test]
-fn lua_count_with_filters() {
+fn lua_count_with_where() {
     let (_tmp, pool, _reg, runner) = setup_with_db();
     let result = eval_lua_db(&runner, &pool, r#"
         crap.collections.create("articles", { title = "A", status = "published" })
         crap.collections.create("articles", { title = "B", status = "draft" })
         crap.collections.create("articles", { title = "C", status = "published" })
         local count = crap.collections.count("articles", {
-            filters = { status = "published" },
+            where = { status = "published" },
         })
         return tostring(count)
     "#);
@@ -1465,7 +1465,7 @@ fn lua_update_many_basic() {
         crap.collections.create("articles", { title = "C", status = "published" })
 
         local result = crap.collections.update_many("articles",
-            { filters = { status = "draft" } },
+            { where = { status = "draft" } },
             { status = "published" }
         )
         if result.modified ~= 2 then
@@ -1474,7 +1474,7 @@ fn lua_update_many_basic() {
 
         -- Verify all are now published
         local count = crap.collections.count("articles", {
-            filters = { status = "published" },
+            where = { status = "published" },
         })
         if count ~= 3 then
             return "WRONG_COUNT:" .. tostring(count)
@@ -1491,7 +1491,7 @@ fn lua_update_many_no_matches() {
         crap.collections.create("articles", { title = "A", status = "published" })
 
         local result = crap.collections.update_many("articles",
-            { filters = { status = "archived" } },
+            { where = { status = "archived" } },
             { status = "published" }
         )
         if result.modified ~= 0 then
@@ -1511,7 +1511,7 @@ fn lua_delete_many_basic() {
         crap.collections.create("articles", { title = "C", status = "published" })
 
         local result = crap.collections.delete_many("articles",
-            { filters = { status = "draft" } }
+            { where = { status = "draft" } }
         )
         if result.deleted ~= 2 then
             return "WRONG_DELETED:" .. tostring(result.deleted)
@@ -1534,7 +1534,7 @@ fn lua_delete_many_no_matches() {
         crap.collections.create("articles", { title = "A", status = "published" })
 
         local result = crap.collections.delete_many("articles",
-            { filters = { status = "archived" } }
+            { where = { status = "archived" } }
         )
         if result.deleted ~= 0 then
             return "WRONG_DELETED:" .. tostring(result.deleted)
@@ -2740,7 +2740,7 @@ fn collections_list_can_filter_and_redefine() {
 // ── Dot-notation filter e2e tests ────────────────────────────────────────────
 
 #[test]
-fn lua_find_dot_notation_filters() {
+fn lua_find_dot_notation_where() {
     let (_tmp, pool, _reg, runner) = setup_with_db();
     let result = eval_lua_db(&runner, &pool, r#"
         -- Create Product 1: "Widget" with red variant, text block
@@ -2769,42 +2769,42 @@ fn lua_find_dot_notation_filters() {
 
         -- 1. Group sub-field: seo.meta_title contains "Widget"
         local r1 = crap.collections.find("products", {
-            filters = { ["seo.meta_title"] = { contains = "Widget" } },
+            where = { ["seo.meta_title"] = { contains = "Widget" } },
         })
         if r1.total ~= 1 then return "GROUP:WRONG_TOTAL:" .. tostring(r1.total) end
         if r1.documents[1].name ~= "Widget" then return "GROUP:WRONG_NAME:" .. r1.documents[1].name end
 
         -- 2. Array sub-field: variants.color = "red"
         local r2 = crap.collections.find("products", {
-            filters = { ["variants.color"] = "red" },
+            where = { ["variants.color"] = "red" },
         })
         if r2.total ~= 1 then return "ARRAY:WRONG_TOTAL:" .. tostring(r2.total) end
         if r2.documents[1].name ~= "Widget" then return "ARRAY:WRONG_NAME:" .. r2.documents[1].name end
 
         -- 3. Group-in-array: variants.dimensions.width = "10"
         local r3 = crap.collections.find("products", {
-            filters = { ["variants.dimensions.width"] = "10" },
+            where = { ["variants.dimensions.width"] = "10" },
         })
         if r3.total ~= 1 then return "GIA:WRONG_TOTAL:" .. tostring(r3.total) end
         if r3.documents[1].name ~= "Widget" then return "GIA:WRONG_NAME:" .. r3.documents[1].name end
 
         -- 4. Block sub-field: content.body contains "description"
         local r4 = crap.collections.find("products", {
-            filters = { ["content.body"] = { contains = "description" } },
+            where = { ["content.body"] = { contains = "description" } },
         })
         if r4.total ~= 1 then return "BLOCK:WRONG_TOTAL:" .. tostring(r4.total) end
         if r4.documents[1].name ~= "Widget" then return "BLOCK:WRONG_NAME:" .. r4.documents[1].name end
 
         -- 5. Block type: content._block_type = "section"
         local r5 = crap.collections.find("products", {
-            filters = { ["content._block_type"] = "section" },
+            where = { ["content._block_type"] = "section" },
         })
         if r5.total ~= 1 then return "BTYPE:WRONG_TOTAL:" .. tostring(r5.total) end
         if r5.documents[1].name ~= "Gadget" then return "BTYPE:WRONG_NAME:" .. r5.documents[1].name end
 
         -- 6. Group-in-block: content.meta.author = "Alice"
         local r6 = crap.collections.find("products", {
-            filters = { ["content.meta.author"] = "Alice" },
+            where = { ["content.meta.author"] = "Alice" },
         })
         if r6.total ~= 1 then return "GIB:WRONG_TOTAL:" .. tostring(r6.total) end
         if r6.documents[1].name ~= "Gadget" then return "GIB:WRONG_NAME:" .. r6.documents[1].name end
@@ -2833,57 +2833,57 @@ fn lua_find_filter_operators() {
 
         -- not_equals
         local r1 = crap.collections.find("articles", {
-            filters = { status = { not_equals = "red" } },
+            where = { status = { not_equals = "red" } },
         })
         -- Delta has status="" stored as NULL — SQL NULL != 'red' is NULL (not true)
         if r1.total ~= 3 and r1.total ~= 2 then return "NE:" .. tostring(r1.total) end
 
         -- greater_than (body is stored as text, but numeric comparison should work)
         local r2 = crap.collections.find("articles", {
-            filters = { body = { greater_than = "30" } },
+            where = { body = { greater_than = "30" } },
         })
         if r2.total ~= 2 then return "GT:" .. tostring(r2.total) end
 
         -- less_than
         local r3 = crap.collections.find("articles", {
-            filters = { body = { less_than = "20" } },
+            where = { body = { less_than = "20" } },
         })
         if r3.total ~= 1 then return "LT:" .. tostring(r3.total) end
 
         -- greater_than_or_equal
         local r4 = crap.collections.find("articles", {
-            filters = { body = { greater_than_or_equal = "30" } },
+            where = { body = { greater_than_or_equal = "30" } },
         })
         if r4.total ~= 3 then return "GTE:" .. tostring(r4.total) end
 
         -- less_than_or_equal
         local r5 = crap.collections.find("articles", {
-            filters = { body = { less_than_or_equal = "20" } },
+            where = { body = { less_than_or_equal = "20" } },
         })
         if r5.total ~= 2 then return "LTE:" .. tostring(r5.total) end
 
         -- in
         local r6 = crap.collections.find("articles", {
-            filters = { status = { ["in"] = { "red", "green" } } },
+            where = { status = { ["in"] = { "red", "green" } } },
         })
         if r6.total ~= 3 then return "IN:" .. tostring(r6.total) end
 
         -- not_in
         local r7 = crap.collections.find("articles", {
-            filters = { status = { not_in = { "red", "green" } } },
+            where = { status = { not_in = { "red", "green" } } },
         })
         -- Delta has status="" stored as NULL — SQL NOT IN excludes NULLs
         if r7.total ~= 2 and r7.total ~= 1 then return "NIN:" .. tostring(r7.total) end
 
         -- like
         local r8 = crap.collections.find("articles", {
-            filters = { title = { like = "%lph%" } },
+            where = { title = { like = "%lph%" } },
         })
         if r8.total ~= 1 then return "LIKE:" .. tostring(r8.total) end
 
         -- contains
         local r9 = crap.collections.find("articles", {
-            filters = { title = { contains = "eta" } },
+            where = { title = { contains = "eta" } },
         })
         if r9.total ~= 1 then return "CONTAINS:" .. tostring(r9.total) end
 
@@ -3090,7 +3090,7 @@ fn lua_find_drafts_only() {
         -- Can still filter by _status explicitly within draft=true
         local drafts = crap.collections.find("articles", {
             draft = true,
-            filters = { _status = "draft" },
+            where = { _status = "draft" },
         })
         if drafts.total ~= 1 then
             return "DRAFT_ONLY_TOTAL:" .. tostring(drafts.total)
@@ -3988,7 +3988,7 @@ fn lua_find_or_filter() {
 
         -- OR filter: status = published OR status = draft
         local r = crap.collections.find("articles", {
-            filters = {
+            where = {
                 ["or"] = {
                     { status = "published" },
                     { status = "draft" },
@@ -4011,7 +4011,7 @@ fn lua_find_or_filter_with_operator() {
 
         -- OR with operator-based filters inside groups
         local r = crap.collections.find("articles", {
-            filters = {
+            where = {
                 ["or"] = {
                     { body = { greater_than = "25" } },
                     { title = "Alpha" },
@@ -4035,7 +4035,7 @@ fn lua_find_or_filter_with_integer_values() {
 
         -- Integer values in OR filter
         local r = crap.collections.find("articles", {
-            filters = {
+            where = {
                 ["or"] = {
                     { word_count = 10 },
                     { word_count = 30 },
@@ -4060,7 +4060,7 @@ fn lua_find_exists_filter() {
 
         -- exists filter: only docs where body is set (non-NULL)
         local r = crap.collections.find("articles", {
-            filters = { body = { exists = true } },
+            where = { body = { exists = true } },
         })
         if r.total ~= 1 then return "EXISTS:" .. tostring(r.total) end
         return "ok"
@@ -4078,7 +4078,7 @@ fn lua_find_not_exists_filter() {
 
         -- not_exists filter: only docs where body is NULL
         local r = crap.collections.find("articles", {
-            filters = { body = { not_exists = true } },
+            where = { body = { not_exists = true } },
         })
         if r.total ~= 1 then return "NOT_EXISTS:" .. tostring(r.total) end
         -- after_read field hook uppercases title
@@ -4101,7 +4101,7 @@ fn lua_find_integer_filter_value() {
 
         -- Integer filter value (not string)
         local r = crap.collections.find("articles", {
-            filters = { word_count = 42 },
+            where = { word_count = 42 },
         })
         if r.total ~= 1 then return "WRONG:" .. tostring(r.total) end
         if r.documents[1].title ~= "A" then return "WRONG_DOC" end
@@ -4119,7 +4119,7 @@ fn lua_find_number_filter_value() {
 
         -- Float filter value
         local r = crap.collections.find("articles", {
-            filters = { word_count = 3.14 },
+            where = { word_count = 3.14 },
         })
         if r.total ~= 1 then return "WRONG:" .. tostring(r.total) end
         return "ok"
@@ -4233,7 +4233,7 @@ fn lua_filter_boolean_to_string() {
 
         -- Boolean as filter operator value (e.g., in not_equals)
         local r = crap.collections.find("articles", {
-            filters = { status = { not_equals = true } },
+            where = { status = { not_equals = true } },
         })
         -- "true" as boolean converts to "true" string, should match Inactive
         if r.total ~= 1 then return "WRONG:" .. tostring(r.total) end
@@ -4253,7 +4253,7 @@ fn lua_count_with_or_filter() {
         crap.collections.create("articles", { title = "C", status = "archived" })
 
         local count = crap.collections.count("articles", {
-            filters = {
+            where = {
                 ["or"] = {
                     { status = "published" },
                     { status = "draft" },
@@ -4374,13 +4374,13 @@ fn lua_update_many_with_operator_filters() {
 
         -- Update only drafts
         local r = crap.collections.update_many("articles",
-            { filters = { status = "draft" } },
+            { where = { status = "draft" } },
             { status = "archived" }
         )
         if r.modified ~= 2 then return "WRONG_MOD:" .. tostring(r.modified) end
 
         -- Verify
-        local all = crap.collections.find("articles", { filters = { status = "archived" } })
+        local all = crap.collections.find("articles", { where = { status = "archived" } })
         if all.total ~= 2 then return "WRONG_ARCHIVED:" .. tostring(all.total) end
         return "ok"
     "#);
@@ -4399,7 +4399,7 @@ fn lua_delete_many_with_operator_filters() {
 
         -- Delete only drafts
         local r = crap.collections.delete_many("articles",
-            { filters = { status = "draft" } }
+            { where = { status = "draft" } }
         )
         if r.deleted ~= 2 then return "WRONG_DEL:" .. tostring(r.deleted) end
 
@@ -4569,7 +4569,7 @@ fn lua_find_or_filter_number_value() {
         crap.collections.create("articles", { title = "Y", word_count = "20" })
 
         local r = crap.collections.find("articles", {
-            filters = {
+            where = {
                 ["or"] = {
                     { word_count = 10.0 },
                     { title = "Y" },
@@ -4591,7 +4591,7 @@ fn lua_find_unknown_filter_operator_errors() {
     let result = runner.eval_lua_with_conn(r#"
         local ok, err = pcall(function()
             crap.collections.find("articles", {
-                filters = { title = { bad_operator = "test" } },
+                where = { title = { bad_operator = "test" } },
             })
         end)
         if not ok then return "ERROR:" .. tostring(err) end

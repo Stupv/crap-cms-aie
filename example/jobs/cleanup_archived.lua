@@ -7,7 +7,7 @@ function M.run(context)
 
   ---@type crap.find_result.Inquiries
   local result = crap.collections.find("inquiries", {
-    filters = {
+    where = {
       status = "archived",
       created_at = { less_than = cutoff },
     },

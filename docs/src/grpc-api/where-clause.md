@@ -69,7 +69,6 @@ You can use both — they're merged with AND:
 ```bash
 grpcurl -plaintext -d '{
     "collection": "posts",
-    "filters": { "status": "published" },
-    "where": "{\"title\":{\"contains\":\"hello\"}}"
+    "where": "{\"status\":\"published\",\"title\":{\"contains\":\"hello\"}}"
 }' localhost:50051 crap.ContentAPI/Find
 ```

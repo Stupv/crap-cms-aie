@@ -1268,7 +1268,7 @@ fn lua_table_to_json_map(lua: &Lua, tbl: &mlua::Table) -> mlua::Result<HashMap<S
 /// Supports both simple filters (`{ status = "published" }`) and operator-based
 /// filters (`{ title = { contains = "hello" } }`).
 pub(crate) fn lua_table_to_find_query(tbl: &mlua::Table) -> mlua::Result<FindQuery> {
-    let filters = if let Ok(filters_tbl) = tbl.get::<mlua::Table>("filters") {
+    let filters = if let Ok(filters_tbl) = tbl.get::<mlua::Table>("where") {
         let mut clauses = Vec::new();
         for pair in filters_tbl.pairs::<String, Value>() {
             let (field, value) = pair?;
@@ -1887,7 +1887,7 @@ mod tests {
         let tbl = lua.create_table().unwrap();
         let filters = lua.create_table().unwrap();
         filters.set("status", "published").unwrap();
-        tbl.set("filters", filters).unwrap();
+        tbl.set("where", filters).unwrap();
         let query = lua_table_to_find_query(&tbl).unwrap();
         assert_eq!(query.filters.len(), 1);
         match &query.filters[0] {
@@ -1907,7 +1907,7 @@ mod tests {
         let op = lua.create_table().unwrap();
         op.set("contains", "hello").unwrap();
         filters.set("title", op).unwrap();
-        tbl.set("filters", filters).unwrap();
+        tbl.set("where", filters).unwrap();
         let query = lua_table_to_find_query(&tbl).unwrap();
         assert_eq!(query.filters.len(), 1);
         match &query.filters[0] {

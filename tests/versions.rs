@@ -1065,7 +1065,7 @@ async fn grpc_create_published_sets_status() {
 }
 
 #[tokio::test]
-async fn grpc_find_filters_by_published_status() {
+async fn grpc_find_where_published_status() {
     let ts = setup_service(vec![make_versioned_def()]);
 
     // Create one published and one draft

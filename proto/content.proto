@@ -33,15 +33,14 @@ service ContentAPI {
 
 message FindRequest {
   string collection = 1;
-  map<string, string> filters = 2;
+  optional string where = 2;
   optional string order_by = 3;
   optional int64 limit = 4;
   optional int64 offset = 5;
-  optional string where = 6;
-  optional int32 depth = 7;
-  optional string locale = 8;
-  repeated string select = 9;
-  optional bool draft = 10;
+  optional int32 depth = 6;
+  optional string locale = 7;
+  repeated string select = 8;
+  optional bool draft = 9;
 }
 
 message FindResponse {
@@ -163,10 +162,9 @@ message VerifyEmailResponse {
 
 message CountRequest {
   string collection = 1;
-  map<string, string> filters = 2;
-  optional string where = 3;
-  optional string locale = 4;
-  optional bool draft = 5;
+  optional string where = 2;
+  optional string locale = 3;
+  optional bool draft = 4;
 }
 
 message CountResponse {
@@ -175,11 +173,10 @@ message CountResponse {
 
 message UpdateManyRequest {
   string collection = 1;
-  map<string, string> filters = 2;
-  optional string where = 3;
-  google.protobuf.Struct data = 4;
-  optional string locale = 5;
-  optional bool draft = 6;
+  optional string where = 2;
+  google.protobuf.Struct data = 3;
+  optional string locale = 4;
+  optional bool draft = 5;
 }
 
 message UpdateManyResponse {
@@ -188,8 +185,7 @@ message UpdateManyResponse {
 
 message DeleteManyRequest {
   string collection = 1;
-  map<string, string> filters = 2;
-  optional string where = 3;
+  optional string where = 2;
 }
 
 message DeleteManyResponse {
