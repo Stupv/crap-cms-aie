@@ -144,6 +144,41 @@ crap.collections.find("posts", {
 
 > **Note:** `or` is not a Lua keyword, but `["or"]` bracket syntax is recommended for clarity.
 
+## Nested Field Filters (Dot Notation)
+
+Filter on sub-fields of group, array, blocks, and has-many relationship fields using dot notation:
+
+```lua
+-- Group sub-field: seo.meta_title → seo__meta_title column
+crap.collections.find("pages", {
+    where = { ["seo.meta_title"] = { contains = "SEO" } },
+})
+
+-- Array sub-field: find products with any variant color "red"
+crap.collections.find("products", {
+    where = { ["variants.color"] = "red" },
+})
+
+-- Block sub-field: find posts with any content block containing "hello"
+crap.collections.find("posts", {
+    where = { ["content.body"] = { contains = "hello" } },
+})
+
+-- Block type filter
+crap.collections.find("posts", {
+    where = { ["content._block_type"] = "image" },
+})
+
+-- Has-many relationship: find posts with a specific tag
+crap.collections.find("posts", {
+    where = { ["tags.id"] = "tag-123" },
+})
+```
+
+Array and block filters use `EXISTS` subqueries — they match parent documents where **at least one** row matches. All filter operators work with dot notation paths.
+
+See [Query & Filters](../query-and-filters/overview.md#nested-field-filters-dot-notation) for the full reference.
+
 ## Value Types
 
 Filter values are always converted to strings for SQL parameter binding. Numbers and booleans are stringified:

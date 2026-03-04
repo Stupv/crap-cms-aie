@@ -122,6 +122,76 @@ html[data-theme="catppuccin"] {
 }
 
 
+/* ── Rosé Pine Dawn ─────────────────────────────────────────── */
+/* https://rosepinetheme.com/palette/ — Dawn variant            */
+
+html[data-theme="rose-pine-dawn"] {
+  color-scheme: light;
+
+  /* Colors - Primary (iris) */
+  --color-primary: #907aa9;
+  --color-primary-hover: #a08db8;
+  --color-primary-active: #7b6898;
+  --color-primary-bg: rgba(144, 122, 169, 0.12);
+
+  /* Colors - Danger (love) */
+  --color-danger: #b4637a;
+  --color-danger-hover: #c97d93;
+  --color-danger-active: #9a5068;
+  --color-danger-bg: rgba(180, 99, 122, 0.1);
+
+  /* Colors - Success (foam) */
+  --color-success: #56949f;
+  --color-success-bg: rgba(86, 148, 159, 0.1);
+
+  /* Colors - Warning (gold) */
+  --color-warning: #ea9d34;
+  --color-warning-bg: rgba(234, 157, 52, 0.1);
+
+  /* Text */
+  --text-primary: #464261;
+  --text-secondary: #797593;
+  --text-tertiary: #9893a5;
+  --text-on-primary: #faf4ed;
+
+  /* Surfaces */
+  --bg-body: #faf4ed;
+  --bg-surface: #fffaf3;
+  --bg-elevated: #f2e9e1;
+  --bg-hover: rgba(70, 66, 97, 0.06);
+
+  /* Borders */
+  --border-color: #dfdad9;
+  --border-color-hover: #cecacd;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(70, 66, 97, 0.08);
+  --shadow-md: 0 4px 12px rgba(70, 66, 97, 0.1);
+  --shadow-lg: 0 8px 24px rgba(70, 66, 97, 0.14);
+
+  /* Inputs */
+  --input-bg: #f4ede8;
+  --input-border: #cecacd;
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239893a5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+
+  /* Header */
+  --header-bg: #f2e9e1;
+  --header-border: #dfdad9;
+
+  /* Semantic aliases */
+  --surface-primary: #f2e9e1;
+  --surface-secondary: #f4ede8;
+
+  /* Sidebar */
+  --sidebar-bg: transparent;
+  --sidebar-active-bg: rgba(144, 122, 169, 0.12);
+  --sidebar-active-text: #907aa9;
+
+  /* Checkbox accent */
+  accent-color: #907aa9;
+}
+
+
 /* ── Gruvbox Dark ───────────────────────────────────────────── */
 
 html[data-theme="gruvbox"] {

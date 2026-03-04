@@ -60,6 +60,46 @@ grpcurl -plaintext -d '{
 }' localhost:50051 crap.ContentAPI/Find
 ```
 
+## Nested Field Filters (Dot Notation)
+
+Filter on sub-fields of group, array, blocks, and has-many relationship fields using dot notation:
+
+```bash
+# Group sub-field: seo.meta_title → seo__meta_title column
+grpcurl -plaintext -d '{
+    "collection": "pages",
+    "where": "{\"seo.meta_title\":{\"contains\":\"SEO\"}}"
+}' localhost:50051 crap.ContentAPI/Find
+
+# Array sub-field: products with any variant color "red"
+grpcurl -plaintext -d '{
+    "collection": "products",
+    "where": "{\"variants.color\":{\"equals\":\"red\"}}"
+}' localhost:50051 crap.ContentAPI/Find
+
+# Block sub-field: posts with content containing "hello"
+grpcurl -plaintext -d '{
+    "collection": "posts",
+    "where": "{\"content.body\":{\"contains\":\"hello\"}}"
+}' localhost:50051 crap.ContentAPI/Find
+
+# Block type filter
+grpcurl -plaintext -d '{
+    "collection": "posts",
+    "where": "{\"content._block_type\":{\"equals\":\"image\"}}"
+}' localhost:50051 crap.ContentAPI/Find
+
+# Has-many relationship: posts with a specific tag
+grpcurl -plaintext -d '{
+    "collection": "posts",
+    "where": "{\"tags.id\":{\"equals\":\"tag-123\"}}"
+}' localhost:50051 crap.ContentAPI/Find
+```
+
+Array and block filters use `EXISTS` subqueries — they match parent documents where **at least one** row matches. All filter operators work with dot notation paths.
+
+See [Query & Filters](../query-and-filters/overview.md#nested-field-filters-dot-notation) for the full reference.
+
 ## OR Filters
 
 Use the `or` key to combine groups of conditions with OR logic. Each element in the `or` array is an object whose fields are AND-ed together. Top-level filters outside `or` are AND-ed with the OR result.
