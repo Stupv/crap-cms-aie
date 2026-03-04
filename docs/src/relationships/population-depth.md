@@ -81,9 +81,18 @@ This prevents infinite loops when collections reference each other (e.g., posts 
 
 ## Performance Considerations
 
-- `depth=0` requires no extra queries
-- Has-many relationships use batch `IN` queries — one query per relationship field regardless of how many IDs it contains
+**Use `depth=0` whenever possible.** Population with `depth >= 1` triggers additional queries for every relationship field on every document. This can get very slow, very fast.
+
+- `depth=0` requires no extra queries — always prefer this for list endpoints
+- `depth=1` on a `Find` returning 50 documents with 3 relationship fields = up to 150 extra queries
+- `depth=2+` compounds this — each populated document's relationships are also populated, leading to exponential query growth
+- Has-many relationships use batch `IN` queries (one query per field regardless of ID count)
 - Has-one relationships use one query per field per document
-- Higher depths multiply queries by the number of nested relationship fields
-- Use `max_depth` on fields to limit expensive deep populations
-- `Find` defaults to `depth=0` to avoid extra queries on list endpoints
+
+**Recommendations:**
+
+- Use `select` to limit which fields are returned — non-selected relationship fields are skipped during population
+- Set `max_depth` on relationship fields that don't need deep population
+- For list views, use `depth=0` and fetch related data only when displaying a single document
+- If you need related data in a list, consider using `depth=1` with `select` to populate only the specific relationship fields you need
+- `Find` defaults to `depth=0` for this reason — don't override it without understanding the query cost

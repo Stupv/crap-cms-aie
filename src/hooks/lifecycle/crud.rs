@@ -136,12 +136,9 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                 let r = reg.read().map_err(|e| mlua::Error::RuntimeError(
                     format!("Registry lock: {}", e)
                 ))?;
-                for doc in &mut docs {
-                    let mut visited = std::collections::HashSet::new();
-                    query::populate_relationships(
-                        conn, &r, &collection, &def, doc, depth, &mut visited, select_slice,
-                    ).map_err(|e| mlua::Error::RuntimeError(format!("populate error: {}", e)))?;
-                }
+                query::populate_relationships_batch(
+                    conn, &r, &collection, &def, &mut docs, depth, select_slice,
+                ).map_err(|e| mlua::Error::RuntimeError(format!("populate error: {}", e)))?;
             }
             // Assemble sizes for upload collections
             if let Some(ref upload_config) = def.upload {

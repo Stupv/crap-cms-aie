@@ -60,15 +60,27 @@ grpcurl -plaintext -d '{
 }' localhost:50051 crap.ContentAPI/Find
 ```
 
-## Simple Filters vs Where Clause
+## OR Filters
 
-The `filters` map field supports simple `key=value` equality only. For operator-based filtering, use the `where` parameter.
-
-You can use both — they're merged with AND:
+Use the `or` key to combine groups of conditions with OR logic. Each element in the `or` array is an object whose fields are AND-ed together. Top-level filters outside `or` are AND-ed with the OR result.
 
 ```bash
+# title contains "hello" OR category = "news"
 grpcurl -plaintext -d '{
     "collection": "posts",
-    "where": "{\"status\":\"published\",\"title\":{\"contains\":\"hello\"}}"
+    "where": "{\"or\":[{\"title\":{\"contains\":\"hello\"}},{\"category\":{\"equals\":\"news\"}}]}"
+}' localhost:50051 crap.ContentAPI/Find
+
+# status = "published" AND (title contains "hello" OR title contains "world")
+grpcurl -plaintext -d '{
+    "collection": "posts",
+    "where": "{\"status\":{\"equals\":\"published\"},\"or\":[{\"title\":{\"contains\":\"hello\"}},{\"title\":{\"contains\":\"world\"}}]}"
+}' localhost:50051 crap.ContentAPI/Find
+
+# Multi-condition groups: (status = "published" AND title contains "hello") OR (status = "draft")
+grpcurl -plaintext -d '{
+    "collection": "posts",
+    "where": "{\"or\":[{\"status\":{\"equals\":\"published\"},\"title\":{\"contains\":\"hello\"}},{\"status\":{\"equals\":\"draft\"}}]}"
 }' localhost:50051 crap.ContentAPI/Find
 ```
+

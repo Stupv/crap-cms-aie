@@ -12,6 +12,7 @@ crap.collections.define("pages", {
       name = "title",
       required = true,
       localized = true,
+      hooks = { before_validate = { "hooks.trim_title" } },
       admin = { placeholder = "Page title" },
     }),
     crap.fields.text({
@@ -155,9 +156,7 @@ crap.collections.define("pages", {
       },
     }),
   },
-  hooks = {
-    before_change = { "hooks.trim_title" },
-  },
+  hooks = {},
   access = {
     read = "access.anyone",
     create = "access.editor_or_above",

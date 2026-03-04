@@ -1,9 +1,10 @@
---- Collection before_change hook: trim whitespace from title.
----@param context crap.HookContext
----@return crap.HookContext
-return function(context)
-  if context.data and context.data.title then
-    context.data.title = context.data.title:match("^%s*(.-)%s*$")
+--- Field before_validate hook: trim whitespace from the field value.
+---@param value any
+---@param context crap.FieldHookContext
+---@return any
+return function(value, context)
+  if type(value) == "string" then
+    return value:match("^%s*(.-)%s*$")
   end
-  return context
+  return value
 end

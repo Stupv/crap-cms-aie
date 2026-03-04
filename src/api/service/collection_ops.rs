@@ -124,22 +124,18 @@ impl ContentService {
                 }
             }
             let docs = runner.apply_after_read_many(&hooks, &fields, &collection, "find", docs);
-            // Populate relationships if depth > 0
+            // Populate relationships if depth > 0 (batch for efficiency)
             if depth > 0 {
                 let mut docs = docs;
-                for doc in &mut docs {
-                    let mut visited = std::collections::HashSet::new();
-                    query::populate_relationships(
-                        &conn,
-                        &registry,
-                        &collection,
-                        &def_owned,
-                        doc,
-                        depth,
-                        &mut visited,
-                        select_slice,
-                    )?;
-                }
+                query::populate_relationships_batch(
+                    &conn,
+                    &registry,
+                    &collection,
+                    &def_owned,
+                    &mut docs,
+                    depth,
+                    select_slice,
+                )?;
                 return Ok((docs, total));
             }
             Ok::<_, anyhow::Error>((docs, total))

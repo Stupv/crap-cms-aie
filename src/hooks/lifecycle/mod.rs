@@ -1430,6 +1430,7 @@ fn run_field_hooks_inner(
             continue;
         }
 
+        let was_present = data.contains_key(&field.name);
         let value = data.get(&field.name)
             .cloned()
             .unwrap_or(serde_json::Value::Null);
@@ -1446,7 +1447,13 @@ fn run_field_hooks_inner(
             )?;
         }
 
-        data.insert(field.name.clone(), current);
+        // Only write back if the field was already in the data, or the hook
+        // produced a non-null value (e.g. auto_slug generating a slug on create).
+        // Without this, absent fields on partial updates get coerced to Null,
+        // which breaks the "skip required check for absent fields" logic.
+        if was_present || !current.is_null() {
+            data.insert(field.name.clone(), current);
+        }
     }
 
     Ok(())
@@ -1651,5 +1658,151 @@ mod tests {
         assert!(get_hook_refs(&hooks, &HookEvent::AfterDelete).is_empty());
         assert_eq!(get_hook_refs(&hooks, &HookEvent::BeforeBroadcast), &["hooks.broadcast"]);
         assert!(get_hook_refs(&hooks, &HookEvent::BeforeRender).is_empty());
+    }
+
+    // --- call_field_hook_ref regression tests ---
+    // Regression: field hooks receive (value, context), not (context).
+    // A hook that only declared one parameter would bind the field value
+    // to its first arg — when the value was nil, it crashed with
+    // "attempt to index a nil value".
+
+    #[test]
+    fn test_field_hook_receives_value_and_context() {
+        let lua = mlua::Lua::new();
+        // Hook that returns the value uppercased
+        lua.load(r#"
+            package.loaded["hooks.upper"] = function(value, context)
+                if type(value) == "string" then
+                    return value:upper()
+                end
+                return value
+            end
+        "#).exec().unwrap();
+
+        let data: HashMap<String, serde_json::Value> =
+            [("title".to_string(), json!("hello"))].into_iter().collect();
+
+        let result = call_field_hook_ref(
+            &lua, "hooks.upper", json!("hello"),
+            "title", "posts", "create", &data,
+        ).unwrap();
+
+        assert_eq!(result, json!("HELLO"));
+    }
+
+    #[test]
+    fn test_field_hook_nil_value_does_not_crash() {
+        let lua = mlua::Lua::new();
+        // Hook that guards against nil value (correct pattern)
+        lua.load(r#"
+            package.loaded["hooks.trim"] = function(value, context)
+                if type(value) == "string" then
+                    return value:match("^%s*(.-)%s*$")
+                end
+                return value
+            end
+        "#).exec().unwrap();
+
+        let data: HashMap<String, serde_json::Value> = HashMap::new();
+
+        let result = call_field_hook_ref(
+            &lua, "hooks.trim", serde_json::Value::Null,
+            "title", "posts", "update", &data,
+        ).unwrap();
+
+        assert_eq!(result, serde_json::Value::Null);
+    }
+
+    // Regression: field hooks on absent fields (partial update) must not
+    // inject Null into the data map. If they do, validation's "skip required
+    // for absent fields on update" logic breaks (it checks is_none, not is_null).
+    #[test]
+    fn test_field_hook_absent_field_not_injected_as_null() {
+        let lua = mlua::Lua::new();
+        lua.load(r#"
+            package.loaded["hooks.noop"] = function(value, context)
+                return value
+            end
+        "#).exec().unwrap();
+
+        let fields = vec![FieldDefinition {
+            name: "title".to_string(),
+            hooks: FieldHooks {
+                before_validate: vec!["hooks.noop".to_string()],
+                ..Default::default()
+            },
+            ..Default::default()
+        }];
+
+        // Simulate a partial update: only "content" is in the data, "title" is absent
+        let mut data: HashMap<String, serde_json::Value> = HashMap::new();
+        data.insert("content".to_string(), json!("updated"));
+
+        run_field_hooks_inner(
+            &lua, &fields, &FieldHookEvent::BeforeValidate,
+            &mut data, "posts", "update",
+        ).unwrap();
+
+        // title must NOT appear in data — it was absent and hook returned null
+        assert!(!data.contains_key("title"),
+            "absent field should not be injected into data by field hooks");
+        // content must be untouched
+        assert_eq!(data.get("content"), Some(&json!("updated")));
+    }
+
+    // Verify that a hook generating a value for an absent field DOES insert it
+    // (e.g. auto_slug on create where slug is absent but hook produces a value)
+    #[test]
+    fn test_field_hook_absent_field_inserted_when_hook_produces_value() {
+        let lua = mlua::Lua::new();
+        lua.load(r#"
+            package.loaded["hooks.default_val"] = function(value, context)
+                if value == nil then
+                    return "generated"
+                end
+                return value
+            end
+        "#).exec().unwrap();
+
+        let fields = vec![FieldDefinition {
+            name: "slug".to_string(),
+            hooks: FieldHooks {
+                before_validate: vec!["hooks.default_val".to_string()],
+                ..Default::default()
+            },
+            ..Default::default()
+        }];
+
+        let mut data: HashMap<String, serde_json::Value> = HashMap::new();
+        data.insert("title".to_string(), json!("Hello"));
+
+        run_field_hooks_inner(
+            &lua, &fields, &FieldHookEvent::BeforeValidate,
+            &mut data, "posts", "create",
+        ).unwrap();
+
+        // Hook produced a non-null value for absent field — it should be inserted
+        assert_eq!(data.get("slug"), Some(&json!("generated")));
+    }
+
+    #[test]
+    fn test_field_hook_context_has_data_and_metadata() {
+        let lua = mlua::Lua::new();
+        // Hook that reads context fields and returns them as proof
+        lua.load(r#"
+            package.loaded["hooks.inspect_ctx"] = function(value, context)
+                return context.collection .. ":" .. context.field_name .. ":" .. context.operation
+            end
+        "#).exec().unwrap();
+
+        let data: HashMap<String, serde_json::Value> =
+            [("title".to_string(), json!("hello"))].into_iter().collect();
+
+        let result = call_field_hook_ref(
+            &lua, "hooks.inspect_ctx", json!("hello"),
+            "title", "posts", "create", &data,
+        ).unwrap();
+
+        assert_eq!(result, json!("posts:title:create"));
     }
 }
