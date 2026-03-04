@@ -51,6 +51,23 @@ pub async fn start_server(
         login_limiter, config.auth.reset_token_expiry,
     );
 
+    // Spawn periodic cache clear task for external DB mutation handling
+    if depth_config.populate_cache_max_age_secs > 0 {
+        if let Some(cache) = content_service.populate_cache_handle() {
+            let interval_secs = depth_config.populate_cache_max_age_secs;
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(
+                    std::time::Duration::from_secs(interval_secs),
+                );
+                interval.tick().await; // skip first immediate tick
+                loop {
+                    interval.tick().await;
+                    cache.clear();
+                }
+            });
+        }
+    }
+
     let reflection_service = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(content::FILE_DESCRIPTOR_SET)
         .build_v1()?;

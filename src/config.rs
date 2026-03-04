@@ -242,6 +242,18 @@ pub struct DepthConfig {
     pub default_depth: i32,
     /// Maximum allowed depth application-wide. Prevents abuse.
     pub max_depth: i32,
+    /// Enable cross-request populate cache for relationship population.
+    /// Caches populated documents across requests, cleared on any write
+    /// through the API. Opt-in because external DB mutations can cause
+    /// stale reads. Default: false.
+    #[serde(default)]
+    pub populate_cache: bool,
+    /// Max age in seconds for the populate cache (periodic full clear).
+    /// 0 = no periodic clearing (only write-through invalidation).
+    /// Set > 0 to handle external DB mutations. Only used when
+    /// `populate_cache` is true.
+    #[serde(default)]
+    pub populate_cache_max_age_secs: u64,
 }
 
 impl Default for DepthConfig {
@@ -249,6 +261,8 @@ impl Default for DepthConfig {
         Self {
             default_depth: 1,
             max_depth: 10,
+            populate_cache: false,
+            populate_cache_max_age_secs: 0,
         }
     }
 }

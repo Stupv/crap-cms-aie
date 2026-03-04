@@ -41,6 +41,9 @@ pub struct ContentService {
     config_dir: std::path::PathBuf,
     login_limiter: std::sync::Arc<LoginRateLimiter>,
     reset_token_expiry: u64,
+    /// Shared cross-request cache for populated relationship documents.
+    /// None when disabled (default). Cleared on any write operation.
+    populate_cache: Option<std::sync::Arc<query::PopulateCache>>,
 }
 
 /// Untestable as unit: helper methods require full pool + registry + hook_runner.
@@ -79,7 +82,17 @@ impl ContentService {
             config_dir,
             login_limiter,
             reset_token_expiry,
+            populate_cache: if depth_config.populate_cache {
+                Some(std::sync::Arc::new(query::PopulateCache::new()))
+            } else {
+                None
+            },
         }
+    }
+
+    /// Get a clone of the shared populate cache handle (for periodic clearing).
+    pub fn populate_cache_handle(&self) -> Option<std::sync::Arc<query::PopulateCache>> {
+        self.populate_cache.clone()
     }
 
     #[allow(clippy::result_large_err)]

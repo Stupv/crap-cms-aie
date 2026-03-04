@@ -136,6 +136,8 @@ impl ContentService {
         .map_err(|e| Status::internal(format!("Task error: {}", e)))?
         .map_err(|e| Status::internal(format!("Update global error: {}", e)))?;
 
+        if let Some(c) = &self.populate_cache { c.clear(); }
+
         {
             let def = self.get_global_def(&req.slug);
             let (hooks, live) = match &def {
@@ -522,6 +524,8 @@ impl ContentService {
         .await
         .map_err(|e| Status::internal(format!("Task error: {}", e)))?
         .map_err(|e| Status::internal(format!("Restore error: {}", e)))?;
+
+        if let Some(c) = &self.populate_cache { c.clear(); }
 
         let proto_doc = document_to_proto(&doc, &req.collection);
 

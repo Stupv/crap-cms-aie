@@ -66,7 +66,7 @@ pub fn init(dir: Option<PathBuf>, opts: &InitOptions) -> Result<()> {
         "[server]\nadmin_port = {}\ngrpc_port = {}\nhost = \"0.0.0.0\"\n# compression = \"off\"             # \"off\" (default), \"gzip\", \"br\", \"all\"\n# grpc_rate_limit_requests = 0    # per-IP request limit (0 = disabled)\n# grpc_rate_limit_window = 60     # sliding window in seconds (or \"1m\")\n",
         opts.admin_port, opts.grpc_port
     ));
-    toml.push_str("\n[database]\npath = \"data/crap.db\"\n# pool_max_size = 16             # max connections in pool\n# busy_timeout = \"30s\"          # SQLite busy timeout (ms or \"30s\", \"1m\")\n# connection_timeout = 5          # pool checkout timeout (seconds or \"5s\")\n");
+    toml.push_str("\n[database]\npath = \"data/crap.db\"\n# pool_max_size = 32             # max connections in pool\n# busy_timeout = \"30s\"          # SQLite busy timeout (ms or \"30s\", \"1m\")\n# connection_timeout = 5          # pool checkout timeout (seconds or \"5s\")\n");
     toml.push_str("\n[admin]\ndev_mode = true\n# require_auth = true               # block admin when no auth collection exists (default: true)\n# access = \"access.admin_panel\"     # Lua function: which users can access the admin UI\n");
     toml.push_str(&format!(
         "\n[auth]\nsecret = \"{}\"\n# token_expiry = 7200           # seconds, default 2 hours\n",

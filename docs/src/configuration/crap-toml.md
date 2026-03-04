@@ -83,7 +83,7 @@ host = "0.0.0.0"        # Bind address
 
 [database]
 path = "data/crap.db"   # Relative to config dir, or absolute
-pool_max_size = 16       # Max connections in the pool
+pool_max_size = 32       # Max connections in the pool
 busy_timeout = "30s"     # SQLite busy timeout (integer ms or "30s", "1m")
 connection_timeout = 5   # Pool checkout timeout (seconds or "5s")
 
@@ -102,6 +102,8 @@ reset_token_expiry = "1h"    # Password reset token expiry
 [depth]
 default_depth = 1        # Default population depth for FindByID (Find always defaults to 0)
 max_depth = 10           # Hard cap on population depth (prevents abuse)
+# populate_cache = false           # Cross-request populate cache (opt-in)
+# populate_cache_max_age_secs = 0  # Periodic cache clear for external DB mutations
 
 [upload]
 max_file_size = "50MB"   # Global max file size (accepts bytes or "50MB", "1GB", etc.)
@@ -167,7 +169,7 @@ allow_credentials = false # Allow cookies/Authorization. Cannot use with ["*"] o
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `path` | string | `"data/crap.db"` | SQLite database path. Relative paths are resolved from the config directory. Absolute paths are used as-is. |
-| `pool_max_size` | integer | `16` | Maximum number of connections in the SQLite connection pool. |
+| `pool_max_size` | integer | `32` | Maximum number of connections in the SQLite connection pool. |
 | `busy_timeout` | duration | `30000` (`"30s"`) | SQLite busy timeout in milliseconds. Controls how long a connection waits for locks before returning SQLITE_BUSY. Accepts integer ms or human-readable string (`"30s"`, `"1m"`). |
 | `connection_timeout` | duration | `5` | Pool checkout timeout in seconds. How long `pool.get()` waits for a free connection before returning an error. |
 
@@ -195,6 +197,8 @@ allow_credentials = false # Allow cookies/Authorization. Cannot use with ["*"] o
 |-------|------|---------|-------------|
 | `default_depth` | integer | `1` | Default population depth for `FindByID`. `Find` always defaults to `0`. |
 | `max_depth` | integer | `10` | Maximum allowed depth for any request. Hard cap to prevent excessive queries. |
+| `populate_cache` | boolean | `false` | Enable cross-request populate cache. Caches populated documents in memory, cleared on any write through the API. Improves read performance for repeated deep population. **Opt-in** because external DB modifications can cause stale reads. |
+| `populate_cache_max_age_secs` | integer | `0` | Periodic full cache clear interval in seconds. `0` = disabled (only write-through invalidation). Set `> 0` to limit staleness when the database may be modified outside the API. Only used when `populate_cache = true`. |
 
 ### `[upload]`
 

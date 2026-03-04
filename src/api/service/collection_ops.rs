@@ -110,25 +110,27 @@ impl ContentService {
         let fields = def_fields.clone();
         let collection = req.collection.clone();
         let registry = self.registry.clone();
+        let pop_cache = self.populate_cache.clone();
         let def_owned = def;
         let (documents, total) = tokio::task::spawn_blocking(move || {
             runner.fire_before_read(&hooks, &collection, "find", HashMap::new())?;
-            let mut docs = ops::find_documents(
-                &pool,
+            // Single connection for find + count + hydration + population
+            let conn = pool.get().context("DB connection")?;
+            let mut docs = query::find(
+                &conn,
                 &collection,
                 &def_owned,
                 &find_query,
                 locale_ctx.as_ref(),
             )?;
-            let total = ops::count_documents(
-                &pool,
+            let total = query::count(
+                &conn,
                 &collection,
                 &def_owned,
                 &filters,
                 locale_ctx.as_ref(),
             )?;
             // Hydrate join table data (has-many relationships and arrays)
-            let conn = pool.get().context("DB connection for hydration")?;
             let select_slice = select.as_deref();
             for doc in &mut docs {
                 query::hydrate_document(&conn, &collection, &def_owned.fields, doc, select_slice, locale_ctx.as_ref())?;
@@ -145,7 +147,12 @@ impl ContentService {
             // Populate relationships if depth > 0 (batch for efficiency)
             if depth > 0 {
                 let mut docs = docs;
-                query::populate_relationships_batch(
+                let local_cache;
+                let cache_ref = match &pop_cache {
+                    Some(shared) => &**shared,
+                    None => { local_cache = query::PopulateCache::new(); &local_cache }
+                };
+                query::populate_relationships_batch_cached(
                     &conn,
                     &registry,
                     &collection,
@@ -153,6 +160,7 @@ impl ContentService {
                     &mut docs,
                     depth,
                     select_slice,
+                    cache_ref,
                 )?;
                 return Ok((docs, total));
             }
@@ -225,6 +233,7 @@ impl ContentService {
         };
         let def_fields = def.fields.clone();
         let registry = self.registry.clone();
+        let pop_cache = self.populate_cache.clone();
         let def_owned = def;
         let doc = tokio::task::spawn_blocking(move || {
             runner.fire_before_read(&hooks, &collection, "find_by_id", HashMap::new())?;
@@ -250,7 +259,12 @@ impl ContentService {
             if depth > 0 {
                 if let Some(ref mut d) = doc {
                     let mut visited = std::collections::HashSet::new();
-                    query::populate_relationships(
+                    let local_cache;
+                    let cache_ref = match &pop_cache {
+                        Some(shared) => &**shared,
+                        None => { local_cache = query::PopulateCache::new(); &local_cache }
+                    };
+                    query::populate_relationships_cached(
                         &conn,
                         &registry,
                         &collection,
@@ -259,6 +273,7 @@ impl ContentService {
                         depth,
                         &mut visited,
                         select_slice,
+                        cache_ref,
                     )?;
                 }
             }
@@ -360,6 +375,8 @@ impl ContentService {
         .await
         .map_err(|e| Status::internal(format!("Task error: {}", e)))?
         .map_err(|e| map_db_error(e, "Create error"))?;
+
+        if let Some(c) = &self.populate_cache { c.clear(); }
 
         {
             let def = self.get_collection_def(&req.collection);
@@ -467,6 +484,8 @@ impl ContentService {
             .map_err(|e| Status::internal(format!("Task error: {}", e)))?
             .map_err(|e| map_db_error(e, "Unpublish error"))?;
 
+            if let Some(c) = &self.populate_cache { c.clear(); }
+
             self.hook_runner.publish_event(
                 &self.event_bus,
                 &self.get_collection_def(&req.collection).map(|d| d.hooks.clone()).unwrap_or_default(),
@@ -524,6 +543,8 @@ impl ContentService {
         .await
         .map_err(|e| Status::internal(format!("Task error: {}", e)))?
         .map_err(|e| map_db_error(e, "Update error"))?;
+
+        if let Some(c) = &self.populate_cache { c.clear(); }
 
         {
             let def = self.get_collection_def(&req.collection);
@@ -594,6 +615,8 @@ impl ContentService {
         .await
         .map_err(|e| Status::internal(format!("Task error: {}", e)))?
         .map_err(|e| map_db_error(e, "Delete error"))?;
+
+        if let Some(c) = &self.populate_cache { c.clear(); }
 
         self.hook_runner.publish_event(
             &self.event_bus,
@@ -759,6 +782,8 @@ impl ContentService {
             }
         })?;
 
+        if let Some(c) = &self.populate_cache { c.clear(); }
+
         Ok(Response::new(content::UpdateManyResponse { modified }))
     }
 
@@ -843,6 +868,8 @@ impl ContentService {
                 map_db_error(e, "DeleteMany error")
             }
         })?;
+
+        if let Some(c) = &self.populate_cache { c.clear(); }
 
         Ok(Response::new(content::DeleteManyResponse { deleted }))
     }
