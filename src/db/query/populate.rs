@@ -378,23 +378,23 @@ pub fn populate_relationships_batch(
                 for (col, col_ids) in &ids_by_collection {
                     if let Some(item_def) = registry.get_collection(col) {
                         let item_def = item_def.clone();
-                        let fetched = find_by_ids(conn, col, &item_def, col_ids, None)?;
-                        let mut doc_map: HashMap<String, Document> = HashMap::new();
-                        for mut d in fetched {
+                        let mut fetched = find_by_ids(conn, col, &item_def, col_ids, None)?;
+                        for d in &mut fetched {
                             if let Some(ref uc) = item_def.upload {
                                 if uc.enabled {
-                                    crate::core::upload::assemble_sizes_object(&mut d, uc);
+                                    crate::core::upload::assemble_sizes_object(d, uc);
                                 }
                             }
-                            let mut doc_visited = visited.clone();
-                            populate_relationships(
-                                conn, registry, col, &item_def, &mut d,
-                                effective_depth - 1, &mut doc_visited, None,
-                            )?;
-                            // Merge visited back
-                            visited.extend(doc_visited);
-                            doc_map.insert(d.id.clone(), d);
                         }
+                        if effective_depth - 1 > 0 {
+                            populate_relationships_batch(
+                                conn, registry, col, &item_def,
+                                &mut fetched, effective_depth - 1, None,
+                            )?;
+                        }
+                        let doc_map: HashMap<String, Document> = fetched.into_iter()
+                            .map(|d| (d.id.clone(), d))
+                            .collect();
                         fetched_map.insert(col.clone(), doc_map);
                     }
                 }
@@ -449,22 +449,23 @@ pub fn populate_relationships_batch(
                 for (col, col_ids) in &ids_by_collection {
                     if let Some(item_def) = registry.get_collection(col) {
                         let item_def = item_def.clone();
-                        let fetched = find_by_ids(conn, col, &item_def, col_ids, None)?;
-                        let mut doc_map: HashMap<String, Document> = HashMap::new();
-                        for mut d in fetched {
+                        let mut fetched = find_by_ids(conn, col, &item_def, col_ids, None)?;
+                        for d in &mut fetched {
                             if let Some(ref uc) = item_def.upload {
                                 if uc.enabled {
-                                    crate::core::upload::assemble_sizes_object(&mut d, uc);
+                                    crate::core::upload::assemble_sizes_object(d, uc);
                                 }
                             }
-                            let mut doc_visited = visited.clone();
-                            populate_relationships(
-                                conn, registry, col, &item_def, &mut d,
-                                effective_depth - 1, &mut doc_visited, None,
-                            )?;
-                            visited.extend(doc_visited);
-                            doc_map.insert(d.id.clone(), d);
                         }
+                        if effective_depth - 1 > 0 {
+                            populate_relationships_batch(
+                                conn, registry, col, &item_def,
+                                &mut fetched, effective_depth - 1, None,
+                            )?;
+                        }
+                        let doc_map: HashMap<String, Document> = fetched.into_iter()
+                            .map(|d| (d.id.clone(), d))
+                            .collect();
                         fetched_map.insert(col.clone(), doc_map);
                     }
                 }
@@ -508,22 +509,23 @@ pub fn populate_relationships_batch(
                 all_ids.dedup();
 
                 // Single batch fetch
-                let fetched = find_by_ids(conn, &rel.collection, &rel_def, &all_ids, None)?;
-                let mut cache: HashMap<String, Document> = HashMap::new();
-                for mut d in fetched {
+                let mut fetched = find_by_ids(conn, &rel.collection, &rel_def, &all_ids, None)?;
+                for d in &mut fetched {
                     if let Some(ref uc) = rel_def.upload {
                         if uc.enabled {
-                            crate::core::upload::assemble_sizes_object(&mut d, uc);
+                            crate::core::upload::assemble_sizes_object(d, uc);
                         }
                     }
-                    let mut doc_visited = visited.clone();
-                    populate_relationships(
-                        conn, registry, &rel.collection, &rel_def, &mut d,
-                        effective_depth - 1, &mut doc_visited, None,
-                    )?;
-                    visited.extend(doc_visited);
-                    cache.insert(d.id.clone(), d);
                 }
+                if effective_depth - 1 > 0 {
+                    populate_relationships_batch(
+                        conn, registry, &rel.collection, &rel_def,
+                        &mut fetched, effective_depth - 1, None,
+                    )?;
+                }
+                let cache: HashMap<String, Document> = fetched.into_iter()
+                    .map(|d| (d.id.clone(), d))
+                    .collect();
 
                 // Distribute back to each document preserving order
                 for doc in docs.iter_mut() {
@@ -557,22 +559,23 @@ pub fn populate_relationships_batch(
                 all_ids.dedup();
 
                 // Single batch fetch for all has-one refs across all docs
-                let fetched = find_by_ids(conn, &rel.collection, &rel_def, &all_ids, None)?;
-                let mut cache: HashMap<String, Document> = HashMap::new();
-                for mut d in fetched {
+                let mut fetched = find_by_ids(conn, &rel.collection, &rel_def, &all_ids, None)?;
+                for d in &mut fetched {
                     if let Some(ref uc) = rel_def.upload {
                         if uc.enabled {
-                            crate::core::upload::assemble_sizes_object(&mut d, uc);
+                            crate::core::upload::assemble_sizes_object(d, uc);
                         }
                     }
-                    let mut doc_visited = visited.clone();
-                    populate_relationships(
-                        conn, registry, &rel.collection, &rel_def, &mut d,
-                        effective_depth - 1, &mut doc_visited, None,
-                    )?;
-                    visited.extend(doc_visited);
-                    cache.insert(d.id.clone(), d);
                 }
+                if effective_depth - 1 > 0 {
+                    populate_relationships_batch(
+                        conn, registry, &rel.collection, &rel_def,
+                        &mut fetched, effective_depth - 1, None,
+                    )?;
+                }
+                let cache: HashMap<String, Document> = fetched.into_iter()
+                    .map(|d| (d.id.clone(), d))
+                    .collect();
 
                 // Distribute back
                 for doc in docs.iter_mut() {

@@ -128,7 +128,7 @@ impl ContentService {
         let conn = self
             .pool
             .get()
-            .map_err(|_| Status::internal("Database connection error"))?;
+            .map_err(|_| Status::unavailable("Database connection pool exhausted (retryable)"))?;
         self.hook_runner
             .check_access(access_ref, user_doc, id, data, &conn)
             .map_err(|e| Status::internal(format!("Access check error: {}", e)))

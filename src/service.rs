@@ -233,7 +233,8 @@ pub fn create_document(
     let is_draft = draft && def.has_drafts();
 
     let mut conn = pool.get().context("DB connection")?;
-    let tx = conn.transaction().context("Start transaction")?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .context("Start transaction")?;
 
     let mut hook_data: HashMap<String, serde_json::Value> = data.iter()
         .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
@@ -307,7 +308,8 @@ pub fn update_document(
     let is_draft = draft && def.has_drafts();
 
     let mut conn = pool.get().context("DB connection")?;
-    let tx = conn.transaction().context("Start transaction")?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .context("Start transaction")?;
 
     let mut hook_data: HashMap<String, serde_json::Value> = data.iter()
         .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
@@ -400,7 +402,8 @@ pub fn unpublish_document(
     user: Option<&Document>,
 ) -> Result<Document> {
     let mut conn = pool.get().context("DB connection")?;
-    let tx = conn.transaction().context("Start transaction")?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .context("Start transaction")?;
 
     let doc = query::find_by_id_raw(&tx, slug, def, id, None)?
         .ok_or_else(|| anyhow::anyhow!("Document {} not found in {}", id, slug))?;
@@ -465,7 +468,8 @@ pub fn delete_document(
         None
     };
 
-    let tx = conn.transaction().context("Start transaction")?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .context("Start transaction")?;
 
     let hook_ctx = HookContext {
         collection: slug.to_string(),
@@ -521,7 +525,8 @@ pub fn update_global_document(
     let is_draft = draft && def.has_drafts();
 
     let mut conn = pool.get().context("DB connection")?;
-    let tx = conn.transaction().context("Start transaction")?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .context("Start transaction")?;
 
     let global_table = format!("_global_{}", slug);
 

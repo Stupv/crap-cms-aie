@@ -16,6 +16,24 @@ use super::convert::{
 };
 use super::ContentService;
 
+/// Map database/task errors to appropriate gRPC status codes.
+/// Returns `Status::unavailable` for transient SQLite busy/locked/pool timeout errors
+/// (enabling client retry), `Status::internal` for everything else.
+fn map_db_error(e: anyhow::Error, prefix: &str) -> Status {
+    let msg = e.to_string();
+    let is_transient = msg.contains("database is locked")
+        || msg.contains("database is busy")
+        || msg.contains("SQLITE_BUSY")
+        || msg.contains("SQLITE_LOCKED")
+        || msg.contains("Timed out waiting")
+        || msg.contains("connection pool");
+    if is_transient {
+        Status::unavailable(format!("{}: {} (retryable)", prefix, msg))
+    } else {
+        Status::internal(format!("{}: {}", prefix, msg))
+    }
+}
+
 /// Untestable as unit: async methods require full ContentService with pool, registry,
 /// hook_runner, and JWT secret. Covered by integration tests in tests/ directory.
 #[cfg(not(tarpaulin_include))]
@@ -142,7 +160,7 @@ impl ContentService {
         })
         .await
         .map_err(|e| Status::internal(format!("Task error: {}", e)))?
-        .map_err(|e| Status::internal(format!("Query error: {}", e)))?;
+        .map_err(|e| map_db_error(e, "Query error"))?;
 
         let mut proto_docs: Vec<_> = documents
             .iter()
@@ -254,7 +272,7 @@ impl ContentService {
         })
         .await
         .map_err(|e| Status::internal(format!("Task error: {}", e)))?
-        .map_err(|e| Status::internal(format!("Query error: {}", e)))?;
+        .map_err(|e| map_db_error(e, "Query error"))?;
 
         let mut proto_doc = doc.map(|d| document_to_proto(&d, &req.collection));
 
@@ -297,21 +315,6 @@ impl ContentService {
             .map(|s| prost_struct_to_hashmap(&s))
             .unwrap_or_default();
 
-        // Strip field-level create-denied fields
-        {
-            let user_doc = auth_user.as_ref().map(|au| &au.user_doc);
-            let conn = self
-                .pool
-                .get()
-                .map_err(|_| Status::internal("Database connection error"))?;
-            let denied =
-                self.hook_runner
-                    .check_field_write_access(&def.fields, user_doc, "create", &conn);
-            for name in &denied {
-                data.remove(name);
-            }
-        }
-
         // Extract password for auth collections
         let password = if def.is_auth_collection() {
             data.remove("password")
@@ -329,6 +332,17 @@ impl ContentService {
         let def_owned = def;
         let user_doc = auth_user.as_ref().map(|au| au.user_doc.clone());
         let (doc, _req_context) = tokio::task::spawn_blocking(move || {
+            // Strip field-level create-denied fields inside spawn_blocking
+            // to avoid pool.get() on the async thread
+            {
+                let conn = pool.get().context("DB connection for field access")?;
+                let denied = runner.check_field_write_access(
+                    &def_owned.fields, user_doc.as_ref(), "create", &conn,
+                );
+                for name in &denied {
+                    data.remove(name);
+                }
+            }
             crate::service::create_document(
                 &pool,
                 &runner,
@@ -345,7 +359,7 @@ impl ContentService {
         })
         .await
         .map_err(|e| Status::internal(format!("Task error: {}", e)))?
-        .map_err(|e| Status::internal(format!("Create error: {}", e)))?;
+        .map_err(|e| map_db_error(e, "Create error"))?;
 
         {
             let def = self.get_collection_def(&req.collection);
@@ -426,21 +440,6 @@ impl ContentService {
             .map(|s| prost_struct_to_hashmap(&s))
             .unwrap_or_default();
 
-        // Strip field-level update-denied fields
-        {
-            let user_doc = auth_user.as_ref().map(|au| &au.user_doc);
-            let conn = self
-                .pool
-                .get()
-                .map_err(|_| Status::internal("Database connection error"))?;
-            let denied =
-                self.hook_runner
-                    .check_field_write_access(&def.fields, user_doc, "update", &conn);
-            for name in &denied {
-                data.remove(name);
-            }
-        }
-
         let password = if def.is_auth_collection() {
             data.remove("password")
         } else {
@@ -466,7 +465,7 @@ impl ContentService {
             })
             .await
             .map_err(|e| Status::internal(format!("Task error: {}", e)))?
-            .map_err(|e| Status::internal(format!("Unpublish error: {}", e)))?;
+            .map_err(|e| map_db_error(e, "Unpublish error"))?;
 
             self.hook_runner.publish_event(
                 &self.event_bus,
@@ -496,6 +495,17 @@ impl ContentService {
         let def_owned = def;
         let user_doc = auth_user.as_ref().map(|au| au.user_doc.clone());
         let (doc, _req_context) = tokio::task::spawn_blocking(move || {
+            // Strip field-level update-denied fields inside spawn_blocking
+            // to avoid pool.get() on the async thread
+            {
+                let conn = pool.get().context("DB connection for field access")?;
+                let denied = runner.check_field_write_access(
+                    &def_owned.fields, user_doc.as_ref(), "update", &conn,
+                );
+                for name in &denied {
+                    data.remove(name);
+                }
+            }
             crate::service::update_document(
                 &pool,
                 &runner,
@@ -513,7 +523,7 @@ impl ContentService {
         })
         .await
         .map_err(|e| Status::internal(format!("Task error: {}", e)))?
-        .map_err(|e| Status::internal(format!("Update error: {}", e)))?;
+        .map_err(|e| map_db_error(e, "Update error"))?;
 
         {
             let def = self.get_collection_def(&req.collection);
@@ -583,7 +593,7 @@ impl ContentService {
         })
         .await
         .map_err(|e| Status::internal(format!("Task error: {}", e)))?
-        .map_err(|e| Status::internal(format!("Delete error: {}", e)))?;
+        .map_err(|e| map_db_error(e, "Delete error"))?;
 
         self.hook_runner.publish_event(
             &self.event_bus,
@@ -648,7 +658,7 @@ impl ContentService {
         })
         .await
         .map_err(|e| Status::internal(format!("Task error: {}", e)))?
-        .map_err(|e| Status::internal(format!("Count error: {}", e)))?;
+        .map_err(|e| map_db_error(e, "Count error"))?;
 
         Ok(Response::new(content::CountResponse { count }))
     }
@@ -703,7 +713,8 @@ impl ContentService {
         let auth_user_clone = auth_user.clone();
         let modified = tokio::task::spawn_blocking(move || -> Result<i64, anyhow::Error> {
             let mut conn = pool.get().context("DB connection")?;
-            let tx = conn.transaction().context("Start transaction")?;
+            let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                .context("Start transaction")?;
 
             let find_query = FindQuery {
                 filters,
@@ -744,7 +755,7 @@ impl ContentService {
             if e.to_string().contains("access denied") {
                 Status::permission_denied(e.to_string())
             } else {
-                Status::internal(format!("UpdateMany error: {}", e))
+                map_db_error(e, "UpdateMany error")
             }
         })?;
 
@@ -788,7 +799,8 @@ impl ContentService {
         let auth_user_clone = auth_user.clone();
         let deleted = tokio::task::spawn_blocking(move || -> Result<i64, anyhow::Error> {
             let mut conn = pool.get().context("DB connection")?;
-            let tx = conn.transaction().context("Start transaction")?;
+            let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                .context("Start transaction")?;
 
             let find_query = FindQuery {
                 filters,
@@ -828,7 +840,7 @@ impl ContentService {
             if e.to_string().contains("access denied") {
                 Status::permission_denied(e.to_string())
             } else {
-                Status::internal(format!("DeleteMany error: {}", e))
+                map_db_error(e, "DeleteMany error")
             }
         })?;
 
