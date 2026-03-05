@@ -8,13 +8,14 @@
   </a>
 </div>
 
-<div class="search-bar">
-  <form class="search-bar__form"
+<div class="list-toolbar">
+  <form class="list-toolbar__search"
         action="/admin/collections/{{collection.slug}}"
         hx-get="/admin/collections/{{collection.slug}}"
         hx-target="body"
         hx-push-url="true"
-        hx-trigger="submit">
+        hx-trigger="submit"
+        hx-include="find input">
     <span class="material-symbols-outlined search-bar__icon">search</span>
     <input
       type="text"
@@ -22,7 +23,14 @@
       value="{{search}}"
       placeholder="{{t "search_placeholder"}} {{collection.display_name}}..."
       class="search-bar__input"
+      id="list-search-input"
+      hx-get="/admin/collections/{{collection.slug}}"
+      hx-target="body"
+      hx-push-url="true"
+      hx-trigger="input changed delay:300ms, search"
+      hx-include="closest form"
     />
+    {{#if sort}}<input type="hidden" name="sort" value="{{sort}}" />{{/if}}
     {{#if search}}
     <a class="search-bar__clear"
        href="/admin/collections/{{collection.slug}}"
@@ -33,7 +41,34 @@
     </a>
     {{/if}}
   </form>
+  <div class="list-toolbar__actions">
+    <button type="button" class="button button--ghost button--small" data-action="open-filter-builder">
+      <span class="material-symbols-outlined">filter_list</span>
+      Filters
+      {{#if active_filter_count}}<span class="list-toolbar__badge">{{active_filter_count}}</span>{{/if}}
+    </button>
+    <button type="button" class="button button--ghost button--small" data-action="open-column-picker">
+      <span class="material-symbols-outlined">view_column</span>
+      Columns
+    </button>
+  </div>
 </div>
+
+{{#if active_filters}}
+<div class="filter-pills">
+  {{#each active_filters}}
+  <span class="filter-pill">
+    <span class="filter-pill__label">{{this.field_label}}</span>
+    <span class="filter-pill__op">{{this.op}}</span>
+    {{#if this.value}}<span class="filter-pill__value">{{this.value}}</span>{{/if}}
+    <a class="filter-pill__remove" href="{{this.remove_url}}"
+       hx-get="{{this.remove_url}}" hx-target="body" hx-push-url="true">
+      <span class="material-symbols-outlined">close</span>
+    </a>
+  </span>
+  {{/each}}
+</div>
+{{/if}}
 
 {{#if items}}
 {{> collections/items_table}}
@@ -41,4 +76,7 @@
 {{else}}
 {{> collections/items_empty}}
 {{/if}}
+
+<script type="application/json" id="crap-column-options">{{{json column_options}}}</script>
+<script type="application/json" id="crap-filter-fields">{{{json filter_fields}}}</script>
 {{/layout/base}}

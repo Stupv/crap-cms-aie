@@ -2,6 +2,7 @@
 
 use axum::{
     extract::{Form, Query, State},
+    http::StatusCode,
     response::{Html, IntoResponse, Redirect},
 };
 use serde::Deserialize;
@@ -162,27 +163,96 @@ pub async fn login_action(
         }
     };
 
-    // Set cookie and redirect
-    let cookie = session_cookie(&token, expiry, state.config.admin.dev_mode);
+    // Set cookies and redirect
+    let cookies = session_cookies(&token, expiry, claims.exp, state.config.admin.dev_mode);
 
     let mut response = Redirect::to("/admin").into_response();
-    response.headers_mut().insert(
-        axum::http::header::SET_COOKIE,
-        cookie.parse().unwrap(),
-    );
+    for cookie in cookies {
+        response.headers_mut().append(
+            axum::http::header::SET_COOKIE,
+            cookie.parse().unwrap(),
+        );
+    }
     response
 }
 
-/// POST /admin/logout — clear cookie, redirect to login.
+/// GET/POST /admin/logout — clear cookies, redirect to login.
 pub async fn logout_action(
     State(state): State<AdminState>,
 ) -> axum::response::Response {
-    let cookie = clear_session_cookie(state.config.admin.dev_mode);
+    let cookies = clear_session_cookies(state.config.admin.dev_mode);
     let mut response = Redirect::to("/admin/login").into_response();
-    response.headers_mut().insert(
-        axum::http::header::SET_COOKIE,
-        cookie.parse().unwrap(),
-    );
+    for cookie in cookies {
+        response.headers_mut().append(
+            axum::http::header::SET_COOKIE,
+            cookie.parse().unwrap(),
+        );
+    }
+    response
+}
+
+/// POST /admin/api/session-refresh — issue a fresh JWT if the current one is still valid.
+pub async fn session_refresh(
+    State(state): State<AdminState>,
+    request: axum::http::Request<axum::body::Body>,
+) -> axum::response::Response {
+    // Extract claims from request extensions (set by auth middleware)
+    let claims = match request.extensions().get::<auth::Claims>() {
+        Some(c) => c.clone(),
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
+
+    // Check account is not locked
+    let pool = state.pool.clone();
+    let slug = claims.collection.clone();
+    let user_id = claims.sub.clone();
+
+    let locked = tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        query::is_locked(&conn, &slug, &user_id)
+    }).await;
+
+    match locked {
+        Ok(Ok(true)) => return StatusCode::UNAUTHORIZED.into_response(),
+        Ok(Err(e)) => {
+            tracing::error!("Session refresh lock check: {}", e);
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+        Err(e) => {
+            tracing::error!("Session refresh task error: {}", e);
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+        _ => {} // not locked, continue
+    }
+
+    // Compute fresh expiry (collection override or global config)
+    let expiry = state.registry.get_collection(&claims.collection)
+        .and_then(|def| def.auth.as_ref().map(|a| a.token_expiry))
+        .unwrap_or(state.config.auth.token_expiry);
+
+    let new_claims = auth::Claims {
+        sub: claims.sub,
+        collection: claims.collection,
+        email: claims.email,
+        exp: (chrono::Utc::now().timestamp() as u64) + expiry,
+    };
+
+    let token = match auth::create_token(&new_claims, &state.jwt_secret) {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::error!("Session refresh token creation: {}", e);
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+
+    let cookies = session_cookies(&token, expiry, new_claims.exp, state.config.admin.dev_mode);
+    let mut response = StatusCode::NO_CONTENT.into_response();
+    for cookie in cookies {
+        response.headers_mut().append(
+            axum::http::header::SET_COOKIE,
+            cookie.parse().unwrap(),
+        );
+    }
     response
 }
 
@@ -502,20 +572,30 @@ pub async fn verify_email(
 
 // ── Cookie helpers ────────────────────────────────────────────────────────
 
-/// Build a `Set-Cookie` header value for the session cookie.
-/// Adds `Secure` flag when not in dev mode.
-fn session_cookie(token: &str, expiry: u64, dev_mode: bool) -> String {
+/// Build `Set-Cookie` header values for the session.
+/// Returns two cookies: the HttpOnly JWT cookie and a JS-readable expiry cookie.
+/// `exp` is the absolute Unix timestamp when the session expires.
+fn session_cookies(token: &str, expiry: u64, exp: u64, dev_mode: bool) -> Vec<String> {
     let secure = if dev_mode { "" } else { "; Secure" };
-    format!(
-        "crap_session={}; HttpOnly; Path=/; SameSite=Lax; Max-Age={}{}",
-        token, expiry, secure,
-    )
+    vec![
+        format!(
+            "crap_session={}; HttpOnly; Path=/; SameSite=Lax; Max-Age={}{}",
+            token, expiry, secure,
+        ),
+        format!(
+            "crap_session_exp={}; Path=/; SameSite=Lax; Max-Age={}{}",
+            exp, expiry, secure,
+        ),
+    ]
 }
 
-/// Build a `Set-Cookie` header value that clears the session cookie.
-fn clear_session_cookie(dev_mode: bool) -> String {
+/// Build `Set-Cookie` header values that clear both session cookies.
+fn clear_session_cookies(dev_mode: bool) -> Vec<String> {
     let secure = if dev_mode { "" } else { "; Secure" };
-    format!("crap_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0{}", secure)
+    vec![
+        format!("crap_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0{}", secure),
+        format!("crap_session_exp=; Path=/; SameSite=Lax; Max-Age=0{}", secure),
+    ]
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -582,35 +662,53 @@ mod tests {
     use super::*;
 
     #[test]
-    fn session_cookie_dev_mode() {
-        let cookie = session_cookie("tok123", 7200, true);
-        assert!(cookie.contains("crap_session=tok123"));
-        assert!(cookie.contains("HttpOnly"));
-        assert!(cookie.contains("Max-Age=7200"));
-        assert!(!cookie.contains("Secure"), "dev mode should not set Secure");
+    fn session_cookies_dev_mode() {
+        let cookies = session_cookies("tok123", 7200, 1700000000, true);
+        assert_eq!(cookies.len(), 2);
+        // JWT cookie
+        assert!(cookies[0].contains("crap_session=tok123"));
+        assert!(cookies[0].contains("HttpOnly"));
+        assert!(cookies[0].contains("Max-Age=7200"));
+        assert!(!cookies[0].contains("Secure"), "dev mode should not set Secure");
+        // Exp cookie — JS-readable, no HttpOnly
+        assert!(cookies[1].contains("crap_session_exp=1700000000"));
+        assert!(!cookies[1].contains("HttpOnly"));
+        assert!(cookies[1].contains("Max-Age=7200"));
+        assert!(!cookies[1].contains("Secure"));
     }
 
     #[test]
-    fn session_cookie_production_mode() {
-        let cookie = session_cookie("tok456", 3600, false);
-        assert!(cookie.contains("crap_session=tok456"));
-        assert!(cookie.contains("Max-Age=3600"));
-        assert!(cookie.contains("; Secure"), "production should set Secure");
+    fn session_cookies_production_mode() {
+        let cookies = session_cookies("tok456", 3600, 1700003600, false);
+        assert_eq!(cookies.len(), 2);
+        assert!(cookies[0].contains("crap_session=tok456"));
+        assert!(cookies[0].contains("Max-Age=3600"));
+        assert!(cookies[0].contains("; Secure"), "production should set Secure");
+        assert!(cookies[1].contains("crap_session_exp=1700003600"));
+        assert!(!cookies[1].contains("HttpOnly"));
+        assert!(cookies[1].contains("; Secure"));
     }
 
     #[test]
-    fn clear_session_cookie_dev_mode() {
-        let cookie = clear_session_cookie(true);
-        assert!(cookie.contains("crap_session=;"));
-        assert!(cookie.contains("Max-Age=0"));
-        assert!(!cookie.contains("Secure"));
+    fn clear_session_cookies_dev_mode() {
+        let cookies = clear_session_cookies(true);
+        assert_eq!(cookies.len(), 2);
+        assert!(cookies[0].contains("crap_session=;"));
+        assert!(cookies[0].contains("Max-Age=0"));
+        assert!(!cookies[0].contains("Secure"));
+        assert!(cookies[1].contains("crap_session_exp=;"));
+        assert!(cookies[1].contains("Max-Age=0"));
+        assert!(!cookies[1].contains("HttpOnly"));
     }
 
     #[test]
-    fn clear_session_cookie_production_mode() {
-        let cookie = clear_session_cookie(false);
-        assert!(cookie.contains("crap_session=;"));
-        assert!(cookie.contains("Max-Age=0"));
-        assert!(cookie.contains("; Secure"));
+    fn clear_session_cookies_production_mode() {
+        let cookies = clear_session_cookies(false);
+        assert_eq!(cookies.len(), 2);
+        assert!(cookies[0].contains("crap_session=;"));
+        assert!(cookies[0].contains("Max-Age=0"));
+        assert!(cookies[0].contains("; Secure"));
+        assert!(cookies[1].contains("crap_session_exp=;"));
+        assert!(cookies[1].contains("; Secure"));
     }
 }

@@ -23,6 +23,8 @@ import './drawer.js';
 import './relationship-search.js';
 
 // ── Behaviors ──
+import './session-guard.js';
+import './dirty-form.js';
 import './uploads.js';
 import './focal-point.js';
 import './block-picker.js';
@@ -34,6 +36,7 @@ import './theme.js';
 import './locale.js';
 
 // ── Actions ──
+import './list-settings.js';
 import './tabs.js';
 import './groups.js';
 import './array-fields.js';

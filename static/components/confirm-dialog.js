@@ -92,15 +92,19 @@ class CrapConfirmDialog extends HTMLElement {
    * Returns a Promise that resolves to true (confirm) or false (cancel).
    *
    * @param {string} message - The confirmation prompt text.
+   * @param {{ confirmLabel?: string, cancelLabel?: string }} [opts]
    * @returns {Promise<boolean>}
    */
-  prompt(message) {
+  prompt(message, opts = {}) {
+    const { confirmLabel = 'Confirm', cancelLabel = 'Cancel' } = opts;
     return new Promise((resolve) => {
       const dialog = this.shadowRoot.querySelector('dialog');
       this.shadowRoot.querySelector('p').textContent = message;
 
       const cancelBtn = this.shadowRoot.querySelector('.cancel');
       const confirmBtn = this.shadowRoot.querySelector('.confirm');
+      cancelBtn.textContent = cancelLabel;
+      confirmBtn.textContent = confirmLabel;
 
       const cleanup = () => {
         cancelBtn.removeEventListener('click', onCancel);
@@ -135,8 +139,8 @@ customElements.define('crap-confirm-dialog', CrapConfirmDialog);
 let instance = null;
 
 /** Lazily create (or reuse) a shared <crap-confirm-dialog> element. */
-function getConfirmDialog() {
-  if (!instance) {
+export function getConfirmDialog() {
+  if (!instance || !instance.isConnected) {
     instance = /** @type {CrapConfirmDialog} */ (
       document.createElement('crap-confirm-dialog')
     );

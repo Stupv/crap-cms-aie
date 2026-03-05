@@ -1,9 +1,34 @@
 <table class="table">
   <thead>
     <tr>
-      <th>{{#if collection.title_field}}{{collection.title_field}}{{else}}{{t "id"}}{{/if}}</th>
-      {{#if collection.has_drafts}}<th>{{t "status"}}</th>{{/if}}
-      <th>{{t "created"}}</th>
+      <th>
+        {{#if title_sort_url}}
+        <a class="table__sort-link" href="{{title_sort_url}}"
+           hx-get="{{title_sort_url}}" hx-target="body" hx-push-url="true">
+          {{#if collection.title_field}}{{collection.title_field}}{{else}}{{t "id"}}{{/if}}
+          {{#if title_sorted_asc}}<span class="material-symbols-outlined table__sort-icon table__sort-icon--active">arrow_upward</span>{{/if}}
+          {{#if title_sorted_desc}}<span class="material-symbols-outlined table__sort-icon table__sort-icon--active">arrow_downward</span>{{/if}}
+          {{#unless title_sorted_asc}}{{#unless title_sorted_desc}}<span class="material-symbols-outlined table__sort-icon">unfold_more</span>{{/unless}}{{/unless}}
+        </a>
+        {{else}}
+        {{#if collection.title_field}}{{collection.title_field}}{{else}}{{t "id"}}{{/if}}
+        {{/if}}
+      </th>
+      {{#each table_columns}}
+      <th>
+        {{#if this.sortable}}
+        <a class="table__sort-link" href="{{this.sort_url}}"
+           hx-get="{{this.sort_url}}" hx-target="body" hx-push-url="true">
+          {{this.label}}
+          {{#if this.is_sorted_asc}}<span class="material-symbols-outlined table__sort-icon table__sort-icon--active">arrow_upward</span>{{/if}}
+          {{#if this.is_sorted_desc}}<span class="material-symbols-outlined table__sort-icon table__sort-icon--active">arrow_downward</span>{{/if}}
+          {{#unless this.is_sorted_asc}}{{#unless this.is_sorted_desc}}<span class="material-symbols-outlined table__sort-icon">unfold_more</span>{{/unless}}{{/unless}}
+        </a>
+        {{else}}
+        {{this.label}}
+        {{/if}}
+      </th>
+      {{/each}}
       <th></th>
     </tr>
   </thead>

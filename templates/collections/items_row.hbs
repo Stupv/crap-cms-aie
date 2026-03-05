@@ -8,8 +8,16 @@
       {{#if this.title_value}}{{this.title_value}}{{else}}{{this.id}}{{/if}}
     </a>
   </td>
-  {{#if ../collection.has_drafts}}<td><span class="badge badge--{{this.status}}">{{this.status}}</span></td>{{/if}}
-  <td><time datetime="{{this.created_at}}">{{this.created_at}}</time></td>
+  {{#each this.cells}}
+  <td>
+    {{#if this.is_badge}}<span class="badge badge--{{this.value}}">{{this.value}}</span>{{/if}}
+    {{#if this.is_date}}<time datetime="{{this.value}}">{{this.value}}</time>{{/if}}
+    {{#if this.is_bool}}
+      {{#if this.value}}<span class="material-symbols-outlined" style="color: var(--color-success)">check</span>{{else}}<span class="material-symbols-outlined" style="color: var(--text-tertiary)">remove</span>{{/if}}
+    {{/if}}
+    {{#unless this.is_badge}}{{#unless this.is_date}}{{#unless this.is_bool}}{{this.value}}{{/unless}}{{/unless}}{{/unless}}
+  </td>
+  {{/each}}
   <td>
     <a class="button button--ghost button--small" href="/admin/collections/{{collection.slug}}/{{this.id}}/delete"
       hx-get="/admin/collections/{{collection.slug}}/{{this.id}}/delete" hx-target="body" hx-push-url="true">

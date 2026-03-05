@@ -113,10 +113,12 @@ pub fn build_router(state: AdminState) -> Router {
         .route("/admin/collections/{slug}/{id}/versions/{version_id}/restore", post(collections::restore_version))
         .route("/admin/collections/{slug}/evaluate-conditions", post(collections::evaluate_conditions))
         .route("/admin/api/search/{slug}", get(collections::search_collection))
+        .route("/admin/api/user-settings/{slug}", post(collections::save_user_settings))
         .route("/admin/globals/{slug}", globals_methods)
         .route("/admin/globals/{slug}/versions", get(globals::list_versions_page))
         .route("/admin/globals/{slug}/versions/{version_id}/restore", post(globals::restore_version))
-        .route("/admin/events", get(events::sse_handler));
+        .route("/admin/events", get(events::sse_handler))
+        .route("/admin/api/session-refresh", post(auth_handlers::session_refresh));
 
     // Apply auth middleware if auth collections exist OR require_auth is set
     let needs_auth_layer = has_auth || state.config.admin.require_auth;
@@ -132,7 +134,7 @@ pub fn build_router(state: AdminState) -> Router {
 
     let router = Router::new()
         .route("/admin/login", get(auth_handlers::login_page).post(auth_handlers::login_action))
-        .route("/admin/logout", post(auth_handlers::logout_action))
+        .route("/admin/logout", get(auth_handlers::logout_action).post(auth_handlers::logout_action))
         .route("/admin/forgot-password", get(auth_handlers::forgot_password_page).post(auth_handlers::forgot_password_action))
         .route("/admin/reset-password", get(auth_handlers::reset_password_page).post(auth_handlers::reset_password_action))
         .route("/admin/verify-email", get(auth_handlers::verify_email))

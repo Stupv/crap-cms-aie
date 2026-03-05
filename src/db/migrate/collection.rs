@@ -79,6 +79,7 @@ pub(super) fn create_collection_table(
         columns.push("_reset_token TEXT".to_string());
         columns.push("_reset_token_exp INTEGER".to_string());
         columns.push("_locked INTEGER DEFAULT 0".to_string());
+        columns.push("_settings TEXT".to_string());
         if def.auth.as_ref().is_some_and(|a| a.verify_email) {
             columns.push("_verified INTEGER DEFAULT 0".to_string());
             columns.push("_verification_token TEXT".to_string());
@@ -144,7 +145,7 @@ fn alter_collection_table(
 
     // Auth collections: ensure system columns exist
     if def.is_auth_collection() {
-        for col in ["_password_hash TEXT", "_reset_token TEXT", "_reset_token_exp INTEGER", "_locked INTEGER DEFAULT 0"] {
+        for col in ["_password_hash TEXT", "_reset_token TEXT", "_reset_token_exp INTEGER", "_locked INTEGER DEFAULT 0", "_settings TEXT"] {
             let col_name = col.split_whitespace().next().unwrap();
             if !existing_columns.contains(col_name) {
                 let sql = format!("ALTER TABLE {} ADD COLUMN {}", slug, col);
@@ -232,7 +233,7 @@ fn alter_collection_table(
     let system_columns: HashSet<&str> = [
         "id", "created_at", "updated_at", "_password_hash",
         "_reset_token", "_reset_token_exp", "_verified", "_verification_token",
-        "_verification_token_exp", "_locked", "_status",
+        "_verification_token_exp", "_locked", "_status", "_settings",
     ].into();
     for col in &existing_columns {
         if !field_names.contains(col) && !system_columns.contains(col.as_str()) {
@@ -398,6 +399,7 @@ mod tests {
         assert!(cols.contains("_reset_token"));
         assert!(cols.contains("_reset_token_exp"));
         assert!(cols.contains("_locked"));
+        assert!(cols.contains("_settings"));
         assert!(cols.contains("_verified"));
         assert!(cols.contains("_verification_token"));
     }
@@ -480,6 +482,7 @@ mod tests {
         assert!(cols.contains("_reset_token"));
         assert!(cols.contains("_reset_token_exp"));
         assert!(cols.contains("_locked"));
+        assert!(cols.contains("_settings"));
         assert!(cols.contains("_verified"));
         assert!(cols.contains("_verification_token"));
     }

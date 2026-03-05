@@ -188,6 +188,38 @@ pub fn mark_verified(
     Ok(())
 }
 
+// ── User settings functions ────────────────────────────────────────────────
+
+/// Get user settings JSON blob. Returns None if no settings saved.
+pub fn get_user_settings(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    user_id: &str,
+) -> Result<Option<String>> {
+    let sql = format!("SELECT _settings FROM {} WHERE id = ?1", slug);
+    let result = conn.query_row(&sql, [user_id], |row| {
+        row.get::<_, Option<String>>(0)
+    });
+    match result {
+        Ok(settings) => Ok(settings),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e).context(format!("Failed to get settings for {} in {}", user_id, slug)),
+    }
+}
+
+/// Set user settings JSON blob.
+pub fn set_user_settings(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    user_id: &str,
+    settings_json: &str,
+) -> Result<()> {
+    let sql = format!("UPDATE {} SET _settings = ?1 WHERE id = ?2", slug);
+    conn.execute(&sql, rusqlite::params![settings_json, user_id])
+        .with_context(|| format!("Failed to set settings for {} in {}", user_id, slug))?;
+    Ok(())
+}
+
 // ── Lock/unlock functions ─────────────────────────────────────────────────
 
 /// Lock a user account (prevent login).
@@ -296,6 +328,7 @@ mod tests {
                 _reset_token TEXT,
                 _reset_token_exp INTEGER,
                 _locked INTEGER DEFAULT 0,
+                _settings TEXT,
                 _verification_token TEXT,
                 _verification_token_exp INTEGER,
                 _verified INTEGER DEFAULT 0,
@@ -534,5 +567,39 @@ mod tests {
         conn.execute("UPDATE users SET _verified = NULL WHERE id = 'user1'", []).unwrap();
         let result = is_verified(&conn, "users", "user1").unwrap();
         assert!(!result, "NULL _verified should be treated as false");
+    }
+
+    // ── user settings tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn get_user_settings_none_when_null() {
+        let conn = setup_auth_db();
+        let result = get_user_settings(&conn, "users", "user1").unwrap();
+        assert!(result.is_none(), "Should return None when no settings saved");
+    }
+
+    #[test]
+    fn set_then_get_user_settings() {
+        let conn = setup_auth_db();
+        let settings = r#"{"posts":{"columns":["title","status"]}}"#;
+        set_user_settings(&conn, "users", "user1", settings).unwrap();
+        let result = get_user_settings(&conn, "users", "user1").unwrap();
+        assert_eq!(result.as_deref(), Some(settings));
+    }
+
+    #[test]
+    fn set_user_settings_overwrites() {
+        let conn = setup_auth_db();
+        set_user_settings(&conn, "users", "user1", r#"{"a":1}"#).unwrap();
+        set_user_settings(&conn, "users", "user1", r#"{"b":2}"#).unwrap();
+        let result = get_user_settings(&conn, "users", "user1").unwrap();
+        assert_eq!(result.as_deref(), Some(r#"{"b":2}"#));
+    }
+
+    #[test]
+    fn get_user_settings_nonexistent_user() {
+        let conn = setup_auth_db();
+        let result = get_user_settings(&conn, "users", "nonexistent").unwrap();
+        assert!(result.is_none(), "Non-existent user should return None");
     }
 }
