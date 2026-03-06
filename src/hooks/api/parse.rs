@@ -11,6 +11,37 @@ use crate::core::{
     upload::{CollectionUpload, ImageSize, ImageFit, FormatOptions, FormatQuality},
 };
 
+/// Admin UI max nesting depth for rendering fields (must match `MAX_FIELD_DEPTH` in field_context.rs).
+const ADMIN_MAX_FIELD_DEPTH: usize = 5;
+
+/// Compute the maximum nesting depth of a field list.
+/// Top-level fields are depth 1, their sub-fields are depth 2, etc.
+fn max_field_nesting(fields: &[FieldDefinition], current: usize) -> usize {
+    let mut max = current;
+    for f in fields {
+        let sub = current + 1;
+        max = max.max(max_field_nesting(&f.fields, sub));
+        for block in &f.blocks {
+            max = max.max(max_field_nesting(&block.fields, sub));
+        }
+        for tab in &f.tabs {
+            max = max.max(max_field_nesting(&tab.fields, sub));
+        }
+    }
+    max
+}
+
+/// Warn if field nesting exceeds the admin UI rendering limit.
+fn warn_deep_nesting(kind: &str, slug: &str, fields: &[FieldDefinition]) {
+    let depth = max_field_nesting(fields, 0);
+    if depth > ADMIN_MAX_FIELD_DEPTH {
+        tracing::warn!(
+            "{} '{}': field nesting depth is {} — the admin UI only renders up to {} levels",
+            kind, slug, depth, ADMIN_MAX_FIELD_DEPTH
+        );
+    }
+}
+
 /// Parse a Lua table into a `CollectionDefinition`, extracting fields, hooks, auth, upload, etc.
 pub fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Result<CollectionDefinition> {
     let labels = if let Ok(labels_tbl) = get_table(config, "labels") {
@@ -45,6 +76,8 @@ pub fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Re
     } else {
         Vec::new()
     };
+
+    warn_deep_nesting("Collection", slug, &fields);
 
     let hooks = if let Ok(hooks_tbl) = get_table(config, "hooks") {
         parse_hooks(&hooks_tbl)?
@@ -126,6 +159,8 @@ pub fn parse_global_definition(_lua: &Lua, slug: &str, config: &Table) -> Result
     } else {
         Vec::new()
     };
+
+    warn_deep_nesting("Global", slug, &fields);
 
     // Warn about index/unique on global fields (pointless on single-row tables)
     for field in &fields {
