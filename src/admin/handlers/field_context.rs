@@ -329,8 +329,9 @@ fn build_single_field_context(
                     ctx["has_many"] = serde_json::json!(true);
                 }
             }
-            if let Some(ref p) = field.admin.picker {
-                ctx["picker"] = serde_json::json!(p);
+            let picker = field.admin.picker.as_deref().unwrap_or("drawer");
+            if picker != "none" {
+                ctx["picker"] = serde_json::json!(picker);
             }
         }
         FieldType::Text | FieldType::Number if field.has_many => {
@@ -619,8 +620,9 @@ fn apply_field_type_extras(
                     sub_ctx["has_many"] = serde_json::json!(true);
                 }
             }
-            if let Some(ref p) = sf.admin.picker {
-                sub_ctx["picker"] = serde_json::json!(p);
+            let picker = sf.admin.picker.as_deref().unwrap_or("drawer");
+            if picker != "none" {
+                sub_ctx["picker"] = serde_json::json!(picker);
             }
         }
         FieldType::Code => {
@@ -962,8 +964,9 @@ fn build_enriched_sub_field_context(
                     sub_ctx["has_many"] = serde_json::json!(true);
                 }
             }
-            if let Some(ref p) = sf.admin.picker {
-                sub_ctx["picker"] = serde_json::json!(p);
+            let picker = sf.admin.picker.as_deref().unwrap_or("drawer");
+            if picker != "none" {
+                sub_ctx["picker"] = serde_json::json!(picker);
             }
         }
         FieldType::Array => {
@@ -2484,6 +2487,7 @@ mod tests {
         let fields = vec![upload_field];
         let result = build_field_contexts(&fields, &HashMap::new(), &HashMap::new(), false, false);
         assert_eq!(result[0]["relationship_collection"], "media");
+        assert_eq!(result[0]["picker"], "drawer", "upload fields default to drawer picker");
     }
 
     // --- build_field_contexts: select tests ---
@@ -2925,6 +2929,7 @@ mod tests {
         let mut ctx = serde_json::json!({"name": "group__image"});
         apply_field_type_extras(&sf, "", &mut ctx, &HashMap::new(), &HashMap::new(), "group__image", false, 0);
         assert_eq!(ctx["relationship_collection"], "media");
+        assert_eq!(ctx["picker"], "drawer");
     }
 
     #[test]
@@ -3085,6 +3090,7 @@ mod tests {
             false, false, 1, &HashMap::new(),
         );
         assert_eq!(ctx["relationship_collection"], "media");
+        assert_eq!(ctx["picker"], "drawer");
     }
 
     // --- enriched_sub_field: relationship field ---

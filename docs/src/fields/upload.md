@@ -109,15 +109,15 @@ At `depth=1+`, each ID is populated with the full media document:
 
 ## Drawer Picker
 
-Add `admin.picker = "drawer"` to enable a browse button next to the search input. Clicking it opens a slide-in drawer panel with a thumbnail grid for visually browsing upload documents.
+Upload fields default to `picker = "drawer"`, which shows a browse button next to the search input. Clicking it opens a slide-in drawer panel with a thumbnail grid for visually browsing upload documents.
 
 ```lua
+-- drawer is the default for upload fields — no need to set it explicitly
 crap.fields.upload({
     name = "featured_image",
     relation_to = "media",
-    admin = { picker = "drawer" },
 })
 ```
 
-- Without `picker`: inline search autocomplete only (default behavior)
-- With `picker = "drawer"`: inline search + browse button that opens a drawer with thumbnail grid
+- Default (`picker = "drawer"`): inline search + browse button that opens a drawer with thumbnail grid
+- `picker = "none"`: inline search autocomplete only (no browse button)

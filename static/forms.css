@@ -897,8 +897,7 @@ crap-relationship-search {
 }
 
 .upload-field__preview {
-  max-width: 200px;
-  max-height: 120px;
+  width: fit-content;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   overflow: hidden;

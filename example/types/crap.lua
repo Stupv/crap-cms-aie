@@ -74,7 +74,7 @@ crap = {}
 --- @field features?    string[] Enabled toolbar features for richtext fields. When absent, all features are enabled. Options: "bold", "italic", "code", "link", "heading", "blockquote", "orderedList", "bulletList", "codeBlock", "horizontalRule".
 --- @field format?      string   Storage format for richtext fields: "html" (default) or "json" (ProseMirror JSON). FTS extracts plain text from JSON automatically.
 --- @field nodes?       string[] Custom ProseMirror node types for richtext fields. Names must match nodes registered via `crap.richtext.register_node()`.
---- @field picker?      string   Picker UI style. For blocks fields: "select" (default) uses a dropdown, "card" uses a visual card grid. For relationship/upload fields: "drawer" adds a browse button that opens a slide-in drawer panel (thumbnail grid for uploads, searchable list for relationships).
+--- @field picker?      string   Picker UI style. For blocks fields: "select" (default) uses a dropdown, "card" uses a visual card grid. For upload fields: "drawer" (default) adds a browse button with thumbnail grid, "none" disables it. For relationship fields: "drawer" adds a browse button with searchable list.
 
 --- Custom validation function type.
 --- Return nil or true if valid, return a string error message if invalid.
