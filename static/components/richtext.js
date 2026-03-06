@@ -14,6 +14,9 @@
  * Available features: "bold", "italic", "code", "link", "heading",
  * "blockquote", "orderedList", "bulletList", "codeBlock", "horizontalRule"
  *
+ * Supports `data-nodes` attribute (JSON array of custom node definitions)
+ * for embedding structured components (CTAs, embeds, etc.) in the editor.
+ *
  * @example
  * <crap-richtext>
  *   <textarea name="content" style="display:none">...</textarea>
@@ -103,6 +106,42 @@ class CrapRichtext extends HTMLElement {
     }
     if (has('link') && baseMarks.get('link')) {
       marksObj.link = baseMarks.get('link');
+    }
+
+    // Parse custom nodes from data-nodes attribute
+    /** @type {Array<{name: string, label: string, inline: boolean, attrs: Array<{name: string, type: string, label: string, required: boolean, default?: any, options?: Array<{label: string, value: string}>}>}>} */
+    const customNodes = [];
+    const nodesAttr = this.getAttribute('data-nodes');
+    if (nodesAttr) {
+      try {
+        const parsed = JSON.parse(nodesAttr);
+        if (Array.isArray(parsed)) customNodes.push(...parsed);
+      } catch { /* ignore */ }
+    }
+
+    // Inject custom NodeSpecs into schema
+    for (const nodeDef of customNodes) {
+      nodes = nodes.addToEnd(nodeDef.name, {
+        group: nodeDef.inline ? 'inline' : 'block',
+        inline: nodeDef.inline,
+        atom: true,
+        attrs: Object.fromEntries(
+          (nodeDef.attrs || []).map(a => [a.name, { default: a.default ?? '' }])
+        ),
+        toDOM(node) {
+          return ['crap-node', {
+            'data-type': nodeDef.name,
+            'data-attrs': JSON.stringify(node.attrs),
+          }];
+        },
+        parseDOM: [{
+          tag: `crap-node[data-type="${nodeDef.name}"]`,
+          getAttrs(dom) {
+            try { return JSON.parse(dom.getAttribute('data-attrs') || '{}'); }
+            catch { return {}; }
+          },
+        }],
+      });
     }
 
     const schema = new PM.Schema({
@@ -214,16 +253,25 @@ class CrapRichtext extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <style>${CrapRichtext._styles()}</style>
       <div class="richtext">
-        ${isReadonly ? '' : `<div class="richtext__toolbar">${CrapRichtext._toolbarHTML(has)}</div>`}
+        ${isReadonly ? '' : `<div class="richtext__toolbar">${CrapRichtext._toolbarHTML(has, customNodes)}</div>`}
         <div class="richtext__editor"></div>
       </div>
     `;
 
     const editorEl = this.shadowRoot.querySelector('.richtext__editor');
 
+    // Store custom node defs on instance for toolbar/modal use
+    /** @type {typeof customNodes} */
+    this._customNodes = customNodes;
+
     this._view = new PM.EditorView(editorEl, {
       state,
       editable: () => !isReadonly,
+      nodeViews: Object.fromEntries(
+        customNodes.map(nd => [nd.name, (node, view, getPos) =>
+          new CustomNodeView(node, view, getPos, nd)
+        ])
+      ),
       dispatchTransaction: (/** @type {any} */ tr) => {
         const newState = this._view.state.apply(tr);
         this._view.updateState(newState);
@@ -317,6 +365,24 @@ class CrapRichtext extends HTMLElement {
     commands.undo = () => PM.undo(this._view.state, this._view.dispatch);
     commands.redo = () => PM.redo(this._view.state, this._view.dispatch);
 
+    // Custom node insert commands
+    for (const nd of (this._customNodes || [])) {
+      commands[`insert-${nd.name}`] = () => {
+        const nodeType = schema.nodes[nd.name];
+        if (!nodeType) return;
+        const defaultAttrs = Object.fromEntries(
+          (nd.attrs || []).map(a => [a.name, a.default ?? ''])
+        );
+        const { state, dispatch } = this._view;
+        const node = nodeType.create(defaultAttrs);
+        const tr = state.tr.replaceSelectionWith(node);
+        dispatch(tr);
+        // Open edit modal for the inserted node
+        const pos = tr.mapping.map(state.selection.from);
+        this._openNodeEditModal(nd, defaultAttrs, pos - 1);
+      };
+    }
+
     toolbar.addEventListener('click', (e) => {
       const btn = /** @type {HTMLElement} */ (e.target).closest('button[data-cmd]');
       if (!btn) return;
@@ -392,11 +458,98 @@ class CrapRichtext extends HTMLElement {
   }
 
   /**
+   * Open the edit modal for a custom node at the given position.
+   * @param {object} nodeDef - custom node definition
+   * @param {object} attrs - current attribute values
+   * @param {number} pos - node position in the document
+   */
+  _openNodeEditModal(nodeDef, attrs, pos) {
+    // Remove any existing modal
+    const existing = this.shadowRoot.querySelector('.crap-node-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.className = 'crap-node-modal';
+
+    const formFields = (nodeDef.attrs || []).map(a => {
+      const val = attrs[a.name] ?? a.default ?? '';
+      let input;
+      switch (a.type) {
+        case 'textarea':
+          input = `<textarea class="crap-node-modal__input" data-attr="${a.name}" rows="3"${a.required ? ' required' : ''}>${val}</textarea>`;
+          break;
+        case 'checkbox':
+          input = `<label class="crap-node-modal__checkbox"><input type="checkbox" data-attr="${a.name}"${val ? ' checked' : ''}> ${a.label}</label>`;
+          break;
+        case 'select':
+          input = `<select class="crap-node-modal__input" data-attr="${a.name}"${a.required ? ' required' : ''}>
+            ${(a.options || []).map(o => `<option value="${o.value}"${o.value === val ? ' selected' : ''}>${o.label}</option>`).join('')}
+          </select>`;
+          break;
+        case 'number':
+          input = `<input type="number" class="crap-node-modal__input" data-attr="${a.name}" value="${val}"${a.required ? ' required' : ''}>`;
+          break;
+        default:
+          input = `<input type="text" class="crap-node-modal__input" data-attr="${a.name}" value="${val}"${a.required ? ' required' : ''}>`;
+      }
+      if (a.type === 'checkbox') return `<div class="crap-node-modal__field">${input}</div>`;
+      return `<div class="crap-node-modal__field"><label class="crap-node-modal__label">${a.label}${a.required ? ' *' : ''}</label>${input}</div>`;
+    }).join('');
+
+    modal.innerHTML = `
+      <div class="crap-node-modal__backdrop"></div>
+      <div class="crap-node-modal__dialog">
+        <div class="crap-node-modal__header">${nodeDef.label}</div>
+        <div class="crap-node-modal__body">${formFields}</div>
+        <div class="crap-node-modal__footer">
+          <button type="button" class="crap-node-modal__btn crap-node-modal__btn--cancel">Cancel</button>
+          <button type="button" class="crap-node-modal__btn crap-node-modal__btn--ok">OK</button>
+        </div>
+      </div>
+    `;
+
+    this.shadowRoot.appendChild(modal);
+
+    // Focus first input
+    const firstInput = modal.querySelector('input, textarea, select');
+    if (firstInput) firstInput.focus();
+
+    const close = () => modal.remove();
+
+    modal.querySelector('.crap-node-modal__backdrop').addEventListener('click', close);
+    modal.querySelector('.crap-node-modal__btn--cancel').addEventListener('click', close);
+    modal.querySelector('.crap-node-modal__btn--ok').addEventListener('click', () => {
+      const newAttrs = {};
+      for (const a of (nodeDef.attrs || [])) {
+        const el = modal.querySelector(`[data-attr="${a.name}"]`);
+        if (!el) continue;
+        if (a.type === 'checkbox') {
+          newAttrs[a.name] = el.checked;
+        } else {
+          newAttrs[a.name] = el.value;
+        }
+      }
+      // Update the node at pos
+      const { state, dispatch } = this._view;
+      try {
+        const node = state.doc.nodeAt(pos);
+        if (node) {
+          const tr = state.tr.setNodeMarkup(pos, null, newAttrs);
+          dispatch(tr);
+        }
+      } catch { /* position might have changed */ }
+      close();
+      this._view.focus();
+    });
+  }
+
+  /**
    * Generate toolbar button HTML based on enabled features.
    * @param {(name: string) => boolean} has - feature check
+   * @param {Array<{name: string, label: string}>} [customNodes] - custom node defs
    * @returns {string}
    */
-  static _toolbarHTML(has) {
+  static _toolbarHTML(has, customNodes) {
     let html = '';
 
     // Inline marks group
@@ -429,6 +582,14 @@ class CrapRichtext extends HTMLElement {
     if (has('horizontalRule')) listButtons.push('<button type="button" data-cmd="hr" title="Horizontal rule">HR</button>');
     if (listButtons.length > 0) {
       html += `<div class="richtext__toolbar-group">${listButtons.join('')}</div>`;
+    }
+
+    // Custom node insert buttons
+    if (customNodes && customNodes.length > 0) {
+      const insertButtons = customNodes.map(nd =>
+        `<button type="button" data-cmd="insert-${nd.name}" title="Insert ${nd.label}">${nd.label}</button>`
+      ).join('');
+      html += `<div class="richtext__toolbar-group">${insertButtons}</div>`;
     }
 
     // Undo/redo always present
@@ -652,7 +813,247 @@ class CrapRichtext extends HTMLElement {
       .ProseMirror .ProseMirror-selectednode {
         outline: 2px solid var(--color-primary, #1677ff);
       }
+
+      /* -- Custom node cards/pills -- */
+
+      .crap-custom-node {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        margin: 4px 0;
+        border: 1px solid var(--border-color, #e0e0e0);
+        border-radius: var(--radius-sm, 4px);
+        background: var(--bg-hover, rgba(0, 0, 0, 0.02));
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .crap-custom-node--inline {
+        display: inline-flex;
+        margin: 0 2px;
+        padding: 2px 8px;
+        vertical-align: middle;
+        border-radius: 12px;
+        font-size: 0.9em;
+      }
+
+      .crap-custom-node__label {
+        font-weight: 600;
+        font-size: 0.75em;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--color-primary, #1677ff);
+        white-space: nowrap;
+      }
+
+      .crap-custom-node__attrs {
+        font-size: 0.85em;
+        color: var(--text-secondary, rgba(0, 0, 0, 0.65));
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      /* -- Node edit modal -- */
+
+      .crap-node-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .crap-node-modal__backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.3);
+      }
+
+      .crap-node-modal__dialog {
+        position: relative;
+        width: 400px;
+        max-width: 90vw;
+        max-height: 80vh;
+        overflow-y: auto;
+        background: var(--surface-primary, #fff);
+        border-radius: var(--radius-md, 6px);
+        box-shadow: var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.12));
+      }
+
+      .crap-node-modal__header {
+        padding: 16px 20px;
+        font-weight: 600;
+        font-size: 1.05em;
+        border-bottom: 1px solid var(--border-color, #e0e0e0);
+      }
+
+      .crap-node-modal__body {
+        padding: 16px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .crap-node-modal__field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .crap-node-modal__label {
+        font-size: 0.85em;
+        font-weight: 500;
+        color: var(--text-secondary, rgba(0, 0, 0, 0.65));
+      }
+
+      .crap-node-modal__input,
+      .crap-node-modal__field select,
+      .crap-node-modal__field textarea {
+        padding: 6px 10px;
+        border: 1px solid var(--input-border, #e0e0e0);
+        border-radius: var(--radius-sm, 4px);
+        font-family: inherit;
+        font-size: 0.9em;
+        background: var(--input-bg, #fff);
+        color: var(--text-primary, rgba(0, 0, 0, 0.88));
+      }
+
+      .crap-node-modal__input:focus,
+      .crap-node-modal__field select:focus,
+      .crap-node-modal__field textarea:focus {
+        outline: none;
+        border-color: var(--color-primary, #1677ff);
+        box-shadow: 0 0 0 2px var(--color-primary-bg, rgba(22, 119, 255, 0.06));
+      }
+
+      .crap-node-modal__checkbox {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.9em;
+        cursor: pointer;
+      }
+
+      .crap-node-modal__footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 12px 20px;
+        border-top: 1px solid var(--border-color, #e0e0e0);
+      }
+
+      .crap-node-modal__btn {
+        all: unset;
+        padding: 6px 16px;
+        border-radius: var(--radius-sm, 4px);
+        font-family: inherit;
+        font-size: 0.85em;
+        font-weight: 500;
+        cursor: pointer;
+      }
+
+      .crap-node-modal__btn--cancel {
+        color: var(--text-secondary, rgba(0, 0, 0, 0.65));
+      }
+
+      .crap-node-modal__btn--cancel:hover {
+        background: var(--bg-hover, rgba(0, 0, 0, 0.04));
+      }
+
+      .crap-node-modal__btn--ok {
+        background: var(--color-primary, #1677ff);
+        color: #fff;
+      }
+
+      .crap-node-modal__btn--ok:hover {
+        opacity: 0.9;
+      }
     `;
+  }
+}
+
+/**
+ * ProseMirror NodeView for custom nodes. Renders as a styled card (block)
+ * or pill (inline) in the editor. Double-click opens edit modal.
+ */
+class CustomNodeView {
+  /**
+   * @param {any} node - ProseMirror node
+   * @param {any} view - EditorView
+   * @param {() => number} getPos - position getter
+   * @param {object} nodeDef - custom node definition
+   */
+  constructor(node, view, getPos, nodeDef) {
+    this.node = node;
+    this.view = view;
+    this.getPos = getPos;
+    this.nodeDef = nodeDef;
+
+    this.dom = document.createElement(nodeDef.inline ? 'span' : 'div');
+    this.dom.className = `crap-custom-node${nodeDef.inline ? ' crap-custom-node--inline' : ''}`;
+    this.dom.contentEditable = 'false';
+    this._render();
+
+    this.dom.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Find the CrapRichtext host element
+      const host = this._findHost();
+      if (host) {
+        host._openNodeEditModal(nodeDef, { ...this.node.attrs }, this.getPos());
+      }
+    });
+  }
+
+  /** @returns {CrapRichtext|null} */
+  _findHost() {
+    let el = this.view.dom;
+    while (el) {
+      if (el.getRootNode && el.getRootNode().host instanceof CrapRichtext) {
+        return el.getRootNode().host;
+      }
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  _render() {
+    const label = this.nodeDef.label || this.nodeDef.name;
+    const attrSummary = (this.nodeDef.attrs || [])
+      .slice(0, 3)
+      .map(a => this.node.attrs[a.name])
+      .filter(v => v != null && v !== '')
+      .join(' | ');
+    this.dom.innerHTML =
+      `<span class="crap-custom-node__label">${label}</span>` +
+      (attrSummary ? `<span class="crap-custom-node__attrs">${attrSummary}</span>` : '');
+  }
+
+  /**
+   * Called by ProseMirror when the node is updated.
+   * @param {any} node
+   * @returns {boolean}
+   */
+  update(node) {
+    if (node.type.name !== this.nodeDef.name) return false;
+    this.node = node;
+    this._render();
+    return true;
+  }
+
+  selectNode() {
+    this.dom.classList.add('ProseMirror-selectednode');
+  }
+
+  deselectNode() {
+    this.dom.classList.remove('ProseMirror-selectednode');
+  }
+
+  stopEvent() {
+    return true;
   }
 }
 

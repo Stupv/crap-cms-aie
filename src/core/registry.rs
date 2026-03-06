@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use super::collection::{CollectionDefinition, GlobalDefinition};
 use super::job::JobDefinition;
+use super::richtext::RichtextNodeDef;
 
 /// Holds all collection, global, and job definitions loaded at startup.
 #[derive(Clone)]
@@ -11,6 +12,7 @@ pub struct Registry {
     pub collections: HashMap<String, CollectionDefinition>,
     pub globals: HashMap<String, GlobalDefinition>,
     pub jobs: HashMap<String, JobDefinition>,
+    pub richtext_nodes: HashMap<String, RichtextNodeDef>,
 }
 
 /// Thread-safe shared reference to the registry.
@@ -29,6 +31,7 @@ impl Registry {
             collections: HashMap::new(),
             globals: HashMap::new(),
             jobs: HashMap::new(),
+            richtext_nodes: HashMap::new(),
         }
     }
 
@@ -68,6 +71,17 @@ impl Registry {
     /// Look up a job definition by slug.
     pub fn get_job(&self, slug: &str) -> Option<&JobDefinition> {
         self.jobs.get(slug)
+    }
+
+    /// Register a custom richtext node definition, keyed by name.
+    pub fn register_richtext_node(&mut self, def: RichtextNodeDef) {
+        tracing::debug!("Registering richtext node '{}'", def.name);
+        self.richtext_nodes.insert(def.name.clone(), def);
+    }
+
+    /// Look up a custom richtext node definition by name.
+    pub fn get_richtext_node(&self, name: &str) -> Option<&RichtextNodeDef> {
+        self.richtext_nodes.get(name)
     }
 
     /// Create a read-only `Arc<Registry>` snapshot from a `SharedRegistry`.
@@ -154,6 +168,34 @@ mod tests {
     fn get_nonexistent_returns_none() {
         let reg = Registry::new();
         assert!(reg.get_global("nonexistent").is_none());
+    }
+
+    #[test]
+    fn register_and_get_richtext_node() {
+        use crate::core::richtext::{RichtextNodeDef, NodeAttr, NodeAttrType};
+        let mut reg = Registry::new();
+        assert!(reg.get_richtext_node("cta").is_none());
+
+        reg.register_richtext_node(RichtextNodeDef {
+            name: "cta".to_string(),
+            label: "Call to Action".to_string(),
+            inline: false,
+            attrs: vec![NodeAttr {
+                name: "text".to_string(),
+                attr_type: NodeAttrType::Text,
+                label: "Button Text".to_string(),
+                required: true,
+                default_value: None,
+                options: vec![],
+            }],
+            searchable_attrs: vec!["text".to_string()],
+            has_render: false,
+        });
+        let node = reg.get_richtext_node("cta").unwrap();
+        assert_eq!(node.name, "cta");
+        assert_eq!(node.label, "Call to Action");
+        assert!(!node.inline);
+        assert_eq!(node.attrs.len(), 1);
     }
 
     #[test]

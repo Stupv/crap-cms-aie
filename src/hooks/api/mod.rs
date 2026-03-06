@@ -9,6 +9,7 @@ mod http;
 mod email;
 mod jobs;
 mod config;
+pub(crate) mod richtext;
 
 use anyhow::{Context, Result};
 use mlua::{Lua, Table, Value, Function};
@@ -42,6 +43,7 @@ pub fn register_api(lua: &Lua, registry: SharedRegistry, _config_dir: &Path, con
     config::register_locale(lua, &crap, config)?;
     jobs::register_jobs(lua, &crap, registry.clone())?;
     email::register_email(lua, &crap, config)?;
+    richtext::register_richtext(lua, &crap, registry.clone())?;
     register_fields(lua, &crap)?;
 
     lua.globals().set("crap", crap)?;
@@ -681,6 +683,14 @@ fn field_config_to_lua(lua: &Lua, f: &crate::core::field::FieldDefinition) -> ml
         }
         if let Some(ref fmt) = f.admin.richtext_format {
             admin.set("format", fmt.as_str())?;
+            has_any = true;
+        }
+        if !f.admin.nodes.is_empty() {
+            let nodes_tbl = lua.create_table()?;
+            for (i, n) in f.admin.nodes.iter().enumerate() {
+                nodes_tbl.set(i + 1, n.as_str())?;
+            }
+            admin.set("nodes", nodes_tbl)?;
             has_any = true;
         }
         if has_any {
@@ -1603,6 +1613,7 @@ mod tests {
                 features: vec!["bold".to_string(), "italic".to_string()],
                 picker: Some("card".to_string()),
                 richtext_format: Some("json".to_string()),
+                nodes: vec!["cta".to_string()],
             },
             ..Default::default()
         };
@@ -1631,6 +1642,8 @@ mod tests {
         assert_eq!(features.get::<String>(2).unwrap(), "italic");
         assert_eq!(admin.get::<String>("picker").unwrap(), "card");
         assert_eq!(admin.get::<String>("format").unwrap(), "json");
+        let nodes: mlua::Table = admin.get("nodes").unwrap();
+        assert_eq!(nodes.get::<String>(1).unwrap(), "cta");
     }
 
     #[test]

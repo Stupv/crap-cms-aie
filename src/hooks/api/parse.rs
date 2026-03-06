@@ -554,6 +554,11 @@ pub(crate) fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
                 },
                 picker: get_string(&admin_tbl, "picker"),
                 richtext_format: get_string(&admin_tbl, "format"),
+                nodes: if let Ok(tbl) = get_table(&admin_tbl, "nodes") {
+                    tbl.sequence_values::<String>().filter_map(|r| r.ok()).collect()
+                } else {
+                    Vec::new()
+                },
             }
         } else {
             FieldAdmin::default()

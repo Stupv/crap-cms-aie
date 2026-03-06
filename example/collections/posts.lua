@@ -73,6 +73,8 @@ crap.collections.define("posts", {
     crap.fields.richtext({
       name = "content",
       admin = {
+        format = "json",
+        nodes = { "cta", "mention" },
         features = {
           "bold",
           "italic",

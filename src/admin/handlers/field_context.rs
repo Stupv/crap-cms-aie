@@ -353,6 +353,10 @@ fn build_single_field_context(
             }
             let fmt = field.admin.richtext_format.as_deref().unwrap_or("html");
             ctx["richtext_format"] = serde_json::json!(fmt);
+            // Store node names — full defs resolved in enrich_field_contexts
+            if !field.admin.nodes.is_empty() {
+                ctx["_node_names"] = serde_json::json!(field.admin.nodes);
+            }
         }
         FieldType::Blocks => {
             let block_defs: Vec<_> = field.blocks.iter().map(|bd| {
@@ -1641,6 +1645,49 @@ pub(super) fn enrich_field_contexts(
                                 ctx["join_count"] = serde_json::json!(items.len());
                             }
                         }
+                    }
+                }
+            }
+            FieldType::Richtext => {
+                // Resolve custom node names to full definitions from registry
+                if let Some(node_names) = ctx.get("_node_names").cloned() {
+                    if let Some(names) = node_names.as_array() {
+                        let node_defs: Vec<_> = names.iter()
+                            .filter_map(|n| n.as_str())
+                            .filter_map(|name| reg.get_richtext_node(name))
+                            .map(|def| serde_json::json!({
+                                "name": def.name,
+                                "label": def.label,
+                                "inline": def.inline,
+                                "attrs": def.attrs.iter().map(|a| {
+                                    let mut attr = serde_json::json!({
+                                        "name": a.name,
+                                        "type": a.attr_type.as_str(),
+                                        "label": a.label,
+                                        "required": a.required,
+                                    });
+                                    if let Some(ref dv) = a.default_value {
+                                        attr["default"] = dv.clone();
+                                    }
+                                    if !a.options.is_empty() {
+                                        attr["options"] = serde_json::json!(
+                                            a.options.iter().map(|o| serde_json::json!({
+                                                "label": o.label.resolve_default(),
+                                                "value": o.value,
+                                            })).collect::<Vec<_>>()
+                                        );
+                                    }
+                                    attr
+                                }).collect::<Vec<_>>(),
+                            }))
+                            .collect();
+                        if !node_defs.is_empty() {
+                            ctx["custom_nodes"] = serde_json::json!(node_defs);
+                        }
+                    }
+                    // Clean up internal marker
+                    if let Some(obj) = ctx.as_object_mut() {
+                        obj.remove("_node_names");
                     }
                 }
             }

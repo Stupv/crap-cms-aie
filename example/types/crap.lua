@@ -74,6 +74,7 @@ crap = {}
 --- @field language?    string   Language mode for code fields (default: "json"). Options: "json", "javascript", "html", "css", "python", "plain".
 --- @field features?    string[] Enabled toolbar features for richtext fields. When absent, all features are enabled. Options: "bold", "italic", "code", "link", "heading", "blockquote", "orderedList", "bulletList", "codeBlock", "horizontalRule".
 --- @field format?      string   Storage format for richtext fields: "html" (default) or "json" (ProseMirror JSON). FTS extracts plain text from JSON automatically.
+--- @field nodes?       string[] Custom ProseMirror node types for richtext fields. Names must match nodes registered via `crap.richtext.register_node()`.
 --- @field picker?      string   Picker UI style. For blocks fields: "select" (default) uses a dropdown, "card" uses a visual card grid. For relationship/upload fields: "drawer" adds a browse button that opens a slide-in drawer panel (thumbnail grid for uploads, searchable list for relationships).
 
 --- Custom validation function type.
@@ -786,6 +787,44 @@ function crap.hooks.register(event, fn) end
 --- @param event crap.HookEvent  The lifecycle event.
 --- @param fn    fun(context: crap.HookContext): crap.HookContext  The function to remove.
 function crap.hooks.remove(event, fn) end
+
+
+-- ── crap.richtext ────────────────────────────────────────────
+
+--- Custom ProseMirror node registration and rendering.
+--- @class crap.richtext
+crap.richtext = {}
+
+--- Attribute type for custom richtext node attributes.
+--- @alias crap.NodeAttrType "text"|"number"|"select"|"checkbox"|"textarea"
+
+--- A single attribute on a custom richtext node.
+--- @class crap.NodeAttr
+--- @field name     string              Attribute name.
+--- @field type     crap.NodeAttrType   Input type in admin editor.
+--- @field label?   string              Display label (defaults to name).
+--- @field required? boolean            Whether the attribute is required (default: false).
+--- @field default?  any                Default value.
+--- @field options?  crap.SelectOption[] Options for select-type attributes.
+
+--- Spec for registering a custom richtext node.
+--- @class crap.RichtextNodeSpec
+--- @field label?           string          Display label (defaults to name).
+--- @field inline?          boolean         Whether the node is inline (default: false = block).
+--- @field attrs?           crap.NodeAttr[] Attribute definitions.
+--- @field searchable_attrs? string[]       Attr names to include in FTS search index.
+--- @field render?          fun(attrs: table): string  Server-side render function.
+
+--- Register a custom ProseMirror node type.
+--- @param name string  Node name (alphanumeric + underscores only).
+--- @param spec crap.RichtextNodeSpec  Node specification.
+function crap.richtext.register_node(name, spec) end
+
+--- Render richtext content, replacing custom nodes with their rendered HTML.
+--- Detects format automatically: starts with '{' = JSON, otherwise HTML.
+--- @param content string  Richtext content (HTML or ProseMirror JSON).
+--- @return string html  Rendered HTML output.
+function crap.richtext.render(content) end
 
 
 -- ── crap.log ─────────────────────────────────────────────────

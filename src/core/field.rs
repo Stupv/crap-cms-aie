@@ -301,6 +301,10 @@ pub struct FieldAdmin {
     /// For richtext fields: storage format. "html" (default) or "json" (ProseMirror JSON).
     #[serde(default)]
     pub richtext_format: Option<String>,
+    /// For richtext fields: which custom node types are available.
+    /// Node names must be registered via `crap.richtext.register_node()`.
+    #[serde(default)]
+    pub nodes: Vec<String>,
 }
 
 /// Lua function references for field-level access control (read/create/update).

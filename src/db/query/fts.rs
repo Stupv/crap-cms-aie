@@ -258,6 +258,58 @@ pub fn extract_prosemirror_text(json_str: &str) -> String {
     parts.join(" ")
 }
 
+/// Extract text from ProseMirror JSON, including text from custom node attrs.
+///
+/// `node_searchable` maps node type names to their searchable attribute names.
+/// When a node matches, its attr values are extracted as text in addition to
+/// walking children.
+pub fn extract_prosemirror_text_with_nodes(
+    json_str: &str,
+    node_searchable: &std::collections::HashMap<&str, Vec<&str>>,
+) -> String {
+    fn collect_text_with_nodes(
+        value: &serde_json::Value,
+        node_searchable: &std::collections::HashMap<&str, Vec<&str>>,
+        out: &mut Vec<String>,
+    ) {
+        let obj = match value.as_object() {
+            Some(o) => o,
+            None => return,
+        };
+        let node_type = obj.get("type").and_then(|t| t.as_str()).unwrap_or("");
+        if node_type == "text" {
+            if let Some(text) = obj.get("text").and_then(|t| t.as_str()) {
+                out.push(text.to_string());
+            }
+        }
+        // Check for custom node with searchable attrs
+        if let Some(searchable) = node_searchable.get(node_type) {
+            if let Some(attrs) = obj.get("attrs").and_then(|a| a.as_object()) {
+                for attr_name in searchable {
+                    if let Some(val) = attrs.get(*attr_name).and_then(|v| v.as_str()) {
+                        if !val.is_empty() {
+                            out.push(val.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(content) = obj.get("content").and_then(|c| c.as_array()) {
+            for child in content {
+                collect_text_with_nodes(child, node_searchable, out);
+            }
+        }
+    }
+
+    let parsed: serde_json::Value = match serde_json::from_str(json_str) {
+        Ok(v) => v,
+        Err(_) => return String::new(),
+    };
+    let mut parts = Vec::new();
+    collect_text_with_nodes(&parsed, node_searchable, &mut parts);
+    parts.join(" ")
+}
+
 /// Build a set of column names that are JSON-format richtext fields.
 /// Checks both bare field names and locale-expanded variants (`field__locale`).
 fn json_richtext_columns(def: &CollectionDefinition) -> std::collections::HashSet<String> {
@@ -270,6 +322,36 @@ fn json_richtext_columns(def: &CollectionDefinition) -> std::collections::HashSe
         }
     }
     set
+}
+
+/// Build a map of node type name → searchable attr names from collection definition
+/// and registry. Used for FTS extraction of custom richtext node content.
+fn build_node_searchable_map<'a>(
+    def: Option<&'a CollectionDefinition>,
+    registry: Option<&'a crate::core::Registry>,
+) -> std::collections::HashMap<&'a str, Vec<&'a str>> {
+    let mut map = std::collections::HashMap::new();
+    let (def, registry) = match (def, registry) {
+        (Some(d), Some(r)) => (d, r),
+        _ => return map,
+    };
+    for field in &def.fields {
+        if field.field_type == FieldType::Richtext
+            && field.admin.richtext_format.as_deref() == Some("json")
+        {
+            for node_name in &field.admin.nodes {
+                if let Some(node_def) = registry.get_richtext_node(node_name) {
+                    if !node_def.searchable_attrs.is_empty() {
+                        map.insert(
+                            node_def.name.as_str(),
+                            node_def.searchable_attrs.iter().map(|s| s.as_str()).collect(),
+                        );
+                    }
+                }
+            }
+        }
+    }
+    map
 }
 
 /// Insert or update a document in the FTS index.
@@ -285,6 +367,18 @@ pub fn fts_upsert(
     doc: &Document,
     def: Option<&CollectionDefinition>,
 ) -> Result<()> {
+    fts_upsert_with_registry(conn, slug, doc, def, None)
+}
+
+/// Like `fts_upsert`, but accepts an optional registry for resolving custom
+/// richtext node searchable attrs.
+pub fn fts_upsert_with_registry(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    doc: &Document,
+    def: Option<&CollectionDefinition>,
+    registry: Option<&crate::core::Registry>,
+) -> Result<()> {
     let fts_table = fts_table_name(slug);
 
     let fts_cols = match get_fts_table_columns(conn, &fts_table) {
@@ -294,6 +388,9 @@ pub fn fts_upsert(
 
     let json_rt_cols = def.map(|d| json_richtext_columns(d))
         .unwrap_or_default();
+
+    // Build searchable attrs map for custom richtext nodes
+    let node_searchable = build_node_searchable_map(def, registry);
 
     // Delete existing row
     conn.execute(
@@ -321,7 +418,11 @@ pub fn fts_upsert(
                 .unwrap_or(false);
 
         let text = if is_json_rt && !raw.is_empty() {
-            extract_prosemirror_text(raw)
+            if node_searchable.is_empty() {
+                extract_prosemirror_text(raw)
+            } else {
+                extract_prosemirror_text_with_nodes(raw, &node_searchable)
+            }
         } else {
             raw.to_string()
         };
@@ -1093,6 +1194,35 @@ mod tests {
     fn extract_prosemirror_text_invalid() {
         assert_eq!(extract_prosemirror_text("not json"), "");
         assert_eq!(extract_prosemirror_text(""), "");
+    }
+
+    #[test]
+    fn extract_prosemirror_text_with_custom_node_attrs() {
+        let json = r#"{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Hello"}]},{"type":"cta","attrs":{"text":"Click me","url":"/go"}}]}"#;
+        let mut node_searchable = std::collections::HashMap::new();
+        node_searchable.insert("cta", vec!["text"]);
+        let result = extract_prosemirror_text_with_nodes(json, &node_searchable);
+        assert!(result.contains("Hello"));
+        assert!(result.contains("Click me"));
+        assert!(!result.contains("/go")); // url is not searchable
+    }
+
+    #[test]
+    fn extract_prosemirror_text_ignores_non_searchable_attrs() {
+        let json = r#"{"type":"doc","content":[{"type":"cta","attrs":{"text":"Button","url":"https://example.com","style":"primary"}}]}"#;
+        let mut node_searchable = std::collections::HashMap::new();
+        node_searchable.insert("cta", vec!["text"]);
+        let result = extract_prosemirror_text_with_nodes(json, &node_searchable);
+        assert_eq!(result, "Button");
+    }
+
+    #[test]
+    fn extract_prosemirror_text_with_nodes_empty_map() {
+        // With empty map, behaves like the regular extract
+        let json = r#"{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Hello"}]}]}"#;
+        let node_searchable = std::collections::HashMap::new();
+        let result = extract_prosemirror_text_with_nodes(json, &node_searchable);
+        assert_eq!(result, "Hello");
     }
 
     // ── fts_upsert with JSON richtext ────────────────────────────────────

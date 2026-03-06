@@ -9,6 +9,7 @@ pub mod document;
 pub mod job;
 pub mod rate_limit;
 pub mod registry;
+pub mod richtext;
 pub mod upload;
 pub mod validate;
 
