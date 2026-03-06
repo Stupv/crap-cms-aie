@@ -19,6 +19,7 @@ message FindRequest {
   optional bool draft = 9;              // true = include drafts (versioned collections)
   optional string after_cursor = 10;    // opaque forward cursor for cursor-based pagination
   optional string before_cursor = 11;   // opaque backward cursor for cursor-based pagination
+  optional string search = 12;          // FTS5 full-text search query
 }
 
 message PaginationInfo {

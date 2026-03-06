@@ -424,6 +424,42 @@ crap.collections.find("products", {
 
 All filter operators (equals, contains, like, in, greater_than, etc.) work with nested field filters.
 
+## Full-Text Search
+
+Use the `search` parameter for fast full-text search powered by SQLite FTS5. This searches across all text-like fields (text, textarea, richtext, email, code) or the fields specified in `list_searchable_fields` in the collection's admin config.
+
+**Lua:**
+
+```lua
+local result = crap.collections.find("posts", {
+    search = "hello world",
+    limit = 10,
+})
+```
+
+**gRPC:**
+
+```bash
+grpcurl -plaintext -d '{
+    "collection": "posts",
+    "search": "hello world",
+    "limit": "10"
+}' localhost:50051 crap.ContentAPI/Find
+```
+
+**Behavior:**
+- Each whitespace-separated word is treated as a literal search term (implicit AND).
+- Results are ranked by relevance (FTS5 `rank`).
+- `search` can be combined with `where` filters, pagination, sorting, and all other query parameters.
+- Collections without text fields silently ignore the `search` parameter.
+- The `search` parameter also works with `Count` to get the total number of matching documents.
+
+**Indexed fields** are determined by:
+1. `admin.list_searchable_fields` if configured on the collection.
+2. Otherwise, all parent-level fields with types: text, textarea, richtext, email, code.
+
+The FTS index is automatically created and rebuilt on server startup for every collection with text fields.
+
 ## Valid Filter Fields
 
 You can filter on any column in the collection table:

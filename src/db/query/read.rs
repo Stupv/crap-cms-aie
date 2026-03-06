@@ -52,6 +52,18 @@ pub fn find(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition,
         sql.push_str(&where_clause);
     }
 
+    // FTS5 full-text search filter
+    if let Some(ref search_term) = query.search {
+        if let Some((fts_clause, sanitized)) = super::fts::fts_where_clause(conn, slug, search_term) {
+            if where_clause.is_empty() {
+                sql.push_str(&format!(" WHERE {}", fts_clause));
+            } else {
+                sql.push_str(&format!(" AND {}", fts_clause));
+            }
+            params.push(Box::new(sanitized));
+        }
+    }
+
     // Cursor + offset mutual exclusion
     let has_cursor = query.after_cursor.is_some() || query.before_cursor.is_some();
     if has_cursor && query.offset.is_some() {
@@ -288,6 +300,11 @@ pub(crate) fn find_by_id_raw(conn: &rusqlite::Connection, slug: &str, def: &Coll
 
 /// Count documents in a collection.
 pub fn count(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition, filters: &[FilterClause], locale_ctx: Option<&LocaleContext>) -> Result<i64> {
+    count_with_search(conn, slug, def, filters, locale_ctx, None)
+}
+
+/// Count documents with optional FTS search filter.
+pub fn count_with_search(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition, filters: &[FilterClause], locale_ctx: Option<&LocaleContext>, search: Option<&str>) -> Result<i64> {
     let (exact, prefixes) = super::get_valid_filter_paths(def, locale_ctx);
     for clause in filters {
         match clause {
@@ -309,6 +326,18 @@ pub fn count(conn: &rusqlite::Connection, slug: &str, def: &CollectionDefinition
     let where_clause = build_where_clause(&resolved_filters, slug, &def.fields, &mut params)?;
     if !where_clause.is_empty() {
         sql.push_str(&where_clause);
+    }
+
+    // FTS5 full-text search filter
+    if let Some(search_term) = search {
+        if let Some((fts_clause, sanitized)) = super::fts::fts_where_clause(conn, slug, search_term) {
+            if where_clause.is_empty() {
+                sql.push_str(&format!(" WHERE {}", fts_clause));
+            } else {
+                sql.push_str(&format!(" AND {}", fts_clause));
+            }
+            params.push(Box::new(sanitized));
+        }
     }
 
     let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();

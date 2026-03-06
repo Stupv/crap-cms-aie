@@ -36,15 +36,7 @@ pub fn export(
     for slug in &slugs {
         let def = &reg.collections[slug];
 
-        let query = crate::db::query::FindQuery {
-            filters: vec![],
-            order_by: None,
-            limit: None,
-            offset: None,
-            select: None,
-            after_cursor: None,
-            before_cursor: None,
-        };
+        let query = crate::db::query::FindQuery::default();
 
         let mut docs = crate::db::query::find(&conn, slug, def, &query, None)?;
 

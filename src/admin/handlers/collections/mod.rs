@@ -17,7 +17,7 @@ use crate::core::field::FieldType;
 use crate::core::upload::{self, UploadedFile};
 use crate::core::validate::ValidationError;
 use crate::db::{ops, query};
-use crate::db::query::{AccessResult, FindQuery, Filter, FilterOp, FilterClause, LocaleContext};
+use crate::db::query::{AccessResult, FindQuery, FilterOp, FilterClause, LocaleContext};
 
 use super::shared::{
     PaginationParams, LocaleParams,
@@ -442,32 +442,6 @@ pub async fn list_items(
     // Merge URL filters
     filters.extend(url_filters.clone());
 
-    if let Some(ref search_term) = search {
-        let searchable = if !def.admin.list_searchable_fields.is_empty() {
-            def.admin.list_searchable_fields.clone()
-        } else if let Some(ref title_field) = def.admin.use_as_title {
-            vec![title_field.clone()]
-        } else {
-            // Fall back to all text-type fields
-            def.fields.iter()
-                .filter(|f| matches!(f.field_type, FieldType::Text | FieldType::Textarea))
-                .map(|f| f.name.clone())
-                .collect()
-        };
-
-        if !searchable.is_empty() {
-            let or_filters: Vec<Filter> = searchable.iter()
-                .map(|field| Filter {
-                    field: field.clone(),
-                    op: FilterOp::Contains(search_term.clone()),
-                })
-                .collect();
-            filters.push(FilterClause::Or(
-                or_filters.into_iter().map(|f| vec![f]).collect()
-            ));
-        }
-    }
-
     // Determine sort order: URL param > default_sort
     let order_by = sort.clone().or_else(|| def.admin.default_sort.clone());
 
@@ -479,6 +453,7 @@ pub async fn list_items(
         select: None,
         after_cursor: None,
         before_cursor: None,
+        search: search.clone(),
     };
 
     let locale_ctx = LocaleContext::from_locale_string(None, &state.config.locale);
@@ -492,7 +467,7 @@ pub async fn list_items(
     let read_result = tokio::task::spawn_blocking(move || {
         runner.fire_before_read(&hooks, &slug_owned, "find", HashMap::new())?;
         let conn = pool.get().context("Failed to get DB connection")?;
-        let total = query::count(&conn, &slug_owned, &def_owned, &filters, locale_ctx.as_ref())?;
+        let total = query::count_with_search(&conn, &slug_owned, &def_owned, &filters, locale_ctx.as_ref(), find_query.search.as_deref())?;
         let mut docs = query::find(&conn, &slug_owned, &def_owned, &find_query, locale_ctx.as_ref())?;
         // Assemble sizes for upload collections
         if let Some(ref upload_config) = def_owned.upload {
@@ -1807,13 +1782,14 @@ pub async fn search_collection(
         return axum::Json(serde_json::json!([]));
     };
 
-    // Fetch all docs (SQLite doesn't have great full-text search without FTS extension)
-    // and filter in Rust. For large collections this could be slow, but it's simple
-    // and correct. A future optimization would use SQL LIKE or FTS5.
     let locale_ctx = crate::db::query::LocaleContext::from_locale_string(
         None, &state.config.locale,
     );
-    let find_query = query::FindQuery::default();
+    let find_query = query::FindQuery {
+        limit: Some(limit as i64),
+        search: if search_term.is_empty() { None } else { Some(search_term.clone()) },
+        ..Default::default()
+    };
     let Ok(mut docs) = query::find(&conn, &slug, def, &find_query, locale_ctx.as_ref()) else {
         return axum::Json(serde_json::json!([]));
     };
@@ -1828,7 +1804,7 @@ pub async fn search_collection(
     }
 
     let results: Vec<_> = docs.iter()
-        .filter_map(|doc| {
+        .map(|doc| {
             let label = if is_upload {
                 doc.get_str("filename")
                     .or_else(|| title_field.as_ref().and_then(|f| doc.get_str(f)))
@@ -1840,32 +1816,27 @@ pub async fn search_collection(
                     .unwrap_or(&doc.id)
                     .to_string()
             };
-            if search_term.is_empty() || label.to_lowercase().contains(&search_term) || doc.id.to_lowercase().contains(&search_term) {
-                let mut item = serde_json::json!({ "id": doc.id, "label": label });
-                if is_upload {
-                    let mime = doc.get_str("mime_type").unwrap_or("");
-                    let is_image = mime.starts_with("image/");
-                    let thumb_url = if is_image {
-                        admin_thumbnail.as_ref()
-                            .and_then(|thumb_name| {
-                                doc.fields.get("sizes")
-                                    .and_then(|v| v.get(thumb_name))
-                                    .and_then(|v| v.get("url"))
-                                    .and_then(|v| v.as_str())
-                                    .map(|s| s.to_string())
-                            })
-                            .or_else(|| doc.get_str("url").map(|s| s.to_string()))
-                    } else { None };
-                    if let Some(url) = thumb_url { item["thumbnail_url"] = serde_json::json!(url); }
-                    item["filename"] = serde_json::json!(label);
-                    if is_image { item["is_image"] = serde_json::json!(true); }
-                }
-                Some(item)
-            } else {
-                None
+            let mut item = serde_json::json!({ "id": doc.id, "label": label });
+            if is_upload {
+                let mime = doc.get_str("mime_type").unwrap_or("");
+                let is_image = mime.starts_with("image/");
+                let thumb_url = if is_image {
+                    admin_thumbnail.as_ref()
+                        .and_then(|thumb_name| {
+                            doc.fields.get("sizes")
+                                .and_then(|v| v.get(thumb_name))
+                                .and_then(|v| v.get("url"))
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string())
+                        })
+                        .or_else(|| doc.get_str("url").map(|s| s.to_string()))
+                } else { None };
+                if let Some(url) = thumb_url { item["thumbnail_url"] = serde_json::json!(url); }
+                item["filename"] = serde_json::json!(label);
+                if is_image { item["is_image"] = serde_json::json!(true); }
             }
+            item
         })
-        .take(limit)
         .collect();
 
     axum::Json(serde_json::json!(results))

@@ -139,6 +139,7 @@ impl ContentService {
             select: select.clone(),
             after_cursor: after_cursor.clone(),
             before_cursor: before_cursor.clone(),
+            search: req.search.clone(),
         };
 
         let locale_ctx =
@@ -171,12 +172,13 @@ impl ContentService {
                 &find_query,
                 locale_ctx.as_ref(),
             )?;
-            let total = query::count(
+            let total = query::count_with_search(
                 &conn,
                 &collection,
                 &def_owned,
                 &filters,
                 locale_ctx.as_ref(),
+                find_query.search.as_deref(),
             )?;
             // Hydrate join table data (has-many relationships and arrays)
             let select_slice = select.as_deref();
@@ -782,8 +784,10 @@ impl ContentService {
         let pool = self.pool.clone();
         let collection = req.collection.clone();
         let def_owned = def;
+        let search = req.search.clone();
         let count = tokio::task::spawn_blocking(move || {
-            ops::count_documents(&pool, &collection, &def_owned, &filters, locale_ctx.as_ref())
+            let conn = pool.get().context("DB connection")?;
+            query::count_with_search(&conn, &collection, &def_owned, &filters, locale_ctx.as_ref(), search.as_deref())
         })
         .await
         .map_err(|e| Status::internal(format!("Task error: {}", e)))?
@@ -870,8 +874,9 @@ impl ContentService {
 
             let mut count = 0i64;
             for doc in &docs {
-                query::update(&tx, &collection, &def_owned, &doc.id, &data, locale_ctx.as_ref())?;
+                let updated = query::update(&tx, &collection, &def_owned, &doc.id, &data, locale_ctx.as_ref())?;
                 query::save_join_table_data(&tx, &collection, &def_owned.fields, &doc.id, &join_data, locale_ctx.as_ref())?;
+                query::fts::fts_upsert(&tx, &collection, &updated)?;
                 count += 1;
             }
 
@@ -959,6 +964,7 @@ impl ContentService {
             let mut count = 0i64;
             for doc in &docs {
                 query::delete(&tx, &collection, &doc.id)?;
+                query::fts::fts_delete(&tx, &collection, &doc.id)?;
                 count += 1;
             }
 

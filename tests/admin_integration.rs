@@ -3995,7 +3995,8 @@ async fn search_uses_configured_searchable_fields() {
         ("body".to_string(), "Some body text".to_string()),
         ("category".to_string(), "tech".to_string()),
     ]);
-    query::create(&tx, "sposts", &def, &data, None).unwrap();
+    let doc = query::create(&tx, "sposts", &def, &data, None).unwrap();
+    query::fts::fts_upsert(&tx, "sposts", &doc).unwrap();
     tx.commit().unwrap();
 
     let resp = app

@@ -153,6 +153,23 @@ grpcurl -plaintext -d '{
 }' "$ADDR" crap.ContentAPI/Find
 }
 
+# Full-text search posts (FTS5)
+search_posts() {
+grpcurl -plaintext -d '{
+  "collection": "posts",
+  "search": "hello world",
+  "limit": "10"
+}' "$ADDR" crap.ContentAPI/Find
+}
+
+# Count posts matching a search term
+count_posts_search() {
+grpcurl -plaintext -d '{
+  "collection": "posts",
+  "search": "hello"
+}' "$ADDR" crap.ContentAPI/Count
+}
+
 # List posts with field selection (only title and status)
 find_posts_select() {
 grpcurl -plaintext -d '{

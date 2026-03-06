@@ -101,6 +101,7 @@ end
 | `draft` | boolean | `false` | Include draft documents. Only affects versioned collections with `drafts = true`. |
 | `locale` | string | `nil` | Locale code for localized fields (e.g., `"en"`, `"de"`). |
 | `overrideAccess` | boolean | `true` | Skip access control checks. Set to `false` to enforce collection-level and field-level access for the current user. |
+| `search` | string | `nil` | FTS5 full-text search query. Filters results to documents matching this search term. |
 
 ## crap.collections.find_by_id(collection, id, opts?)
 
@@ -299,6 +300,7 @@ local published = crap.collections.count("posts", {
 | `locale` | string | `nil` | Locale code for localized fields. |
 | `overrideAccess` | boolean | `true` | Skip access control checks. |
 | `draft` | boolean | `false` | Include draft documents. |
+| `search` | string | `nil` | FTS5 full-text search query (same as `find`). |
 
 ## crap.collections.update_many(collection, query, data, opts?)
 

@@ -145,6 +145,9 @@ pub fn persist_create(
         )?;
     }
 
+    // Sync FTS index
+    query::fts::fts_upsert(conn, slug, &doc)?;
+
     Ok(doc)
 }
 
@@ -177,6 +180,9 @@ pub fn persist_update(
             def.versions.as_ref(), def.has_drafts(), "published", &doc,
         )?;
     }
+
+    // Sync FTS index
+    query::fts::fts_upsert(conn, slug, &doc)?;
 
     Ok(doc)
 }
@@ -498,6 +504,9 @@ pub fn delete_document(
     };
     let final_ctx = runner.run_hooks_with_conn(&def.hooks, HookEvent::BeforeDelete, hook_ctx, &tx, user)?;
     query::delete(&tx, slug, id)?;
+
+    // Sync FTS index
+    query::fts::fts_delete(&tx, slug, id)?;
 
     // After-hooks: run inside the same transaction, with CRUD access
     let after_ctx = HookContext {

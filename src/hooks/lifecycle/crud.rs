@@ -143,7 +143,7 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
 
             let mut docs = query::find(conn, &collection, &def, &find_query, locale_ctx.as_ref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("find error: {}", e)))?;
-            let total = query::count(conn, &collection, &def, &find_query.filters, locale_ctx.as_ref())
+            let total = query::count_with_search(conn, &collection, &def, &find_query.filters, locale_ctx.as_ref(), find_query.search.as_deref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("count error: {}", e)))?;
 
             // Hydrate join table data + populate relationships
@@ -933,6 +933,10 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
             query::delete(conn, &collection, &id)
                 .map_err(|e| mlua::Error::RuntimeError(format!("delete error: {}", e)))?;
 
+            // Sync FTS index
+            query::fts::fts_delete(conn, &collection, &id)
+                .map_err(|e| mlua::Error::RuntimeError(format!("FTS delete error: {}", e)))?;
+
             if hooks_enabled {
                 let after_ctx = HookContext {
                     collection: collection.clone(),
@@ -986,10 +990,12 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                 .and_then(|qt| qt.get::<Option<bool>>("draft").ok().flatten())
                 .unwrap_or(false);
 
-            let mut filters = match query_table {
-                Some(ref qt) => lua_table_to_find_query(qt)?.0.filters,
-                None => Vec::new(),
+            let (find_query, _) = match query_table {
+                Some(ref qt) => (lua_table_to_find_query(qt)?.0, true),
+                None => (query::FindQuery::default(), false),
             };
+            let mut filters = find_query.filters;
+            let search = find_query.search;
 
             normalize_filter_fields(&mut filters, &def.fields);
 
@@ -1014,7 +1020,7 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
                 }
             }
 
-            let count = query::count(conn, &collection, &def, &filters, locale_ctx.as_ref())
+            let count = query::count_with_search(conn, &collection, &def, &filters, locale_ctx.as_ref(), search.as_deref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("count error: {}", e)))?;
 
             Ok(count)
@@ -1104,10 +1110,12 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
             let mut modified = 0i64;
 
             for doc in &docs {
-                query::update(conn, &collection, &def, &doc.id, &data, locale_ctx.as_ref())
+                let updated = query::update(conn, &collection, &def, &doc.id, &data, locale_ctx.as_ref())
                     .map_err(|e| mlua::Error::RuntimeError(format!("update error: {}", e)))?;
                 query::save_join_table_data(conn, &collection, &def.fields, &doc.id, &join_data, locale_ctx.as_ref())
                     .map_err(|e| mlua::Error::RuntimeError(format!("join data error: {}", e)))?;
+                query::fts::fts_upsert(conn, &collection, &updated)
+                    .map_err(|e| mlua::Error::RuntimeError(format!("FTS upsert error: {}", e)))?;
                 modified += 1;
             }
 
@@ -1197,6 +1205,8 @@ pub(crate) fn register_crud_functions(lua: &Lua, registry: SharedRegistry, local
             for doc in &docs {
                 query::delete(conn, &collection, &doc.id)
                     .map_err(|e| mlua::Error::RuntimeError(format!("delete error: {}", e)))?;
+                query::fts::fts_delete(conn, &collection, &doc.id)
+                    .map_err(|e| mlua::Error::RuntimeError(format!("FTS delete error: {}", e)))?;
                 deleted += 1;
             }
 
@@ -1461,7 +1471,9 @@ pub(crate) fn lua_table_to_find_query(tbl: &mlua::Table) -> mlua::Result<(FindQu
         None => None,
     };
 
-    Ok((FindQuery { filters, order_by, limit, offset, select, after_cursor, before_cursor }, page))
+    let search: Option<String> = tbl.get("search").ok();
+
+    Ok((FindQuery { filters, order_by, limit, offset, select, after_cursor, before_cursor, search }, page))
 }
 
 /// Parse a Lua filter operator name + value into a FilterOp.

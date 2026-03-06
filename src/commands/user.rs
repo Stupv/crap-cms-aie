@@ -72,15 +72,7 @@ fn resolve_user(
     } else {
         // Interactive: select from existing users
         use dialoguer::Select;
-        let query = crate::db::query::FindQuery {
-            filters: vec![],
-            order_by: None,
-            limit: None,
-            offset: None,
-            select: None,
-            after_cursor: None,
-            before_cursor: None,
-        };
+        let query = crate::db::query::FindQuery::default();
         let users = crate::db::query::find(&conn, collection, &def, &query, None)?;
         if users.is_empty() {
             anyhow::bail!("No users in '{}'", collection);
@@ -266,15 +258,7 @@ pub fn user_list(
 
     let conn = pool.get().context("Failed to get database connection")?;
 
-    let query = crate::db::query::FindQuery {
-        filters: vec![],
-        order_by: None,
-        limit: None,
-        offset: None,
-        select: None,
-        after_cursor: None,
-        before_cursor: None,
-    };
+    let query = crate::db::query::FindQuery::default();
 
     let users = crate::db::query::find(&conn, collection, &def, &query, None)?;
 

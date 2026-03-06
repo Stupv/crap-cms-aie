@@ -5385,3 +5385,108 @@ crap.collections.define("posts", {
     "#, &conn, None).expect("eval");
     assert_eq!(result, "ok");
 }
+
+// ── FTS Search via Lua ────────────────────────────────────────────────────────
+
+#[test]
+fn lua_find_with_search() {
+    let (_tmp, pool, _reg, runner) = setup_with_db();
+    let result = eval_lua_db(&runner, &pool, r#"
+        crap.collections.create("articles", { title = "Rust Programming", body = "Learn Rust" })
+        crap.collections.create("articles", { title = "Python Tutorial", body = "Learn Python" })
+        crap.collections.create("articles", { title = "Advanced Rust", body = "Deep Rust patterns" })
+
+        local result = crap.collections.find("articles", { search = "Rust" })
+        if result.pagination.totalDocs ~= 2 then
+            return "WRONG_TOTAL:" .. tostring(result.pagination.totalDocs)
+        end
+        return "ok"
+    "#);
+    assert_eq!(result, "ok");
+}
+
+#[test]
+fn lua_find_with_search_no_results() {
+    let (_tmp, pool, _reg, runner) = setup_with_db();
+    let result = eval_lua_db(&runner, &pool, r#"
+        crap.collections.create("articles", { title = "Hello World", body = "Content" })
+
+        local result = crap.collections.find("articles", { search = "nonexistent_xyz" })
+        if result.pagination.totalDocs ~= 0 then
+            return "WRONG_TOTAL:" .. tostring(result.pagination.totalDocs)
+        end
+        return "ok"
+    "#);
+    assert_eq!(result, "ok");
+}
+
+#[test]
+fn lua_find_with_search_and_where() {
+    let (_tmp, pool, _reg, runner) = setup_with_db();
+    let result = eval_lua_db(&runner, &pool, r#"
+        crap.collections.create("articles", { title = "Rust Basics", status = "published" })
+        crap.collections.create("articles", { title = "Rust Advanced", status = "draft" })
+        crap.collections.create("articles", { title = "Python Basics", status = "published" })
+
+        local result = crap.collections.find("articles", {
+            search = "Rust",
+            where = { status = "published" },
+        })
+        if result.pagination.totalDocs ~= 1 then
+            return "WRONG_TOTAL:" .. tostring(result.pagination.totalDocs)
+        end
+        -- Note: articles fixture has after_read hook that uppercases title
+        if result.documents[1].title ~= "RUST BASICS" then
+            return "WRONG_TITLE:" .. tostring(result.documents[1].title)
+        end
+        return "ok"
+    "#);
+    assert_eq!(result, "ok");
+}
+
+#[test]
+fn lua_count_with_search() {
+    let (_tmp, pool, _reg, runner) = setup_with_db();
+    let result = eval_lua_db(&runner, &pool, r#"
+        crap.collections.create("articles", { title = "Rust Guide", body = "Learn Rust" })
+        crap.collections.create("articles", { title = "Rust Tutorial", body = "More Rust" })
+        crap.collections.create("articles", { title = "Python Guide", body = "Learn Python" })
+
+        local count = crap.collections.count("articles", { search = "Rust" })
+        return tostring(count)
+    "#);
+    assert_eq!(result, "2");
+}
+
+#[test]
+fn lua_count_with_search_and_where() {
+    let (_tmp, pool, _reg, runner) = setup_with_db();
+    let result = eval_lua_db(&runner, &pool, r#"
+        crap.collections.create("articles", { title = "Rust A", status = "published" })
+        crap.collections.create("articles", { title = "Rust B", status = "draft" })
+        crap.collections.create("articles", { title = "Python A", status = "published" })
+
+        local count = crap.collections.count("articles", {
+            search = "Rust",
+            where = { status = "published" },
+        })
+        return tostring(count)
+    "#);
+    assert_eq!(result, "1");
+}
+
+#[test]
+fn lua_find_with_search_empty_returns_all() {
+    let (_tmp, pool, _reg, runner) = setup_with_db();
+    let result = eval_lua_db(&runner, &pool, r#"
+        crap.collections.create("articles", { title = "A", body = "content" })
+        crap.collections.create("articles", { title = "B", body = "content" })
+
+        local result = crap.collections.find("articles", { search = "" })
+        if result.pagination.totalDocs ~= 2 then
+            return "WRONG_TOTAL:" .. tostring(result.pagination.totalDocs)
+        end
+        return "ok"
+    "#);
+    assert_eq!(result, "ok");
+}

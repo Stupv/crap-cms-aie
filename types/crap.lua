@@ -516,6 +516,7 @@ function crap.fields.join(config) end
 --- @field overrideAccess? boolean                Skip access control checks (default: true). Set to false to enforce collection-level and field-level access for the current user.
 --- @field after_cursor?  string                 Forward cursor token for keyset pagination (from previous response's `endCursor`). Mutually exclusive with `page`/`offset`/`before_cursor`.
 --- @field before_cursor? string                 Backward cursor token for keyset pagination (from previous response's `startCursor`). Mutually exclusive with `page`/`offset`/`after_cursor`.
+--- @field search?        string                 FTS5 full-text search query. Filters results to documents matching this search term via the FTS5 index. Indexed fields are determined by `list_searchable_fields` or auto-detected text-like fields.
 
 --- @class crap.PaginationInfo
 --- @field totalDocs    integer   Total matching documents (before limit/page).
@@ -664,6 +665,7 @@ function crap.collections.delete(collection, id, opts) end
 --- @field locale?         string                 Locale code for localized fields.
 --- @field overrideAccess? boolean                Skip access control checks (default: true).
 --- @field draft?          boolean                Include draft documents (default: false).
+--- @field search?         string                 FTS5 full-text search query (same as FindQuery).
 
 --- Count documents matching a query.
 --- Inside hooks, runs within the parent operation's transaction.

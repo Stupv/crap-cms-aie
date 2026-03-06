@@ -12,6 +12,7 @@ pub mod versions;
 pub mod jobs;
 pub mod images;
 pub mod cursor;
+pub mod fts;
 
 use anyhow::{Result, bail};
 use std::collections::HashSet;
@@ -120,6 +121,9 @@ pub struct FindQuery {
     pub after_cursor: Option<cursor::CursorData>,
     /// Backward cursor for keyset pagination. Mutually exclusive with `offset` and `after_cursor`.
     pub before_cursor: Option<cursor::CursorData>,
+    /// FTS5 full-text search query. When set, results are filtered to documents
+    /// matching this search term via the FTS5 index.
+    pub search: Option<String>,
 }
 
 /// Clamp a requested limit to the configured default/max.

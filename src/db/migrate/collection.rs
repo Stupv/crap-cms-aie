@@ -30,6 +30,9 @@ pub(super) fn sync_collection_table(
         sync_versions_table(conn, slug)?;
     }
 
+    // Sync FTS5 full-text search index
+    crate::db::query::fts::sync_fts_table(conn, slug, def, locale_config)?;
+
     Ok(())
 }
 

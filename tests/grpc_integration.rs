@@ -3681,6 +3681,7 @@ async fn update_many_with_filter() {
             r#where: Some(r#"{"status": "published"}"#.to_string()),
             locale: None,
             draft: None,
+            search: None,
         }))
         .await
         .unwrap()
@@ -3729,6 +3730,7 @@ async fn delete_many_with_where() {
             r#where: None,
             locale: None,
             draft: None,
+            search: None,
         }))
         .await
         .unwrap()
@@ -4719,4 +4721,212 @@ async fn update_nonexistent_collection() {
         .unwrap_err();
 
     assert_eq!(err.code(), tonic::Code::NotFound);
+}
+
+// ── FTS Search Tests ──────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn find_with_search() {
+    let ts = setup_service(vec![make_posts_def()], vec![]);
+
+    // Create posts with distinct titles
+    for title in &["Rust Programming Guide", "Python Tutorial", "Advanced Rust Patterns"] {
+        ts.service
+            .create(Request::new(content::CreateRequest {
+                collection: "posts".to_string(),
+                data: Some(make_struct(&[("title", title)])),
+                locale: None,
+                draft: None,
+            }))
+            .await
+            .unwrap();
+    }
+
+    // Search for "Rust"
+    let resp = ts
+        .service
+        .find(Request::new(content::FindRequest {
+            collection: "posts".to_string(),
+            search: Some("Rust".to_string()),
+            ..Default::default()
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(resp.pagination.as_ref().unwrap().total_docs, 2);
+    assert_eq!(resp.documents.len(), 2);
+
+    // All results should contain "Rust" in the title
+    for doc in &resp.documents {
+        let title = get_proto_field(doc, "title").unwrap();
+        assert!(title.contains("Rust"), "Expected Rust in title, got: {}", title);
+    }
+}
+
+#[tokio::test]
+async fn find_with_search_no_results() {
+    let ts = setup_service(vec![make_posts_def()], vec![]);
+
+    ts.service
+        .create(Request::new(content::CreateRequest {
+            collection: "posts".to_string(),
+            data: Some(make_struct(&[("title", "Hello World")])),
+            locale: None,
+            draft: None,
+        }))
+        .await
+        .unwrap();
+
+    let resp = ts
+        .service
+        .find(Request::new(content::FindRequest {
+            collection: "posts".to_string(),
+            search: Some("nonexistent_xyz".to_string()),
+            ..Default::default()
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(resp.pagination.as_ref().unwrap().total_docs, 0);
+    assert!(resp.documents.is_empty());
+}
+
+#[tokio::test]
+async fn find_with_search_and_where() {
+    let ts = setup_service(vec![make_posts_def()], vec![]);
+
+    // Create posts with different statuses
+    for (title, status) in &[
+        ("Rust Basics", "published"),
+        ("Rust Advanced", "draft"),
+        ("Python Basics", "published"),
+    ] {
+        ts.service
+            .create(Request::new(content::CreateRequest {
+                collection: "posts".to_string(),
+                data: Some(make_struct(&[("title", title), ("status", status)])),
+                locale: None,
+                draft: None,
+            }))
+            .await
+            .unwrap();
+    }
+
+    // Search for "Rust" + filter by status=published
+    let resp = ts
+        .service
+        .find(Request::new(content::FindRequest {
+            collection: "posts".to_string(),
+            search: Some("Rust".to_string()),
+            r#where: Some(r#"{"status": "published"}"#.to_string()),
+            ..Default::default()
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    // Only "Rust Basics" should match (Rust + published)
+    assert_eq!(resp.pagination.as_ref().unwrap().total_docs, 1);
+    assert_eq!(
+        get_proto_field(&resp.documents[0], "title").as_deref(),
+        Some("Rust Basics")
+    );
+}
+
+#[tokio::test]
+async fn count_with_search() {
+    let ts = setup_service(vec![make_posts_def()], vec![]);
+
+    for title in &["Rust Guide", "Rust Tutorial", "Python Guide"] {
+        ts.service
+            .create(Request::new(content::CreateRequest {
+                collection: "posts".to_string(),
+                data: Some(make_struct(&[("title", title)])),
+                locale: None,
+                draft: None,
+            }))
+            .await
+            .unwrap();
+    }
+
+    let resp = ts
+        .service
+        .count(Request::new(content::CountRequest {
+            collection: "posts".to_string(),
+            search: Some("Rust".to_string()),
+            ..Default::default()
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(resp.count, 2);
+}
+
+#[tokio::test]
+async fn count_with_search_and_where() {
+    let ts = setup_service(vec![make_posts_def()], vec![]);
+
+    for (title, status) in &[
+        ("Rust A", "published"),
+        ("Rust B", "draft"),
+        ("Python A", "published"),
+    ] {
+        ts.service
+            .create(Request::new(content::CreateRequest {
+                collection: "posts".to_string(),
+                data: Some(make_struct(&[("title", title), ("status", status)])),
+                locale: None,
+                draft: None,
+            }))
+            .await
+            .unwrap();
+    }
+
+    let resp = ts
+        .service
+        .count(Request::new(content::CountRequest {
+            collection: "posts".to_string(),
+            search: Some("Rust".to_string()),
+            r#where: Some(r#"{"status": "published"}"#.to_string()),
+            ..Default::default()
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(resp.count, 1);
+}
+
+#[tokio::test]
+async fn find_with_search_empty_string_returns_all() {
+    let ts = setup_service(vec![make_posts_def()], vec![]);
+
+    for title in &["A", "B"] {
+        ts.service
+            .create(Request::new(content::CreateRequest {
+                collection: "posts".to_string(),
+                data: Some(make_struct(&[("title", title)])),
+                locale: None,
+                draft: None,
+            }))
+            .await
+            .unwrap();
+    }
+
+    // Empty search string should return all documents
+    let resp = ts
+        .service
+        .find(Request::new(content::FindRequest {
+            collection: "posts".to_string(),
+            search: Some("".to_string()),
+            ..Default::default()
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(resp.pagination.as_ref().unwrap().total_docs, 2);
 }
