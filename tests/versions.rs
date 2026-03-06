@@ -54,6 +54,7 @@ fn make_versioned_def() -> CollectionDefinition {
             drafts: true,
             max_versions: 0,
         }),
+        indexes: Vec::new(),
     }
 }
 
@@ -601,6 +602,7 @@ fn make_versioned_group_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
         versions: Some(VersionsConfig { drafts: true, max_versions: 0 }),
+        indexes: Vec::new(),
     }
 }
 

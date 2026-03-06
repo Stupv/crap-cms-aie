@@ -451,6 +451,7 @@ mod tests {
             access: crate::core::collection::CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
         let ctx = build_collection_context(&def);
         assert_eq!(ctx["slug"], "posts");

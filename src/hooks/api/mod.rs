@@ -1106,6 +1106,7 @@ mod tests {
             access: crate::core::collection::CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
         let tbl = collection_config_to_lua(&lua, &def).unwrap();
         let labels: mlua::Table = tbl.get("labels").unwrap();
@@ -1137,6 +1138,7 @@ mod tests {
             access: crate::core::collection::CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
         let tbl = collection_config_to_lua(&lua, &def).unwrap();
         // Simple auth = true should be serialized as bool true
@@ -1169,6 +1171,7 @@ mod tests {
             access: crate::core::collection::CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
         let tbl = collection_config_to_lua(&lua, &def).unwrap();
         let auth_tbl: mlua::Table = tbl.get("auth").unwrap();
@@ -1212,6 +1215,7 @@ mod tests {
             access: crate::core::collection::CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
         let tbl = collection_config_to_lua(&lua, &def).unwrap();
         let upload: mlua::Table = tbl.get("upload").unwrap();
@@ -1245,6 +1249,7 @@ mod tests {
             upload: None,
             access: crate::core::collection::CollectionAccess::default(),
             versions: None,
+            indexes: Vec::new(),
         };
         let tbl = collection_config_to_lua(&lua, &def_none_live).unwrap();
         assert_eq!(tbl.get::<bool>("live").unwrap(), true);
@@ -1262,6 +1267,7 @@ mod tests {
             upload: None,
             access: crate::core::collection::CollectionAccess::default(),
             versions: None,
+            indexes: Vec::new(),
         };
         let tbl = collection_config_to_lua(&lua, &def_disabled).unwrap();
         assert_eq!(tbl.get::<bool>("live").unwrap(), false);
@@ -1279,6 +1285,7 @@ mod tests {
             upload: None,
             access: crate::core::collection::CollectionAccess::default(),
             versions: None,
+            indexes: Vec::new(),
         };
         let tbl = collection_config_to_lua(&lua, &def_func).unwrap();
         assert_eq!(tbl.get::<String>("live").unwrap(), "hooks.live.filter");
@@ -1304,6 +1311,7 @@ mod tests {
                 drafts: true,
                 max_versions: 0,
             }),
+            indexes: Vec::new(),
         };
         let tbl = collection_config_to_lua(&lua, &def).unwrap();
         assert_eq!(tbl.get::<bool>("versions").unwrap(), true);
@@ -1324,6 +1332,7 @@ mod tests {
                 drafts: false,
                 max_versions: 100,
             }),
+            indexes: Vec::new(),
         };
         let tbl = collection_config_to_lua(&lua, &def2).unwrap();
         let v: mlua::Table = tbl.get("versions").unwrap();
@@ -1698,6 +1707,7 @@ mod tests {
             access: crate::core::collection::CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
         let tbl = collection_config_to_lua(&lua, &def).unwrap();
         let admin: mlua::Table = tbl.get("admin").unwrap();

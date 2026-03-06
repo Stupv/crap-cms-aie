@@ -47,6 +47,7 @@ fn make_posts_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -78,6 +79,7 @@ fn make_users_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -795,6 +797,7 @@ fn make_media_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -1198,6 +1201,7 @@ fn make_localized_pages_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -2269,6 +2273,7 @@ fn make_versioned_posts_def() -> CollectionDefinition {
             drafts: true,
             max_versions: 10,
         }),
+        indexes: Vec::new(),
     }
 }
 
@@ -2820,6 +2825,7 @@ fn make_posts_with_required_title() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -3334,6 +3340,7 @@ fn make_verify_users_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -3975,6 +3982,7 @@ fn make_searchable_posts_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     }
 }
 

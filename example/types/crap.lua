@@ -124,6 +124,7 @@ crap = {}
 --- @field type          crap.FieldType    Field type (required).
 --- @field required?     boolean           Validation: must have a value (default: false).
 --- @field unique?       boolean           Unique constraint (default: false).
+--- @field index?        boolean           Create a B-tree index on this column (default: false). Skipped when unique=true (already indexed).
 --- @field localized?    boolean           Per-locale values (default: false).
 --- @field default_value? any              Default value on create.
 --- @field hidden?       boolean           Hide from API responses (default: false).
@@ -168,6 +169,7 @@ crap = {}
 --- @field name          string            Column name (required).
 --- @field required?     boolean           Validation: must have a value (default: false).
 --- @field unique?       boolean           Unique constraint (default: false).
+--- @field index?        boolean           Create a B-tree index on this column (default: false). Skipped when unique=true.
 --- @field localized?    boolean           Per-locale values (default: false).
 --- @field default_value? any              Default value on create.
 --- @field validate?     string            Lua function ref called as `crap.ValidateFunction`.
@@ -449,6 +451,11 @@ function crap.fields.join(config) end
 --- @field access?     crap.CollectionAccess      Access control function refs.
 --- @field versions?   boolean|crap.VersionsConfig  Enable versioning. `true` for defaults, or a config table with drafts/max_versions.
 --- @field live?       boolean|string              Live event broadcasting. `false` to disable, string for Lua function ref that receives `{ collection, operation, data }` and returns boolean. Absent = enabled (broadcast all).
+--- @field indexes?    crap.IndexDefinition[]      Compound indexes (multi-column). Created on startup, stale indexes dropped.
+
+--- @class crap.IndexDefinition
+--- @field fields string[]    Column names to include in the index (required).
+--- @field unique? boolean    Create a UNIQUE index (default: false).
 
 
 -- ── Global Types ─────────────────────────────────────────────

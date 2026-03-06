@@ -18,6 +18,7 @@ Full reference for every property accepted by `crap.collections.define(slug, con
 | `access` | table | `{}` | Access control function refs |
 | `versions` | boolean or table | `nil` | Versioning and drafts config (see [Versions & Drafts](versions.md)) |
 | `live` | boolean or string | `nil` | Live update broadcasting (see [Live Updates](../live-updates/overview.md)) |
+| `indexes` | IndexDefinition[] | `{}` | Compound indexes (see [Indexes](#indexes) below) |
 
 ## `admin`
 
@@ -127,6 +128,37 @@ versions = {
 | `max_versions` | integer | `0` | Max versions per document. `0` = unlimited. |
 
 See [Versions & Drafts](versions.md) for the full workflow.
+
+## Indexes
+
+### Field-Level Indexes
+
+Set `index = true` on a field to create a B-tree index on its column. This speeds up queries that filter or sort on that field. Unique fields are already indexed by SQLite, so `index = true` is skipped when `unique = true`.
+
+```lua
+crap.fields.text({ name = "status", index = true }),
+crap.fields.date({ name = "published_at", index = true }),
+```
+
+For localized fields, one index is created per locale column (e.g., `idx_posts_title__en`, `idx_posts_title__de`).
+
+### Compound Indexes
+
+Use the top-level `indexes` array for multi-column indexes:
+
+```lua
+indexes = {
+    { fields = { "status", "created_at" } },
+    { fields = { "category", "slug" }, unique = true },
+}
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `fields` | string[] | **required** | Column names to include in the index. |
+| `unique` | boolean | `false` | Create a UNIQUE index. |
+
+Indexes are synced idempotently on startup: missing indexes are created with `CREATE INDEX IF NOT EXISTS`, and stale indexes (from removed fields or changed definitions) are dropped. Only indexes with the `idx_{collection}_` naming prefix are managed — external indexes are left untouched.
 
 ## Complete Example
 

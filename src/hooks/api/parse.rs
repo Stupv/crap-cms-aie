@@ -7,7 +7,7 @@ use mlua::{Lua, Table, Value};
 
 use crate::core::{
     field::{FieldType, FieldDefinition, FieldAccess, FieldAdmin, FieldHooks, SelectOption, LocalizedString},
-    collection::{AuthStrategy, CollectionAccess, CollectionAuth, CollectionDefinition, GlobalDefinition, CollectionLabels, CollectionAdmin, CollectionHooks, LiveSetting, VersionsConfig},
+    collection::{AuthStrategy, CollectionAccess, CollectionAuth, CollectionDefinition, GlobalDefinition, CollectionLabels, CollectionAdmin, CollectionHooks, IndexDefinition, LiveSetting, VersionsConfig},
     upload::{CollectionUpload, ImageSize, ImageFit, FormatOptions, FormatQuality},
 };
 
@@ -74,6 +74,9 @@ pub fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Re
     // Parse versions: true | { drafts = true, max_versions = 100 }
     let versions = parse_versions_config(config);
 
+    // Parse compound indexes: indexes = { { fields = { "a", "b" }, unique = true }, ... }
+    let indexes = parse_indexes(config);
+
     // If auth enabled and no email field defined, inject one at index 0
     if let Some(ref a) = auth {
         if a.enabled && !fields.iter().any(|f| f.name == "email") {
@@ -103,6 +106,7 @@ pub fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Re
         access,
         live,
         versions,
+        indexes,
     })
 }
 
@@ -122,6 +126,22 @@ pub fn parse_global_definition(_lua: &Lua, slug: &str, config: &Table) -> Result
     } else {
         Vec::new()
     };
+
+    // Warn about index/unique on global fields (pointless on single-row tables)
+    for field in &fields {
+        if field.index {
+            tracing::warn!(
+                "Global '{}': field '{}' has index = true, which is ignored for globals (single-row tables)",
+                slug, field.name
+            );
+        }
+        if field.unique {
+            tracing::warn!(
+                "Global '{}': field '{}' has unique = true, which is ignored for globals (single-row tables)",
+                slug, field.name
+            );
+        }
+    }
 
     let hooks = if let Ok(hooks_tbl) = get_table(config, "hooks") {
         parse_hooks(&hooks_tbl)?
@@ -187,6 +207,36 @@ fn parse_versions_config(config: &Table) -> Option<VersionsConfig> {
         }
         _ => None,
     }
+}
+
+/// Parse `indexes` from a collection Lua table.
+/// Each entry is `{ fields = { "col_a", "col_b" }, unique = false }`.
+fn parse_indexes(config: &Table) -> Vec<IndexDefinition> {
+    let tbl = match get_table(config, "indexes") {
+        Ok(t) => t,
+        Err(_) => return Vec::new(),
+    };
+    let mut indexes = Vec::new();
+    for entry in tbl.sequence_values::<Table>() {
+        let entry = match entry {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        let fields_tbl = match get_table(&entry, "fields") {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        let fields: Vec<String> = fields_tbl
+            .sequence_values::<String>()
+            .filter_map(|r| r.ok())
+            .collect();
+        if fields.is_empty() {
+            continue;
+        }
+        let unique = get_bool(&entry, "unique", false);
+        indexes.push(IndexDefinition { fields, unique });
+    }
+    indexes
 }
 
 fn parse_access_config(config: &Table) -> CollectionAccess {
@@ -416,6 +466,7 @@ pub(crate) fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
 
         let required = get_bool(&field_tbl, "required", false);
         let unique = get_bool(&field_tbl, "unique", false);
+        let index = get_bool(&field_tbl, "index", false);
         let validate = get_string(&field_tbl, "validate");
 
         let default_value = {
@@ -591,6 +642,7 @@ pub(crate) fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
             field_type,
             required,
             unique,
+            index,
             validate,
             default_value,
             options,
@@ -1468,5 +1520,91 @@ mod tests {
         assert_eq!(access.read.as_deref(), Some("hooks.access.check_role"));
         assert_eq!(access.create.as_deref(), Some("hooks.access.admin_only"));
         assert!(access.update.is_none());
+    }
+
+    // --- field index + collection indexes parsing tests ---
+
+    #[test]
+    fn test_parse_field_index() {
+        let lua = Lua::new();
+        let fields_tbl = lua.create_table().unwrap();
+        let field = lua.create_table().unwrap();
+        field.set("name", "status").unwrap();
+        field.set("type", "text").unwrap();
+        field.set("index", true).unwrap();
+        fields_tbl.set(1, field).unwrap();
+
+        let fields = parse_fields(&fields_tbl).unwrap();
+        assert!(fields[0].index, "index should be true");
+    }
+
+    #[test]
+    fn test_parse_field_index_default_false() {
+        let lua = Lua::new();
+        let fields_tbl = lua.create_table().unwrap();
+        let field = lua.create_table().unwrap();
+        field.set("name", "title").unwrap();
+        field.set("type", "text").unwrap();
+        fields_tbl.set(1, field).unwrap();
+
+        let fields = parse_fields(&fields_tbl).unwrap();
+        assert!(!fields[0].index, "index should default to false");
+    }
+
+    #[test]
+    fn test_parse_indexes() {
+        let lua = Lua::new();
+        let config = lua.create_table().unwrap();
+
+        let indexes_tbl = lua.create_table().unwrap();
+
+        let idx1 = lua.create_table().unwrap();
+        let fields1 = lua.create_table().unwrap();
+        fields1.set(1, "status").unwrap();
+        fields1.set(2, "created_at").unwrap();
+        idx1.set("fields", fields1).unwrap();
+        indexes_tbl.set(1, idx1).unwrap();
+
+        let idx2 = lua.create_table().unwrap();
+        let fields2 = lua.create_table().unwrap();
+        fields2.set(1, "slug").unwrap();
+        idx2.set("fields", fields2).unwrap();
+        idx2.set("unique", true).unwrap();
+        indexes_tbl.set(2, idx2).unwrap();
+
+        config.set("indexes", indexes_tbl).unwrap();
+
+        let indexes = parse_indexes(&config);
+        assert_eq!(indexes.len(), 2);
+        assert_eq!(indexes[0].fields, vec!["status", "created_at"]);
+        assert!(!indexes[0].unique);
+        assert_eq!(indexes[1].fields, vec!["slug"]);
+        assert!(indexes[1].unique);
+    }
+
+    #[test]
+    fn test_parse_indexes_empty_fields_skipped() {
+        let lua = Lua::new();
+        let config = lua.create_table().unwrap();
+        let indexes_tbl = lua.create_table().unwrap();
+
+        let idx = lua.create_table().unwrap();
+        let fields = lua.create_table().unwrap();
+        // Empty fields array
+        idx.set("fields", fields).unwrap();
+        indexes_tbl.set(1, idx).unwrap();
+
+        config.set("indexes", indexes_tbl).unwrap();
+
+        let indexes = parse_indexes(&config);
+        assert!(indexes.is_empty(), "Empty fields should be skipped");
+    }
+
+    #[test]
+    fn test_parse_indexes_absent() {
+        let lua = Lua::new();
+        let config = lua.create_table().unwrap();
+        let indexes = parse_indexes(&config);
+        assert!(indexes.is_empty(), "Missing indexes key should return empty");
     }
 }

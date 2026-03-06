@@ -243,6 +243,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
         versions: None,
+            indexes: Vec::new(),
         }
     }
 
@@ -432,6 +433,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut data = HashMap::new();
@@ -473,6 +475,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut data = HashMap::new();
@@ -527,6 +530,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut data = HashMap::new();
@@ -566,6 +570,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut data = HashMap::new();
@@ -631,6 +636,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         // Create without providing the checkbox group sub-field — should default to 0
@@ -677,6 +683,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut data = HashMap::new();
@@ -729,6 +736,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut data = HashMap::new();
@@ -798,6 +806,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut data = HashMap::new();
@@ -871,6 +880,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         // Only update twitter, leave github and body untouched
@@ -940,6 +950,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut data = HashMap::new();
@@ -995,6 +1006,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut data = HashMap::new();
@@ -1060,6 +1072,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut data = HashMap::new();
@@ -1122,6 +1135,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut data = HashMap::new();
@@ -1175,6 +1189,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut data = HashMap::new();

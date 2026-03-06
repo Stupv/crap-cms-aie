@@ -45,6 +45,7 @@ Every field type accepts these properties:
 | `name` | string | **required** | Column name. Must be a valid SQL identifier (alphanumeric + underscore). |
 | `required` | boolean | `false` | Validation: must have a non-empty value on create/update. |
 | `unique` | boolean | `false` | Unique constraint. Checked in the current transaction. |
+| `index` | boolean | `false` | Create a B-tree index on this column. Skipped when `unique = true` (already indexed by SQLite). |
 | `localized` | boolean | `false` | Enable per-locale values. Requires [localization](../locale/overview.md) to be configured. |
 | `validate` | string | `nil` | Lua function ref for custom validation (see below). |
 | `default_value` | any | `nil` | Default value applied on create if no value provided. |

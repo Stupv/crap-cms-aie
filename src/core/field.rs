@@ -345,6 +345,8 @@ pub struct FieldDefinition {
     #[serde(default)]
     pub unique: bool,
     #[serde(default)]
+    pub index: bool,
+    #[serde(default)]
     pub validate: Option<String>,
     #[serde(default)]
     pub default_value: Option<serde_json::Value>,
@@ -409,6 +411,7 @@ impl Default for FieldDefinition {
             field_type: FieldType::Text,
             required: false,
             unique: false,
+            index: false,
             validate: None,
             default_value: None,
             options: Vec::new(),
@@ -740,6 +743,7 @@ mod tests {
         assert_eq!(f.field_type, FieldType::Text);
         assert!(!f.required);
         assert!(!f.unique);
+        assert!(!f.index);
         assert!(!f.localized);
         assert!(f.validate.is_none());
         assert!(f.default_value.is_none());

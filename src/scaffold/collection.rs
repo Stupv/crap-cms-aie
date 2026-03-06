@@ -129,6 +129,10 @@ pub fn make_collection(
     lua.push_str("    --     update = \"access.authenticated\",\n");
     lua.push_str("    --     delete = \"access.admin_only\",\n");
     lua.push_str("    -- },\n");
+    lua.push_str("    -- indexes = {\n");
+    lua.push_str("    --     { fields = { \"status\", \"created_at\" } },\n");
+    lua.push_str("    --     { fields = { \"slug\" }, unique = true },\n");
+    lua.push_str("    -- },\n");
     lua.push_str("})\n");
 
     fs::write(&file_path, &lua)
@@ -248,8 +252,9 @@ pub(crate) fn parse_fields_shorthand(s: &str) -> Result<Vec<FieldStub>> {
             match *seg {
                 "required" => required = true,
                 "localized" => localized = true,
+                "index" => {} // accepted but not stored in FieldStub (handled at Lua level)
                 other => anyhow::bail!(
-                    "Unknown modifier '{}' in field '{}' — valid: required, localized",
+                    "Unknown modifier '{}' in field '{}' — valid: required, localized, index",
                     other, name
                 ),
             }
@@ -561,5 +566,25 @@ mod tests {
         assert_eq!(pluralize("Quiz"), "Quizzes");
         assert_eq!(pluralize("Fuzz"), "Fuzzes"); // double z stays
         assert_eq!(pluralize("Buzz"), "Buzzes");
+    }
+
+    #[test]
+    fn test_parse_fields_shorthand_index_modifier() {
+        let fields = parse_fields_shorthand("status:text:index").unwrap();
+        assert_eq!(fields[0].name, "status");
+        assert_eq!(fields[0].field_type, "text");
+        // index is accepted as modifier but not stored in FieldStub
+        assert!(!fields[0].required);
+    }
+
+    #[test]
+    fn test_indexes_comment_in_output() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_collection(tmp.path(), "posts", None, false, false, false, false, false).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("collections/posts.lua")).unwrap();
+        assert!(content.contains("-- indexes = {"));
+        assert!(content.contains("--     { fields = { \"status\", \"created_at\" } },"));
+        assert!(content.contains("--     { fields = { \"slug\" }, unique = true },"));
     }
 }

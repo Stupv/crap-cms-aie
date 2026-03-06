@@ -221,6 +221,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         }
     }
 

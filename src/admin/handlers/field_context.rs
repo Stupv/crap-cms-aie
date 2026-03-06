@@ -3306,6 +3306,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut registry = crate::core::Registry::new();
@@ -3370,6 +3371,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut registry = crate::core::Registry::new();
@@ -3432,6 +3434,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut registry = crate::core::Registry::new();
@@ -3509,6 +3512,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut registry = crate::core::Registry::new();
@@ -3597,6 +3601,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut registry = crate::core::Registry::new();

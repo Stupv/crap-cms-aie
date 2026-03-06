@@ -1141,6 +1141,7 @@ mod tests {
             access: crate::core::collection::CollectionAccess::default(),
             live: None,
             versions: Some(crate::core::collection::VersionsConfig { drafts: true, max_versions: 10 }),
+            indexes: Vec::new(),
         };
 
         let snapshot = serde_json::json!({

@@ -292,6 +292,7 @@ mod tests {
             access: crate::core::collection::CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         });
         reg.register_global(crate::core::collection::GlobalDefinition {
             slug: "settings".to_string(),

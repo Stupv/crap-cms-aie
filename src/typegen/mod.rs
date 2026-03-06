@@ -262,6 +262,7 @@ mod tests {
             access: Default::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         }
     }
 

@@ -128,6 +128,14 @@ pub struct CollectionHooks {
     pub before_broadcast: Vec<String>,
 }
 
+/// A compound index definition (multi-column, optionally unique).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexDefinition {
+    pub fields: Vec<String>,
+    #[serde(default)]
+    pub unique: bool,
+}
+
 /// Full definition of a collection, parsed from a Lua file. Maps to one SQLite table.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CollectionDefinition {
@@ -152,6 +160,8 @@ pub struct CollectionDefinition {
     pub live: Option<LiveSetting>,
     #[serde(default)]
     pub versions: Option<VersionsConfig>,
+    #[serde(default)]
+    pub indexes: Vec<IndexDefinition>,
 }
 
 fn default_true() -> bool {
@@ -290,6 +300,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         }
     }
 
@@ -429,6 +440,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         }
     }
 
@@ -500,6 +512,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
         assert_eq!(col.display_name_for("en", "en"), "posts");
     }

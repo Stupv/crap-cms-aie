@@ -498,6 +498,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
         versions: None,
+            indexes: Vec::new(),
         }
     }
 
@@ -728,6 +729,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let select_exprs = vec![

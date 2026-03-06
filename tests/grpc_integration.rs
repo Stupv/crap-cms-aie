@@ -50,6 +50,7 @@ fn make_posts_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -81,6 +82,7 @@ fn make_users_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -1316,6 +1318,7 @@ fn make_verify_users_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -1525,6 +1528,7 @@ fn make_categories_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -1561,6 +1565,7 @@ fn make_posts_with_relationship() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -1795,6 +1800,7 @@ fn make_products_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -2162,6 +2168,7 @@ fn make_numbered_posts_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -2369,6 +2376,7 @@ fn make_posts_with_unique_slug() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -2466,6 +2474,7 @@ return M
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     };
 
     let db_pool = pool::create_pool(tmp.path(), &config).expect("create pool");
@@ -2579,6 +2588,7 @@ return M
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     };
 
     let db_pool = pool::create_pool(tmp.path(), &config).expect("create pool");
@@ -2671,6 +2681,7 @@ return M
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     };
 
     let db_pool = pool::create_pool(tmp.path(), &config).expect("create pool");
@@ -2778,6 +2789,7 @@ return M
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     };
 
     let db_pool = pool::create_pool(tmp.path(), &config).expect("create pool");
@@ -2876,6 +2888,7 @@ return M
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     };
 
     let db_pool = pool::create_pool(tmp.path(), &config).expect("create pool");
@@ -2958,6 +2971,7 @@ fn make_localized_posts_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -3200,6 +3214,7 @@ fn make_versioned_posts_def() -> CollectionDefinition {
             drafts: true,
             max_versions: 10,
         }),
+        indexes: Vec::new(),
     }
 }
 
@@ -3489,6 +3504,7 @@ fn make_tags_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -3525,6 +3541,7 @@ fn make_posts_with_has_many() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     }
 }
 

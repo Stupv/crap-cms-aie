@@ -433,6 +433,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut out = String::new();
@@ -477,6 +478,7 @@ mod tests {
             access: CollectionAccess::default(),
             live: None,
             versions: None,
+            indexes: Vec::new(),
         };
 
         let mut out = String::new();
@@ -574,6 +576,7 @@ mod tests {
             auth: None, upload: None,
             access: CollectionAccess::default(),
             live: None, versions: None,
+            indexes: Vec::new(),
         });
         registry.register_collection(CollectionDefinition {
             slug: "apples".to_string(),
@@ -585,6 +588,7 @@ mod tests {
             auth: None, upload: None,
             access: CollectionAccess::default(),
             live: None, versions: None,
+            indexes: Vec::new(),
         });
 
         let output = render(&registry);
@@ -606,6 +610,7 @@ mod tests {
             auth: None, upload: None,
             access: CollectionAccess::default(),
             live: None, versions: None,
+            indexes: Vec::new(),
         });
         registry.register_collection(CollectionDefinition {
             slug: "pages".to_string(),
@@ -617,6 +622,7 @@ mod tests {
             auth: None, upload: None,
             access: CollectionAccess::default(),
             live: None, versions: None,
+            indexes: Vec::new(),
         });
 
         let output = render(&registry);
@@ -711,6 +717,7 @@ mod tests {
             auth: None, upload: None,
             access: CollectionAccess::default(),
             live: None, versions: None,
+            indexes: Vec::new(),
         };
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -877,6 +884,7 @@ mod tests {
             auth: None, upload: None,
             access: CollectionAccess::default(),
             live: None, versions: None,
+            indexes: Vec::new(),
         };
         let mut out = String::new();
         render_collection(&mut out, &col);

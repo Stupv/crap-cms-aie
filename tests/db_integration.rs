@@ -40,6 +40,7 @@ fn make_posts_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -742,6 +743,7 @@ fn make_users_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -1153,6 +1155,7 @@ fn make_articles_with_join_tables() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -1172,6 +1175,7 @@ fn setup_articles() -> (tempfile::TempDir, crap_cms::db::DbPool, CollectionDefin
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     };
     {
         let mut reg = registry.write().unwrap();
@@ -1572,6 +1576,7 @@ fn make_categories_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -1626,6 +1631,7 @@ fn make_posts_with_category() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -1852,6 +1858,7 @@ fn populate_with_localized_related_collection() {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     };
 
     // "articles" collection with a relationship to media
@@ -1880,6 +1887,7 @@ fn populate_with_localized_related_collection() {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     };
 
     {
@@ -1958,6 +1966,7 @@ fn coerce_checkbox_values() {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     };
     {
         let mut reg = registry.write().unwrap();
@@ -2000,6 +2009,7 @@ fn coerce_number_valid() {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     };
     {
         let mut reg = registry.write().unwrap();
@@ -2032,6 +2042,7 @@ fn coerce_number_invalid_returns_null() {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     };
     {
         let mut reg = registry.write().unwrap();
@@ -2064,6 +2075,7 @@ fn coerce_number_empty_returns_null() {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     };
     {
         let mut reg = registry.write().unwrap();
@@ -2116,6 +2128,7 @@ fn checkbox_default_when_field_missing() {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     };
     {
         let mut reg = registry.write().unwrap();
@@ -2259,6 +2272,7 @@ fn alter_adds_auth_columns_on_upgrade() {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     };
     {
         let mut reg = registry.write().unwrap();
@@ -2312,6 +2326,7 @@ fn sync_adds_locale_columns() {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     };
     {
         let mut reg = registry.write().unwrap();
@@ -2378,6 +2393,7 @@ fn make_group_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -2512,6 +2528,7 @@ fn make_localized_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -2952,6 +2969,7 @@ fn migrate_default_value_with_quotes() {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     };
     {
         let mut reg = registry.write().unwrap();
@@ -2997,6 +3015,7 @@ fn create_checkbox_truthy_values() {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     };
     {
         let mut reg = registry.write().unwrap();
@@ -3043,6 +3062,7 @@ fn create_checkbox_falsy_values() {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     };
     {
         let mut reg = registry.write().unwrap();
@@ -3082,6 +3102,7 @@ fn create_number_invalid_stores_null() {
         access: CollectionAccess::default(),
         live: None,
             versions: None,
+            indexes: Vec::new(),
     };
     {
         let mut reg = registry.write().unwrap();
@@ -3188,6 +3209,7 @@ fn make_localized_join_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -3212,6 +3234,7 @@ fn setup_localized_joins() -> (
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     };
     {
         let mut reg = registry.write().unwrap();
@@ -4656,6 +4679,7 @@ fn make_localized_group_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -4930,6 +4954,7 @@ fn collection_alter_adds_group_sub_columns() {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     };
     {
         let mut reg = registry.write().unwrap();
@@ -5100,6 +5125,7 @@ fn collection_alter_adds_localized_group_columns() {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     };
     {
         let mut reg = registry.write().unwrap();
@@ -5237,6 +5263,7 @@ fn make_filterable_def() -> CollectionDefinition {
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     }
 }
 
@@ -5256,6 +5283,7 @@ fn setup_filterable() -> (tempfile::TempDir, crap_cms::db::DbPool, CollectionDef
         access: CollectionAccess::default(),
         live: None,
         versions: None,
+            indexes: Vec::new(),
     };
     {
         let mut reg = registry.write().unwrap();
