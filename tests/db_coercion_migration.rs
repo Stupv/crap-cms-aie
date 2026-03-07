@@ -53,271 +53,14 @@ fn create_test_pool() -> (tempfile::TempDir, crap_cms::db::DbPool) {
     (tmp, db_pool)
 }
 
-#[test]
-fn full_crud_cycle() {
-    let (_tmp, pool) = create_test_pool();
-
-    // Set up registry with posts collection
-    let registry = Registry::shared();
-    let def = make_posts_def();
-    {
-        let mut reg = registry.write().unwrap();
-        reg.register_collection(def.clone());
-    }
-
-    // Sync schema
-    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Failed to sync schema");
-
-    // Create
-    let mut data = HashMap::new();
-    data.insert("title".to_string(), "Hello World".to_string());
-    data.insert("status".to_string(), "published".to_string());
-
-    let mut conn = pool.get().expect("DB connection");
-    let tx = conn.transaction().expect("Start transaction");
-    let doc = query::create(&tx, "posts", &def, &data, None).expect("Failed to create document");
-    tx.commit().expect("Commit");
-
-    assert_eq!(doc.get_str("title"), Some("Hello World"));
-    assert_eq!(doc.get_str("status"), Some("published"));
-    assert!(doc.created_at.is_some());
-    let doc_id = doc.id.clone();
-
-    // Read
-    let found = ops::find_document_by_id(&pool, "posts", &def, &doc_id, None)
-        .expect("Failed to find document")
-        .expect("Document not found");
-    assert_eq!(found.id, doc_id);
-    assert_eq!(found.get_str("title"), Some("Hello World"));
-
-    // List
-    let all = ops::find_documents(&pool, "posts", &def, &query::FindQuery::default(), None)
-        .expect("Failed to list documents");
-    assert_eq!(all.len(), 1);
-
-    // Update
-    let mut update_data = HashMap::new();
-    update_data.insert("title".to_string(), "Updated Title".to_string());
-    update_data.insert("status".to_string(), "draft".to_string());
-
-    let mut conn = pool.get().expect("DB connection");
-    let tx = conn.transaction().expect("Start transaction");
-    let updated = query::update(&tx, "posts", &def, &doc_id, &update_data, None)
-        .expect("Failed to update document");
-    tx.commit().expect("Commit");
-    assert_eq!(updated.get_str("title"), Some("Updated Title"));
-
-    // Delete
-    let mut conn = pool.get().expect("DB connection");
-    let tx = conn.transaction().expect("Start transaction");
-    query::delete(&tx, "posts", &doc_id).expect("Failed to delete document");
-    tx.commit().expect("Commit");
-
-    let deleted = ops::find_document_by_id(&pool, "posts", &def, &doc_id, None)
-        .expect("Query failed");
-    assert!(deleted.is_none());
-}
-
-#[test]
-fn sync_schema_adds_columns() {
-    let (_tmp, pool) = create_test_pool();
-    let registry = Registry::shared();
-
-    // Start with one field
-    let mut def = make_posts_def();
-    def.fields = vec![def.fields[0].clone()]; // title only
-    {
-        let mut reg = registry.write().unwrap();
-        reg.register_collection(def.clone());
-    }
-    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("First sync failed");
-
-    // Add a field
-    def.fields.push(FieldDefinition {
-        name: "body".to_string(),
-        field_type: FieldType::Textarea,
+fn make_field(name: &str, field_type: FieldType) -> FieldDefinition {
+    FieldDefinition {
+        name: name.to_string(),
+        field_type,
         ..Default::default()
-    });
-    {
-        let mut reg = registry.write().unwrap();
-        reg.register_collection(def.clone());
     }
-    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Second sync failed");
-
-    // Verify we can use the new column
-    let mut data = HashMap::new();
-    data.insert("title".to_string(), "Test".to_string());
-    data.insert("body".to_string(), "Some body text".to_string());
-
-    let mut conn = pool.get().expect("DB connection");
-    let tx = conn.transaction().expect("Start transaction");
-    let doc = query::create(&tx, "posts", &def, &data, None).expect("Failed to create");
-    tx.commit().expect("Commit");
-    assert_eq!(doc.get_str("body"), Some("Some body text"));
 }
 
-#[test]
-fn sync_schema_adds_timestamp_columns_to_existing_table() {
-    let (_tmp, pool) = create_test_pool();
-    let registry = Registry::shared();
-
-    // Create a collection WITHOUT timestamps
-    let mut def = make_posts_def();
-    def.timestamps = false;
-    {
-        let mut reg = registry.write().unwrap();
-        reg.register_collection(def.clone());
-    }
-    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("First sync");
-
-    // Insert a row (no timestamp columns exist)
-    let mut data = HashMap::new();
-    data.insert("title".to_string(), "Old post".to_string());
-    {
-        let mut conn = pool.get().unwrap();
-        let tx = conn.transaction().unwrap();
-        query::create(&tx, "posts", &def, &data, None).expect("Create without timestamps");
-        tx.commit().unwrap();
-    }
-
-    // Now enable timestamps and re-sync — this should add created_at/updated_at via ALTER TABLE
-    def.timestamps = true;
-    {
-        let mut reg = registry.write().unwrap();
-        reg.register_collection(def.clone());
-    }
-    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Second sync with timestamps");
-
-    // Verify we can query (the bug: SELECT ... created_at, updated_at would fail)
-    let find_query = query::FindQuery {
-        filters: vec![],
-        order_by: None,
-        limit: None,
-        offset: None,
-        select: None,
-        after_cursor: None,
-        before_cursor: None,
-        search: None,
-    };
-    let conn = pool.get().unwrap();
-    let docs = query::find(&conn, "posts", &def, &find_query, None)
-        .expect("Find should succeed after adding timestamp columns");
-    assert_eq!(docs.len(), 1);
-    assert_eq!(docs[0].get_str("title"), Some("Old post"));
-
-    // Existing row has NULL timestamps (added via ALTER TABLE with no default)
-    assert!(docs[0].created_at.is_none());
-
-    // New rows get timestamps set by the query layer
-    drop(conn);
-    let mut conn = pool.get().unwrap();
-    let tx = conn.transaction().unwrap();
-    let mut data2 = HashMap::new();
-    data2.insert("title".to_string(), "New post".to_string());
-    let new_doc = query::create(&tx, "posts", &def, &data2, None).expect("Create with timestamps");
-    tx.commit().unwrap();
-    assert!(new_doc.created_at.is_some());
-}
-
-#[test]
-fn count_documents() {
-    let (_tmp, pool) = create_test_pool();
-    let registry = Registry::shared();
-    let def = make_posts_def();
-    {
-        let mut reg = registry.write().unwrap();
-        reg.register_collection(def.clone());
-    }
-    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Sync failed");
-
-    // Insert 3 documents
-    for i in 0..3 {
-        let mut data = HashMap::new();
-        data.insert("title".to_string(), format!("Post {}", i));
-        let mut conn = pool.get().expect("DB connection");
-        let tx = conn.transaction().expect("Start transaction");
-        query::create(&tx, "posts", &def, &data, None).expect("Create failed");
-        tx.commit().expect("Commit");
-    }
-
-    let total = ops::count_documents(&pool, "posts", &def, &[], None).expect("Count failed");
-    assert_eq!(total, 3);
-}
-
-#[test]
-fn filter_rejects_invalid_field_name() {
-    let (_tmp, pool) = create_test_pool();
-    let registry = Registry::shared();
-    let def = make_posts_def();
-    {
-        let mut reg = registry.write().unwrap();
-        reg.register_collection(def.clone());
-    }
-    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Sync failed");
-
-    let find_query = query::FindQuery {
-        filters: vec![query::FilterClause::Single(query::Filter {
-            field: "nonexistent".to_string(),
-            op: query::FilterOp::Equals("test".to_string()),
-        })],
-        ..Default::default()
-    };
-
-    let result = ops::find_documents(&pool, "posts", &def, &find_query, None);
-    assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Invalid field 'nonexistent'"));
-}
-
-#[test]
-fn order_by_rejects_invalid_field_name() {
-    let (_tmp, pool) = create_test_pool();
-    let registry = Registry::shared();
-    let def = make_posts_def();
-    {
-        let mut reg = registry.write().unwrap();
-        reg.register_collection(def.clone());
-    }
-    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Sync failed");
-
-    let find_query = query::FindQuery {
-        order_by: Some("nonexistent".to_string()),
-        ..Default::default()
-    };
-
-    let result = ops::find_documents(&pool, "posts", &def, &find_query, None);
-    assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Invalid field 'nonexistent'"));
-}
-
-#[test]
-fn sql_injection_in_filter_field_blocked() {
-    let (_tmp, pool) = create_test_pool();
-    let registry = Registry::shared();
-    let def = make_posts_def();
-    {
-        let mut reg = registry.write().unwrap();
-        reg.register_collection(def.clone());
-    }
-    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Sync failed");
-
-    let find_query = query::FindQuery {
-        filters: vec![query::FilterClause::Single(query::Filter {
-            field: "1=1; DROP TABLE posts; --".to_string(),
-            op: query::FilterOp::Equals("x".to_string()),
-        })],
-        ..Default::default()
-    };
-
-    let result = ops::find_documents(&pool, "posts", &def, &find_query, None);
-    assert!(result.is_err());
-    let err_msg = result.unwrap_err().to_string();
-    assert!(err_msg.contains("Invalid field"), "Expected invalid field error, got: {}", err_msg);
-}
-
-// ── Seed helper (used by type coercion and count_where_field_eq tests) ─────────
-
-/// Set up a fresh DB with 5 seeded posts for filter testing.
-/// Returns (pool, def, _tmp). Hold _tmp to keep the temp dir alive.
 fn seed_posts() -> (tempfile::TempDir, crap_cms::db::DbPool, CollectionDefinition) {
     let (_tmp, pool) = create_test_pool();
     let registry = Registry::shared();
@@ -328,14 +71,14 @@ fn seed_posts() -> (tempfile::TempDir, crap_cms::db::DbPool, CollectionDefinitio
     }
     migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Sync failed");
 
-    // Status values: "" means pass empty string → coerce_value converts to NULL.
+    // Status values: "" means pass empty string -> coerce_value converts to NULL.
     // Omitting the field entirely would use the column DEFAULT ('draft'), not NULL.
     let rows: Vec<(&str, &str)> = vec![
         ("Alpha Post", "published"),
         ("Beta Post", "draft"),
         ("Gamma Post", "published"),
         ("Delta Post", "archived"),
-        ("Epsilon Post", ""), // empty string → NULL via coerce_value
+        ("Epsilon Post", ""), // empty string -> NULL via coerce_value
     ];
 
     for (title, status) in &rows {
@@ -350,8 +93,6 @@ fn seed_posts() -> (tempfile::TempDir, crap_cms::db::DbPool, CollectionDefinitio
 
     (_tmp, pool, def)
 }
-
-// ── Helper: auth collection definition ────────────────────────────────────────
 
 fn make_users_def() -> CollectionDefinition {
     CollectionDefinition {
@@ -389,362 +130,6 @@ fn make_users_def() -> CollectionDefinition {
             indexes: Vec::new(),
     }
 }
-
-fn setup_auth_collection() -> (tempfile::TempDir, crap_cms::db::DbPool, CollectionDefinition) {
-    let (_tmp, pool) = create_test_pool();
-    let registry = Registry::shared();
-    let def = make_users_def();
-    {
-        let mut reg = registry.write().unwrap();
-        reg.register_collection(def.clone());
-    }
-    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Sync failed");
-
-    // Insert a test user
-    let mut data = HashMap::new();
-    data.insert("email".to_string(), "alice@example.com".to_string());
-    data.insert("name".to_string(), "Alice".to_string());
-    let mut conn = pool.get().expect("DB connection");
-    let tx = conn.transaction().expect("Start transaction");
-    query::create(&tx, "users", &def, &data, None).expect("Create user failed");
-    tx.commit().expect("Commit");
-
-    (_tmp, pool, def)
-}
-
-// ── 1A. Auth Query Functions ──────────────────────────────────────────────────
-
-#[test]
-fn find_by_email_returns_user() {
-    let (_tmp, pool, def) = setup_auth_collection();
-    let conn = pool.get().expect("DB connection");
-    let result = query::find_by_email(&conn, "users", &def, "alice@example.com")
-        .expect("Query failed");
-    assert!(result.is_some());
-    let doc = result.unwrap();
-    assert_eq!(doc.get_str("email"), Some("alice@example.com"));
-    assert_eq!(doc.get_str("name"), Some("Alice"));
-}
-
-#[test]
-fn find_by_email_missing_returns_none() {
-    let (_tmp, pool, def) = setup_auth_collection();
-    let conn = pool.get().expect("DB connection");
-    let result = query::find_by_email(&conn, "users", &def, "nonexistent@example.com")
-        .expect("Query failed");
-    assert!(result.is_none());
-}
-
-#[test]
-fn update_password_and_get_hash() {
-    let (_tmp, pool, def) = setup_auth_collection();
-    let conn = pool.get().expect("DB connection");
-
-    let user = query::find_by_email(&conn, "users", &def, "alice@example.com")
-        .expect("Query failed").expect("User not found");
-
-    // Initially no password hash
-    let hash = query::get_password_hash(&conn, "users", &user.id)
-        .expect("Get hash failed");
-    assert!(hash.is_none());
-
-    // Update password
-    query::update_password(&conn, "users", &user.id, "secret123")
-        .expect("Update password failed");
-
-    // Verify hash is now set
-    let hash = query::get_password_hash(&conn, "users", &user.id)
-        .expect("Get hash failed");
-    assert!(hash.is_some());
-    let hash_str = hash.unwrap();
-    assert!(hash_str.starts_with("$argon2"));
-}
-
-#[test]
-fn get_password_hash_missing_user() {
-    let (_tmp, pool, _def) = setup_auth_collection();
-    let conn = pool.get().expect("DB connection");
-    let result = query::get_password_hash(&conn, "users", "nonexistent-id")
-        .expect("Query failed");
-    assert!(result.is_none());
-}
-
-#[test]
-fn set_and_find_reset_token() {
-    let (_tmp, pool, def) = setup_auth_collection();
-    let conn = pool.get().expect("DB connection");
-
-    let user = query::find_by_email(&conn, "users", &def, "alice@example.com")
-        .expect("Query failed").expect("User not found");
-
-    let exp = chrono::Utc::now().timestamp() + 3600;
-    query::set_reset_token(&conn, "users", &user.id, "reset-token-abc", exp)
-        .expect("Set reset token failed");
-
-    let found = query::find_by_reset_token(&conn, "users", &def, "reset-token-abc")
-        .expect("Find by reset token failed");
-    assert!(found.is_some());
-    let (doc, token_exp) = found.unwrap();
-    assert_eq!(doc.id, user.id);
-    assert_eq!(token_exp, exp);
-}
-
-#[test]
-fn find_reset_token_wrong_token() {
-    let (_tmp, pool, def) = setup_auth_collection();
-    let conn = pool.get().expect("DB connection");
-    let result = query::find_by_reset_token(&conn, "users", &def, "wrong-token")
-        .expect("Query failed");
-    assert!(result.is_none());
-}
-
-#[test]
-fn clear_reset_token() {
-    let (_tmp, pool, def) = setup_auth_collection();
-    let conn = pool.get().expect("DB connection");
-
-    let user = query::find_by_email(&conn, "users", &def, "alice@example.com")
-        .expect("Query failed").expect("User not found");
-
-    let exp = chrono::Utc::now().timestamp() + 3600;
-    query::set_reset_token(&conn, "users", &user.id, "token-to-clear", exp)
-        .expect("Set failed");
-
-    query::clear_reset_token(&conn, "users", &user.id)
-        .expect("Clear failed");
-
-    let found = query::find_by_reset_token(&conn, "users", &def, "token-to-clear")
-        .expect("Query failed");
-    assert!(found.is_none());
-}
-
-#[test]
-fn set_and_find_verification_token() {
-    let (_tmp, pool, def) = setup_auth_collection();
-    let conn = pool.get().expect("DB connection");
-
-    let user = query::find_by_email(&conn, "users", &def, "alice@example.com")
-        .expect("Query failed").expect("User not found");
-
-    query::set_verification_token(&conn, "users", &user.id, "verify-abc", 9999999999)
-        .expect("Set verification token failed");
-
-    let found = query::find_by_verification_token(&conn, "users", &def, "verify-abc")
-        .expect("Find failed");
-    assert!(found.is_some());
-    let (doc, exp) = found.unwrap();
-    assert_eq!(doc.id, user.id);
-    assert_eq!(exp, 9999999999);
-}
-
-#[test]
-fn find_verification_token_wrong() {
-    let (_tmp, pool, def) = setup_auth_collection();
-    let conn = pool.get().expect("DB connection");
-    let result = query::find_by_verification_token(&conn, "users", &def, "wrong-verify")
-        .expect("Query failed");
-    assert!(result.is_none());
-}
-
-#[test]
-fn mark_verified_and_check() {
-    let (_tmp, pool, def) = setup_auth_collection();
-    let conn = pool.get().expect("DB connection");
-
-    let user = query::find_by_email(&conn, "users", &def, "alice@example.com")
-        .expect("Query failed").expect("User not found");
-
-    // Initially not verified
-    let verified = query::is_verified(&conn, "users", &user.id)
-        .expect("Check failed");
-    assert!(!verified);
-
-    // Mark verified
-    query::mark_verified(&conn, "users", &user.id)
-        .expect("Mark verified failed");
-
-    // Now verified
-    let verified = query::is_verified(&conn, "users", &user.id)
-        .expect("Check failed");
-    assert!(verified);
-}
-
-#[test]
-fn is_verified_default_false() {
-    let (_tmp, pool, def) = setup_auth_collection();
-    let conn = pool.get().expect("DB connection");
-
-    let user = query::find_by_email(&conn, "users", &def, "alice@example.com")
-        .expect("Query failed").expect("User not found");
-
-    let verified = query::is_verified(&conn, "users", &user.id)
-        .expect("Check failed");
-    assert!(!verified);
-}
-
-#[test]
-fn count_where_field_eq_basic() {
-    let (_tmp, pool, _def) = seed_posts();
-    let conn = pool.get().expect("DB connection");
-    let count = query::count_where_field_eq(&conn, "posts", "status", "published", None)
-        .expect("Count failed");
-    assert_eq!(count, 2);
-}
-
-#[test]
-fn count_where_field_eq_with_exclude() {
-    let (_tmp, pool, def) = seed_posts();
-    let conn = pool.get().expect("DB connection");
-
-    // Find one published doc to exclude
-    let docs = ops::find_documents(
-        &pool, "posts", &def,
-        &query::FindQuery {
-            filters: vec![query::FilterClause::Single(query::Filter {
-                field: "status".to_string(),
-                op: query::FilterOp::Equals("published".to_string()),
-            })],
-            ..Default::default()
-        },
-        None,
-    ).expect("Find failed");
-    assert!(!docs.is_empty());
-    let exclude_id = &docs[0].id;
-
-    let count = query::count_where_field_eq(&conn, "posts", "status", "published", Some(exclude_id))
-        .expect("Count failed");
-    assert_eq!(count, 1);
-}
-
-// ── 1B. Globals ───────────────────────────────────────────────────────────────
-
-fn make_global_def() -> GlobalDefinition {
-    GlobalDefinition {
-        slug: "site_settings".to_string(),
-        labels: CollectionLabels {
-            singular: Some(LocalizedString::Plain("Site Settings".to_string())),
-            plural: None,
-        },
-        fields: vec![
-            FieldDefinition {
-                name: "site_name".to_string(),
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "tagline".to_string(),
-                ..Default::default()
-            },
-        ],
-        hooks: CollectionHooks::default(),
-        access: CollectionAccess::default(),
-        mcp: Default::default(),
-        live: None,
-        versions: None,
-    }
-}
-
-fn setup_global() -> (tempfile::TempDir, crap_cms::db::DbPool, GlobalDefinition) {
-    let (_tmp, pool) = create_test_pool();
-    let registry = Registry::shared();
-    let def = make_global_def();
-    {
-        let mut reg = registry.write().unwrap();
-        reg.register_global(def.clone());
-    }
-    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Sync failed");
-    (_tmp, pool, def)
-}
-
-#[test]
-fn global_default_row_exists_after_sync() {
-    let (_tmp, pool, def) = setup_global();
-    let conn = pool.get().expect("DB connection");
-    let doc = query::get_global(&conn, "site_settings", &def, None)
-        .expect("Get global failed");
-    assert_eq!(doc.id, "default");
-}
-
-#[test]
-fn get_global_returns_default() {
-    let (_tmp, pool, def) = setup_global();
-    let conn = pool.get().expect("DB connection");
-    let doc = query::get_global(&conn, "site_settings", &def, None)
-        .expect("Get global failed");
-    assert_eq!(doc.id, "default");
-    // Fields should be null/empty initially
-    assert!(doc.get_str("site_name").is_none() || doc.get("site_name") == Some(&serde_json::Value::Null));
-}
-
-#[test]
-fn update_global_and_read_back() {
-    let (_tmp, pool, def) = setup_global();
-    let mut conn = pool.get().expect("DB connection");
-    let tx = conn.transaction().expect("Start transaction");
-
-    let mut data = HashMap::new();
-    data.insert("site_name".to_string(), "My CMS".to_string());
-    data.insert("tagline".to_string(), "The best CMS".to_string());
-    let doc = query::update_global(&tx, "site_settings", &def, &data, None)
-        .expect("Update global failed");
-    tx.commit().expect("Commit");
-
-    assert_eq!(doc.get_str("site_name"), Some("My CMS"));
-    assert_eq!(doc.get_str("tagline"), Some("The best CMS"));
-
-    // Read back
-    let conn = pool.get().expect("DB connection");
-    let doc2 = query::get_global(&conn, "site_settings", &def, None)
-        .expect("Get global failed");
-    assert_eq!(doc2.get_str("site_name"), Some("My CMS"));
-    assert_eq!(doc2.get_str("tagline"), Some("The best CMS"));
-}
-
-#[test]
-fn update_global_preserves_unset_fields() {
-    let (_tmp, pool, def) = setup_global();
-
-    // First update: set both fields
-    {
-        let mut conn = pool.get().expect("DB connection");
-        let tx = conn.transaction().expect("Start transaction");
-        let mut data = HashMap::new();
-        data.insert("site_name".to_string(), "Original Name".to_string());
-        data.insert("tagline".to_string(), "Original Tagline".to_string());
-        query::update_global(&tx, "site_settings", &def, &data, None)
-            .expect("Update failed");
-        tx.commit().expect("Commit");
-    }
-
-    // Second update: only set site_name
-    {
-        let mut conn = pool.get().expect("DB connection");
-        let tx = conn.transaction().expect("Start transaction");
-        let mut data = HashMap::new();
-        data.insert("site_name".to_string(), "New Name".to_string());
-        query::update_global(&tx, "site_settings", &def, &data, None)
-            .expect("Update failed");
-        tx.commit().expect("Commit");
-    }
-
-    // Tagline should still be the original
-    let conn = pool.get().expect("DB connection");
-    let doc = query::get_global(&conn, "site_settings", &def, None)
-        .expect("Get global failed");
-    assert_eq!(doc.get_str("site_name"), Some("New Name"));
-    assert_eq!(doc.get_str("tagline"), Some("Original Tagline"));
-}
-
-// ── Helper: make_field (used by type coercion, group, and migration tests) ───
-
-fn make_field(name: &str, field_type: FieldType) -> FieldDefinition {
-    FieldDefinition {
-        name: name.to_string(),
-        field_type,
-        ..Default::default()
-    }
-}
-
-// ── Helpers for sync_creates_join_tables test ─────────────────────────────────
 
 fn make_articles_with_join_tables() -> CollectionDefinition {
     CollectionDefinition {
@@ -834,6 +219,43 @@ fn setup_articles() -> (tempfile::TempDir, crap_cms::db::DbPool, CollectionDefin
     (_tmp, pool, def)
 }
 
+fn make_global_def() -> GlobalDefinition {
+    GlobalDefinition {
+        slug: "site_settings".to_string(),
+        labels: CollectionLabels {
+            singular: Some(LocalizedString::Plain("Site Settings".to_string())),
+            plural: None,
+        },
+        fields: vec![
+            FieldDefinition {
+                name: "site_name".to_string(),
+                ..Default::default()
+            },
+            FieldDefinition {
+                name: "tagline".to_string(),
+                ..Default::default()
+            },
+        ],
+        hooks: CollectionHooks::default(),
+        access: CollectionAccess::default(),
+        mcp: Default::default(),
+        live: None,
+        versions: None,
+    }
+}
+
+fn setup_global() -> (tempfile::TempDir, crap_cms::db::DbPool, GlobalDefinition) {
+    let (_tmp, pool) = create_test_pool();
+    let registry = Registry::shared();
+    let def = make_global_def();
+    {
+        let mut reg = registry.write().unwrap();
+        reg.register_global(def.clone());
+    }
+    migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Sync failed");
+    (_tmp, pool, def)
+}
+
 // ── 1E. Type Coercion & Edge Cases ────────────────────────────────────────────
 
 #[test]
@@ -867,7 +289,7 @@ fn coerce_checkbox_values() {
     }
     migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Sync");
 
-    // "on" → 1
+    // "on" -> 1
     let mut data = HashMap::new();
     data.insert("active".to_string(), "on".to_string());
     let mut conn = pool.get().expect("conn");
@@ -876,7 +298,7 @@ fn coerce_checkbox_values() {
     tx.commit().expect("Commit");
     assert_eq!(doc.get("active").unwrap().as_i64(), Some(1));
 
-    // "false" → 0
+    // "false" -> 0
     let mut data = HashMap::new();
     data.insert("active".to_string(), "false".to_string());
     let mut conn = pool.get().expect("conn");
@@ -1033,7 +455,7 @@ fn checkbox_default_when_field_missing() {
     }
     migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("Sync");
 
-    // Create without providing "enabled" — should default to 0
+    // Create without providing "enabled" -- should default to 0
     let mut data = HashMap::new();
     data.insert("title".to_string(), "Test".to_string());
     let mut conn = pool.get().expect("conn");
@@ -1088,7 +510,7 @@ fn sync_creates_auth_columns() {
     data.insert("email".to_string(), "test@example.com".to_string());
     let tx = conn.transaction().expect("tx");
     let doc = query::create(&tx, "users", &def, &data, None).expect("Create");
-    // These should not error — columns must exist
+    // These should not error -- columns must exist
     query::update_password(&tx, "users", &doc.id, "password123").expect("update_password");
     query::set_reset_token(&tx, "users", &doc.id, "token", 9999999).expect("set_reset_token");
     query::set_verification_token(&tx, "users", &doc.id, "vtoken", 9999999999).expect("set_verification_token");
@@ -1239,7 +661,7 @@ fn sync_adds_locale_columns() {
     };
     migrate::sync_all(&pool, &registry, &locale_config).expect("Sync");
 
-    // Create with locale context — should write to title__en
+    // Create with locale context -- should write to title__en
     let locale_ctx = query::LocaleContext {
         mode: query::LocaleMode::Single("en".to_string()),
         config: locale_config.clone(),
@@ -1392,7 +814,7 @@ fn select_group_prefix_in_find() {
     query::create(&tx, "pages_with_seo", &def, &data, None).expect("Create");
     tx.commit().expect("Commit");
 
-    // Select only "seo" — should include all seo__* sub-fields
+    // Select only "seo" -- should include all seo__* sub-fields
     let q = query::FindQuery {
         select: Some(vec!["seo".to_string()]),
         ..Default::default()
@@ -1541,7 +963,7 @@ fn contains_filter_escapes_percent() {
         tx.commit().expect("Commit");
     }
 
-    // Filter with Contains("50%") — should only match "50% off", NOT everything
+    // Filter with Contains("50%") -- should only match "50% off", NOT everything
     let q = query::FindQuery {
         filters: vec![query::FilterClause::Single(query::Filter {
             field: "title".to_string(),
@@ -1576,7 +998,7 @@ fn contains_filter_escapes_underscore() {
         tx.commit().expect("Commit");
     }
 
-    // Filter with Contains("a_b") — should only match literal "a_b", NOT "axb"
+    // Filter with Contains("a_b") -- should only match literal "a_b", NOT "axb"
     let q = query::FindQuery {
         filters: vec![query::FilterClause::Single(query::Filter {
             field: "title".to_string(),
@@ -1671,7 +1093,7 @@ fn migrate_default_value_with_quotes() {
     migrate::sync_all(&pool, &registry, &CrapConfig::default().locale)
         .expect("Sync should not fail on default value with quotes");
 
-    // Create a document without providing the publisher field — should use the default
+    // Create a document without providing the publisher field -- should use the default
     let mut data = HashMap::new();
     data.insert("title".to_string(), "Rust Programming".to_string());
     let mut conn = pool.get().expect("DB connection");

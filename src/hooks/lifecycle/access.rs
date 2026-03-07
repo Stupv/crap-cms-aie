@@ -9,7 +9,7 @@ use crate::core::field::FieldDefinition;
 use crate::db::query::{AccessResult, Filter, FilterClause, FilterOp};
 
 use super::DefaultDeny;
-use super::crud::{document_to_lua_table, lua_parse_filter_op};
+use super::converters::{document_to_lua_table, lua_parse_filter_op};
 use super::resolve_hook_function;
 
 /// Check collection-level access using an already-held `&Lua` reference.
