@@ -530,10 +530,21 @@ input[type="checkbox"]:disabled {
   background: var(--bg-hover);
 }
 
+.form__array-row-toggle {
+  all: unset;
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+  cursor: pointer;
+}
+
 .form__array-row-chevron {
   font-size: 18px;
   color: var(--text-tertiary);
   transition: transform var(--transition-fast);
+  flex-shrink: 0;
 }
 
 .form__array-row--collapsed .form__array-row-chevron {
@@ -541,10 +552,12 @@ input[type="checkbox"]:disabled {
 }
 
 .form__array-row-title {
-  flex: 1;
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .form__array-row-drag {
