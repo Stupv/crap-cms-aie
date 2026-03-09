@@ -31,5 +31,5 @@ pub use list::{list_collections, list_items, save_user_settings};
 pub use create::{create_form, create_action};
 pub use edit::{edit_form, update_action_post};
 pub use delete::{delete_confirm, delete_action_simple};
-pub use versions::{restore_version, list_versions_page, evaluate_conditions, EvaluateConditionsRequest};
+pub use versions::{restore_confirm, restore_version, list_versions_page, evaluate_conditions, EvaluateConditionsRequest};
 pub use search::{search_collection, SearchQuery};

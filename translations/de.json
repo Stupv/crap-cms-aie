@@ -123,6 +123,11 @@
   "success_password_reset": "Passwort erfolgreich zurückgesetzt",
   "success_email_verified": "E-Mail erfolgreich bestätigt",
 
+  "restore_has_missing_relations": "Diese Version referenziert Inhalte, die nicht mehr existieren:",
+  "restore_missing_warning": "Beim Wiederherstellen werden veraltete Referenzen in das Dokument geschrieben.",
+  "missing_of_total": "von {{total}} Referenz(en) fehlen",
+  "confirm_restore_version": "Version v{{version}} wiederherstellen?",
+
   "badge_auth": "Auth",
   "badge_media": "Medien",
   "badge_versions": "Versionen",

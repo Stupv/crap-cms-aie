@@ -123,6 +123,11 @@
   "success_password_reset": "Password reset successfully",
   "success_email_verified": "Email verified successfully",
 
+  "restore_has_missing_relations": "This version references content that no longer exists:",
+  "restore_missing_warning": "Restoring will write stale references back into the document.",
+  "missing_of_total": "of {{total}} reference(s) missing",
+  "confirm_restore_version": "Restore version v{{version}}?",
+
   "badge_auth": "auth",
   "badge_media": "media",
   "badge_versions": "versions",
