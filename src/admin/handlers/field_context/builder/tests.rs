@@ -3,11 +3,7 @@ use super::*;
 use crate::core::field::{FieldDefinition, SelectOption, LocalizedString, BlockDefinition};
 
 fn make_field(name: &str, ft: FieldType) -> FieldDefinition {
-    FieldDefinition {
-        name: name.to_string(),
-        field_type: ft,
-        ..Default::default()
-    }
+    FieldDefinition::builder(name, ft).build()
 }
 
 // --- build_field_contexts: array/block sub-field enrichment tests ---
@@ -1096,19 +1092,11 @@ fn richtext_format_json() {
 fn max_depth_prevents_infinite_recursion() {
     // Build a deeply nested array structure
     fn make_nested_array(depth: usize) -> FieldDefinition {
-        let mut field = FieldDefinition {
-            name: format!("level{}", depth),
-            field_type: FieldType::Array,
-            ..Default::default()
-        };
+        let mut field = FieldDefinition::builder(format!("level{}", depth), FieldType::Array).build();
         if depth < 10 {
             field.fields = vec![make_nested_array(depth + 1)];
         } else {
-            field.fields = vec![FieldDefinition {
-                name: "leaf".to_string(),
-                field_type: FieldType::Text,
-                ..Default::default()
-            }];
+            field.fields = vec![FieldDefinition::builder("leaf", FieldType::Text).build()];
         }
         field
     }

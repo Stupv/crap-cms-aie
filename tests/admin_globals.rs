@@ -27,56 +27,40 @@ use crap_cms::hooks::lifecycle::HookRunner;
 
 fn make_posts_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("posts");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Post".to_string())),
         plural: Some(LocalizedString::Plain("Posts".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "title".to_string(),
-            required: true,
-            ..Default::default()
-        },
+        FieldDefinition::builder("title", FieldType::Text).required(true).build(),
     ];
     def
 }
 
 fn make_users_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("users");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("User".to_string())),
         plural: Some(LocalizedString::Plain("Users".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "email".to_string(),
-            field_type: FieldType::Email,
-            required: true,
-            unique: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "name".to_string(),
-            ..Default::default()
-        },
+        FieldDefinition::builder("email", FieldType::Email).required(true).unique(true).build(),
+        FieldDefinition::builder("name", FieldType::Text).build(),
     ];
-    def.auth = Some(CollectionAuth { enabled: true, ..Default::default() });
+    def.auth = Some(Auth { enabled: true, ..Default::default() });
     def
 }
 
 fn make_global_def() -> GlobalDefinition {
     let mut def = GlobalDefinition::new("settings");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Settings".to_string())),
         plural: None,
     };
     def.fields = vec![
-        FieldDefinition {
-            name: "site_name".to_string(),
-            ..Default::default()
-        },
+        FieldDefinition::builder("site_name", FieldType::Text).build(),
     ];
     def
 }
@@ -217,19 +201,13 @@ fn make_locale_config() -> LocaleConfig {
 
 fn make_versioned_global_def() -> GlobalDefinition {
     let mut def = GlobalDefinition::new("site_config");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Site Config".to_string())),
         plural: None,
     };
     def.fields = vec![
-        FieldDefinition {
-            name: "site_name".to_string(),
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "tagline".to_string(),
-            ..Default::default()
-        },
+        FieldDefinition::builder("site_name", FieldType::Text).build(),
+        FieldDefinition::builder("tagline", FieldType::Text).build(),
     ];
     def.versions = Some(VersionsConfig::new(true, 10));
     def
@@ -237,21 +215,13 @@ fn make_versioned_global_def() -> GlobalDefinition {
 
 fn make_localized_global_def() -> GlobalDefinition {
     let mut def = GlobalDefinition::new("l10n_settings");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("L10N Settings".to_string())),
         plural: None,
     };
     def.fields = vec![
-        FieldDefinition {
-            name: "welcome_text".to_string(),
-            localized: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "max_items".to_string(),
-            field_type: FieldType::Number,
-            ..Default::default()
-        },
+        FieldDefinition::builder("welcome_text", FieldType::Text).localized(true).build(),
+        FieldDefinition::builder("max_items", FieldType::Number).build(),
     ];
     def
 }

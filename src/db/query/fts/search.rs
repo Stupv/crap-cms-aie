@@ -116,11 +116,7 @@ mod tests {
     use crate::db::query::fts::sync::sync_fts_table;
 
     fn text_field(name: &str) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Text,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Text).build()
     }
 
     fn simple_def(fields: Vec<FieldDefinition>) -> CollectionDefinition {

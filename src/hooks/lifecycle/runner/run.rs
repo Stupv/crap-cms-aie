@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 
-use crate::core::collection::CollectionHooks;
+use crate::core::collection::Hooks;
 use crate::core::Document;
 use crate::core::field::FieldDefinition;
 use crate::hooks::lifecycle::context::HookContext;
@@ -25,7 +25,7 @@ impl HookRunner {
     /// Does NOT provide CRUD access to hooks (use `run_hooks_with_conn` for that).
     pub fn run_hooks(
         &self,
-        hooks: &CollectionHooks,
+        hooks: &Hooks,
         event: HookEvent,
         mut context: HookContext,
     ) -> Result<HookContext> {
@@ -57,7 +57,7 @@ impl HookRunner {
     /// for `overrideAccess = false` enforcement.
     pub fn run_hooks_with_conn(
         &self,
-        hooks: &CollectionHooks,
+        hooks: &Hooks,
         event: HookEvent,
         mut context: HookContext,
         conn: &rusqlite::Connection,

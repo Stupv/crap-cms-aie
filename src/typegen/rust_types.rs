@@ -177,11 +177,7 @@ mod tests {
     use crate::core::field::{BlockDefinition, LocalizedString, RelationshipConfig, SelectOption};
 
     fn text_field(name: &str, required: bool) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            required,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Text).required(required).build()
     }
 
     fn make_col(slug: &str, fields: Vec<FieldDefinition>) -> CollectionDefinition {
@@ -209,12 +205,9 @@ mod tests {
     #[test]
     fn rust_relationship_has_many() {
         let col = make_col("posts", vec![
-            FieldDefinition {
-                name: "tags".to_string(),
-                field_type: FieldType::Relationship,
-                relationship: Some(RelationshipConfig::new("tags", true)),
-                ..Default::default()
-            },
+            FieldDefinition::builder("tags", FieldType::Relationship)
+                .relationship(RelationshipConfig::new("tags", true))
+                .build(),
         ]);
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -226,13 +219,10 @@ mod tests {
         let mut rc = RelationshipConfig::new("posts", false);
         rc.polymorphic = vec!["posts".to_string(), "pages".to_string()];
         let col = make_col("comments", vec![
-            FieldDefinition {
-                name: "subject".to_string(),
-                field_type: FieldType::Relationship,
-                required: true,
-                relationship: Some(rc),
-                ..Default::default()
-            },
+            FieldDefinition::builder("subject", FieldType::Relationship)
+                .required(true)
+                .relationship(rc)
+                .build(),
         ]);
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -248,12 +238,9 @@ mod tests {
         let mut rc = RelationshipConfig::new("articles", true);
         rc.polymorphic = vec!["articles".to_string(), "videos".to_string()];
         let col = make_col("posts", vec![
-            FieldDefinition {
-                name: "related".to_string(),
-                field_type: FieldType::Relationship,
-                relationship: Some(rc),
-                ..Default::default()
-            },
+            FieldDefinition::builder("related", FieldType::Relationship)
+                .relationship(rc)
+                .build(),
         ]);
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -267,13 +254,10 @@ mod tests {
     #[test]
     fn rust_relationship_has_one_required() {
         let col = make_col("posts", vec![
-            FieldDefinition {
-                name: "author".to_string(),
-                field_type: FieldType::Relationship,
-                required: true,
-                relationship: Some(RelationshipConfig::new("users", false)),
-                ..Default::default()
-            },
+            FieldDefinition::builder("author", FieldType::Relationship)
+                .required(true)
+                .relationship(RelationshipConfig::new("users", false))
+                .build(),
         ]);
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -283,9 +267,9 @@ mod tests {
     #[test]
     fn rust_number_checkbox_json_fields() {
         let col = make_col("items", vec![
-            FieldDefinition { name: "price".to_string(), field_type: FieldType::Number, required: true, ..Default::default() },
-            FieldDefinition { name: "active".to_string(), field_type: FieldType::Checkbox, ..Default::default() },
-            FieldDefinition { name: "meta".to_string(), field_type: FieldType::Json, ..Default::default() },
+            FieldDefinition::builder("price", FieldType::Number).required(true).build(),
+            FieldDefinition::builder("active", FieldType::Checkbox).build(),
+            FieldDefinition::builder("meta", FieldType::Json).build(),
         ]);
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -297,12 +281,9 @@ mod tests {
     #[test]
     fn rust_array_with_subfields() {
         let col = make_col("posts", vec![
-            FieldDefinition {
-                name: "items".to_string(),
-                field_type: FieldType::Array,
-                fields: vec![text_field("label", true)],
-                ..Default::default()
-            },
+            FieldDefinition::builder("items", FieldType::Array)
+                .fields(vec![text_field("label", true)])
+                .build(),
         ]);
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -313,11 +294,7 @@ mod tests {
     #[test]
     fn rust_array_without_subfields() {
         let col = make_col("posts", vec![
-            FieldDefinition {
-                name: "data".to_string(),
-                field_type: FieldType::Array,
-                ..Default::default()
-            },
+            FieldDefinition::builder("data", FieldType::Array).build(),
         ]);
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -327,13 +304,10 @@ mod tests {
     #[test]
     fn rust_group_and_blocks_fields() {
         let col = make_col("pages", vec![
-            FieldDefinition { name: "seo".to_string(), field_type: FieldType::Group, ..Default::default() },
-            FieldDefinition {
-                name: "content".to_string(),
-                field_type: FieldType::Blocks,
-                blocks: vec![BlockDefinition::new("text", vec![text_field("body", true)])],
-                ..Default::default()
-            },
+            FieldDefinition::builder("seo", FieldType::Group).build(),
+            FieldDefinition::builder("content", FieldType::Blocks)
+                .blocks(vec![BlockDefinition::new("text", vec![text_field("body", true)])])
+                .build(),
         ]);
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -344,16 +318,11 @@ mod tests {
     #[test]
     fn rust_upload_and_select_fields() {
         let col = make_col("items", vec![
-            FieldDefinition { name: "image".to_string(), field_type: FieldType::Upload, required: true, ..Default::default() },
-            FieldDefinition {
-                name: "status".to_string(),
-                field_type: FieldType::Select,
-                required: true,
-                options: vec![
-                    SelectOption::new(LocalizedString::Plain("Draft".into()), "draft"),
-                ],
-                ..Default::default()
-            },
+            FieldDefinition::builder("image", FieldType::Upload).required(true).build(),
+            FieldDefinition::builder("status", FieldType::Select)
+                .required(true)
+                .options(vec![SelectOption::new(LocalizedString::Plain("Draft".into()), "draft")])
+                .build(),
         ]);
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -364,13 +333,10 @@ mod tests {
     #[test]
     fn upload_has_many_generates_array_type() {
         let col = make_col("items", vec![
-            FieldDefinition {
-                name: "images".to_string(),
-                field_type: FieldType::Upload,
-                required: true,
-                relationship: Some(RelationshipConfig::new("", true)),
-                ..Default::default()
-            },
+            FieldDefinition::builder("images", FieldType::Upload)
+                .required(true)
+                .relationship(RelationshipConfig::new("", true))
+                .build(),
         ]);
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -414,19 +380,8 @@ mod tests {
     #[test]
     fn rust_text_has_many() {
         let col = make_col("items", vec![
-            FieldDefinition {
-                name: "tags".to_string(),
-                field_type: FieldType::Text,
-                has_many: true,
-                required: true,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "labels".to_string(),
-                field_type: FieldType::Text,
-                has_many: true,
-                ..Default::default()
-            },
+            FieldDefinition::builder("tags", FieldType::Text).has_many(true).required(true).build(),
+            FieldDefinition::builder("labels", FieldType::Text).has_many(true).build(),
         ]);
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -437,19 +392,8 @@ mod tests {
     #[test]
     fn rust_number_has_many() {
         let col = make_col("items", vec![
-            FieldDefinition {
-                name: "scores".to_string(),
-                field_type: FieldType::Number,
-                has_many: true,
-                required: true,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "weights".to_string(),
-                field_type: FieldType::Number,
-                has_many: true,
-                ..Default::default()
-            },
+            FieldDefinition::builder("scores", FieldType::Number).has_many(true).required(true).build(),
+            FieldDefinition::builder("weights", FieldType::Number).has_many(true).build(),
         ]);
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -460,10 +404,10 @@ mod tests {
     #[test]
     fn rust_email_date_richtext_textarea() {
         let col = make_col("items", vec![
-            FieldDefinition { name: "email".to_string(), field_type: FieldType::Email, required: true, ..Default::default() },
-            FieldDefinition { name: "date".to_string(), field_type: FieldType::Date, required: true, ..Default::default() },
-            FieldDefinition { name: "body".to_string(), field_type: FieldType::Richtext, required: true, ..Default::default() },
-            FieldDefinition { name: "notes".to_string(), field_type: FieldType::Textarea, required: true, ..Default::default() },
+            FieldDefinition::builder("email", FieldType::Email).required(true).build(),
+            FieldDefinition::builder("date", FieldType::Date).required(true).build(),
+            FieldDefinition::builder("body", FieldType::Richtext).required(true).build(),
+            FieldDefinition::builder("notes", FieldType::Textarea).required(true).build(),
         ]);
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -477,9 +421,9 @@ mod tests {
     #[test]
     fn rust_code_join_radio_fields() {
         let col = make_col("items", vec![
-            FieldDefinition { name: "snippet".to_string(), field_type: FieldType::Code, required: true, ..Default::default() },
-            FieldDefinition { name: "refs".to_string(), field_type: FieldType::Join, ..Default::default() },
-            FieldDefinition { name: "color".to_string(), field_type: FieldType::Radio, required: true, ..Default::default() },
+            FieldDefinition::builder("snippet", FieldType::Code).required(true).build(),
+            FieldDefinition::builder("refs", FieldType::Join).build(),
+            FieldDefinition::builder("color", FieldType::Radio).required(true).build(),
         ]);
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -491,19 +435,8 @@ mod tests {
     #[test]
     fn rust_select_has_many() {
         let col = make_col("items", vec![
-            FieldDefinition {
-                name: "tags".to_string(),
-                field_type: FieldType::Select,
-                has_many: true,
-                required: true,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "sizes".to_string(),
-                field_type: FieldType::Radio,
-                has_many: true,
-                ..Default::default()
-            },
+            FieldDefinition::builder("tags", FieldType::Select).has_many(true).required(true).build(),
+            FieldDefinition::builder("sizes", FieldType::Radio).has_many(true).build(),
         ]);
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -515,24 +448,15 @@ mod tests {
     fn rust_row_collapsible_tabs_promote_subfields() {
         use crate::core::field::FieldTab;
         let col = make_col("items", vec![
-            FieldDefinition {
-                name: "layout_row".to_string(),
-                field_type: FieldType::Row,
-                fields: vec![text_field("first_name", true), text_field("last_name", false)],
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "details".to_string(),
-                field_type: FieldType::Collapsible,
-                fields: vec![text_field("bio", false)],
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "sections".to_string(),
-                field_type: FieldType::Tabs,
-                tabs: vec![FieldTab::new("Tab1", vec![text_field("tab_field", true)])],
-                ..Default::default()
-            },
+            FieldDefinition::builder("layout_row", FieldType::Row)
+                .fields(vec![text_field("first_name", true), text_field("last_name", false)])
+                .build(),
+            FieldDefinition::builder("details", FieldType::Collapsible)
+                .fields(vec![text_field("bio", false)])
+                .build(),
+            FieldDefinition::builder("sections", FieldType::Tabs)
+                .tabs(vec![FieldTab::new("Tab1", vec![text_field("tab_field", true)])])
+                .build(),
         ]);
         let mut out = String::new();
         render_collection(&mut out, &col);

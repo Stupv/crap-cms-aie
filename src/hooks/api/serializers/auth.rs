@@ -52,7 +52,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let mut def = crate::core::CollectionDefinition::new("users");
         def.timestamps = true;
-        def.auth = Some(crate::core::collection::CollectionAuth::new(true));
+        def.auth = Some(crate::core::collection::Auth::new(true));
         let tbl = collection_config_to_lua(&lua, &def).unwrap();
         let auth_val: bool = tbl.get("auth").unwrap();
         assert!(auth_val);
@@ -63,7 +63,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let mut def = crate::core::CollectionDefinition::new("users");
         def.timestamps = true;
-        let mut auth = crate::core::collection::CollectionAuth::new(true);
+        let mut auth = crate::core::collection::Auth::new(true);
         auth.token_expiry = 3600;
         auth.disable_local = true;
         auth.verify_email = true;
@@ -87,7 +87,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let mut def = crate::core::CollectionDefinition::new("items");
         def.timestamps = false;
-        def.auth = Some(crate::core::collection::CollectionAuth::new(false));
+        def.auth = Some(crate::core::collection::Auth::new(false));
         let tbl = collection_config_to_lua(&lua, &def).unwrap();
         let auth_val: Value = tbl.get("auth").unwrap();
         assert!(matches!(auth_val, Value::Nil), "auth = None when disabled");

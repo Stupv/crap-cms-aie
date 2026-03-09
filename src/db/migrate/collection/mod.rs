@@ -82,20 +82,11 @@ pub(super) mod test_helpers {
     }
 
     pub fn text_field(name: &str) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Text,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Text).build()
     }
 
     pub fn localized_field(name: &str) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Text,
-            localized: true,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Text).localized(true).build()
     }
 }
 

@@ -116,8 +116,8 @@ mod tests {
     fn test_def() -> CollectionDefinition {
         let mut def = CollectionDefinition::new("posts");
         def.fields = vec![
-            FieldDefinition { name: "title".to_string(), ..Default::default() },
-            FieldDefinition { name: "status".to_string(), ..Default::default() },
+            FieldDefinition::builder("title", FieldType::Text).build(),
+            FieldDefinition::builder("status", FieldType::Text).build(),
         ];
         def
     }
@@ -201,15 +201,12 @@ mod tests {
 
         let mut def = CollectionDefinition::new("posts");
         def.fields = vec![
-            FieldDefinition {
-                name: "meta".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![
-                    FieldDefinition { name: "color".to_string(), ..Default::default() },
-                    FieldDefinition { name: "size".to_string(), ..Default::default() },
-                ],
-                ..Default::default()
-            },
+            FieldDefinition::builder("meta", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("color", FieldType::Text).build(),
+                    FieldDefinition::builder("size", FieldType::Text).build(),
+                ])
+                .build(),
         ];
         let def = def;
 
@@ -236,7 +233,7 @@ mod tests {
         let mut def = CollectionDefinition::new("events");
         def.timestamps = false;
         def.fields = vec![
-            FieldDefinition { name: "name".to_string(), ..Default::default() },
+            FieldDefinition::builder("name", FieldType::Text).build(),
         ];
         let def = def;
 
@@ -282,27 +279,21 @@ mod tests {
 
         let mut def = CollectionDefinition::new("posts");
         def.fields = vec![
-            FieldDefinition {
-                name: "layout".to_string(),
-                field_type: FieldType::Tabs,
-                tabs: vec![
+            FieldDefinition::builder("layout", FieldType::Tabs)
+                .tabs(vec![
                     FieldTab::new("Social", vec![
-                        FieldDefinition {
-                            name: "social".to_string(),
-                            field_type: FieldType::Group,
-                            fields: vec![
-                                FieldDefinition { name: "github".to_string(), ..Default::default() },
-                                FieldDefinition { name: "twitter".to_string(), ..Default::default() },
-                            ],
-                            ..Default::default()
-                        },
+                        FieldDefinition::builder("social", FieldType::Group)
+                            .fields(vec![
+                                FieldDefinition::builder("github", FieldType::Text).build(),
+                                FieldDefinition::builder("twitter", FieldType::Text).build(),
+                            ])
+                            .build(),
                     ]),
                     FieldTab::new("Content", vec![
-                        FieldDefinition { name: "body".to_string(), ..Default::default() },
+                        FieldDefinition::builder("body", FieldType::Text).build(),
                     ]),
-                ],
-                ..Default::default()
-            },
+                ])
+                .build(),
         ];
         let def = def;
 
@@ -333,22 +324,16 @@ mod tests {
 
         let mut def = CollectionDefinition::new("posts");
         def.fields = vec![
-            FieldDefinition {
-                name: "meta".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![
-                    FieldDefinition {
-                        name: "r".to_string(),
-                        field_type: FieldType::Row,
-                        fields: vec![
-                            FieldDefinition { name: "title".to_string(), ..Default::default() },
-                            FieldDefinition { name: "slug".to_string(), ..Default::default() },
-                        ],
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
+            FieldDefinition::builder("meta", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("r", FieldType::Row)
+                        .fields(vec![
+                            FieldDefinition::builder("title", FieldType::Text).build(),
+                            FieldDefinition::builder("slug", FieldType::Text).build(),
+                        ])
+                        .build(),
+                ])
+                .build(),
         ];
         let def = def;
 

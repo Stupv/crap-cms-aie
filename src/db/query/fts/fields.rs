@@ -116,11 +116,7 @@ mod tests {
     use crate::core::field::*;
 
     fn text_field(name: &str) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Text,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Text).build()
     }
 
     fn simple_def(fields: Vec<FieldDefinition>) -> CollectionDefinition {
@@ -138,12 +134,7 @@ mod tests {
     }
 
     fn localized_text_field(name: &str) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Text,
-            localized: true,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Text).localized(true).build()
     }
 
     #[test]
@@ -151,7 +142,7 @@ mod tests {
         let mut def = simple_def(vec![
             text_field("title"),
             text_field("body"),
-            FieldDefinition { name: "count".to_string(), field_type: FieldType::Number, ..Default::default() },
+            FieldDefinition::builder("count", FieldType::Number).build(),
         ]);
         def.admin.list_searchable_fields = vec!["title".into(), "body".into()];
         assert_eq!(get_fts_fields(&def), vec!["title", "body"]);
@@ -161,31 +152,11 @@ mod tests {
     fn get_fts_fields_falls_back_to_text_types() {
         let def = simple_def(vec![
             text_field("title"),
-            FieldDefinition {
-                name: "body".to_string(),
-                field_type: FieldType::Textarea,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "count".to_string(),
-                field_type: FieldType::Number,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "email".to_string(),
-                field_type: FieldType::Email,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "content".to_string(),
-                field_type: FieldType::Richtext,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "snippet".to_string(),
-                field_type: FieldType::Code,
-                ..Default::default()
-            },
+            FieldDefinition::builder("body", FieldType::Textarea).build(),
+            FieldDefinition::builder("count", FieldType::Number).build(),
+            FieldDefinition::builder("email", FieldType::Email).build(),
+            FieldDefinition::builder("content", FieldType::Richtext).build(),
+            FieldDefinition::builder("snippet", FieldType::Code).build(),
         ]);
         let fields = get_fts_fields(&def);
         assert_eq!(fields, vec!["title", "body", "email", "content", "snippet"]);
@@ -193,11 +164,7 @@ mod tests {
 
     #[test]
     fn get_fts_fields_empty_for_no_text() {
-        let def = simple_def(vec![FieldDefinition {
-            name: "count".to_string(),
-            field_type: FieldType::Number,
-            ..Default::default()
-        }]);
+        let def = simple_def(vec![FieldDefinition::builder("count", FieldType::Number).build()]);
         assert!(get_fts_fields(&def).is_empty());
     }
 
@@ -205,18 +172,12 @@ mod tests {
     fn get_fts_fields_excludes_non_parent() {
         let def = simple_def(vec![
             text_field("title"),
-            FieldDefinition {
-                name: "items".to_string(),
-                field_type: FieldType::Array,
-                fields: vec![text_field("label")],
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "meta".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![text_field("description")],
-                ..Default::default()
-            },
+            FieldDefinition::builder("items", FieldType::Array)
+                .fields(vec![text_field("label")])
+                .build(),
+            FieldDefinition::builder("meta", FieldType::Group)
+                .fields(vec![text_field("description")])
+                .build(),
         ]);
         // Only "title" at parent level — Array and Group are not text-like
         assert_eq!(get_fts_fields(&def), vec!["title"]);
@@ -256,11 +217,7 @@ mod tests {
 
     #[test]
     fn get_fts_columns_empty_when_no_text_fields() {
-        let def = simple_def(vec![FieldDefinition {
-            name: "count".to_string(),
-            field_type: FieldType::Number,
-            ..Default::default()
-        }]);
+        let def = simple_def(vec![FieldDefinition::builder("count", FieldType::Number).build()]);
         let cols = get_fts_columns(&def, &locale_config_en_de());
         assert!(cols.is_empty());
     }

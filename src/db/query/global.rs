@@ -171,8 +171,8 @@ mod tests {
     fn global_def() -> GlobalDefinition {
         let mut def = GlobalDefinition::new("settings");
         def.fields = vec![
-            FieldDefinition { name: "site_name".to_string(), ..Default::default() },
-            FieldDefinition { name: "tagline".to_string(), ..Default::default() },
+            FieldDefinition::builder("site_name", FieldType::Text).build(),
+            FieldDefinition::builder("tagline", FieldType::Text).build(),
         ];
         def
     }
@@ -213,15 +213,12 @@ mod tests {
 
         let mut def = GlobalDefinition::new("site");
         def.fields = vec![
-            FieldDefinition { name: "site_name".to_string(), localized: true, ..Default::default() },
-            FieldDefinition {
-                name: "social".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![
-                    FieldDefinition { name: "github".to_string(), ..Default::default() },
-                ],
-                ..Default::default()
-            },
+            FieldDefinition::builder("site_name", FieldType::Text).localized(true).build(),
+            FieldDefinition::builder("social", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("github", FieldType::Text).build(),
+                ])
+                .build(),
         ];
         let def = def;
 
@@ -317,7 +314,7 @@ mod tests {
 
         let mut def = GlobalDefinition::new("prefs");
         def.fields = vec![
-            FieldDefinition { name: "newsletter".to_string(), field_type: FieldType::Checkbox, ..Default::default() },
+            FieldDefinition::builder("newsletter", FieldType::Checkbox).build(),
         ];
         let def = def;
 
@@ -344,15 +341,12 @@ mod tests {
 
         let mut def = GlobalDefinition::new("branding");
         def.fields = vec![
-            FieldDefinition {
-                name: "colors".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![
-                    FieldDefinition { name: "primary".to_string(), ..Default::default() },
-                    FieldDefinition { name: "secondary".to_string(), ..Default::default() },
-                ],
-                ..Default::default()
-            },
+            FieldDefinition::builder("colors", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("primary", FieldType::Text).build(),
+                    FieldDefinition::builder("secondary", FieldType::Text).build(),
+                ])
+                .build(),
         ];
         let def = def;
 
@@ -371,7 +365,7 @@ mod tests {
     fn get_global_column_names_with_drafts() {
         let mut def = GlobalDefinition::new("settings");
         def.fields = vec![
-            FieldDefinition { name: "site_name".to_string(), ..Default::default() },
+            FieldDefinition::builder("site_name", FieldType::Text).build(),
         ];
         def.versions = Some(VersionsConfig::new(true, 10));
         let def = def;
@@ -401,22 +395,16 @@ mod tests {
 
         let mut def = GlobalDefinition::new("branding");
         def.fields = vec![
-            FieldDefinition {
-                name: "colors".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![
-                    FieldDefinition {
-                        name: "r".to_string(),
-                        field_type: FieldType::Row,
-                        fields: vec![
-                            FieldDefinition { name: "primary".to_string(), ..Default::default() },
-                            FieldDefinition { name: "secondary".to_string(), ..Default::default() },
-                        ],
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
+            FieldDefinition::builder("colors", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("r", FieldType::Row)
+                        .fields(vec![
+                            FieldDefinition::builder("primary", FieldType::Text).build(),
+                            FieldDefinition::builder("secondary", FieldType::Text).build(),
+                        ])
+                        .build(),
+                ])
+                .build(),
         ];
         let def = def;
 
@@ -448,26 +436,20 @@ mod tests {
 
         let mut def = GlobalDefinition::new("settings");
         def.fields = vec![
-            FieldDefinition {
-                name: "config".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![
-                    FieldDefinition {
-                        name: "t".to_string(),
-                        field_type: FieldType::Tabs,
-                        tabs: vec![
+            FieldDefinition::builder("config", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("t", FieldType::Tabs)
+                        .tabs(vec![
                             FieldTab::new("General", vec![
-                                FieldDefinition { name: "theme".to_string(), ..Default::default() },
+                                FieldDefinition::builder("theme", FieldType::Text).build(),
                             ]),
                             FieldTab::new("Perf", vec![
-                                FieldDefinition { name: "cache_ttl".to_string(), ..Default::default() },
+                                FieldDefinition::builder("cache_ttl", FieldType::Text).build(),
                             ]),
-                        ],
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
+                        ])
+                        .build(),
+                ])
+                .build(),
         ];
         let def = def;
 
@@ -486,21 +468,15 @@ mod tests {
         use crate::core::field::FieldTab;
         let mut def = GlobalDefinition::new("settings");
         def.fields = vec![
-            FieldDefinition {
-                name: "config".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![
-                    FieldDefinition {
-                        name: "t".to_string(),
-                        field_type: FieldType::Tabs,
-                        tabs: vec![FieldTab::new("Tab", vec![
-                            FieldDefinition { name: "value".to_string(), ..Default::default() },
-                        ])],
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
+            FieldDefinition::builder("config", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("t", FieldType::Tabs)
+                        .tabs(vec![FieldTab::new("Tab", vec![
+                            FieldDefinition::builder("value", FieldType::Text).build(),
+                        ])])
+                        .build(),
+                ])
+                .build(),
         ];
         let def = def;
 

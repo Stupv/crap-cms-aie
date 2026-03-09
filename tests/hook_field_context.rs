@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use crap_cms::config::CrapConfig;
 use crap_cms::core::Document;
 use crap_cms::core::field::FieldDefinition;
-use crap_cms::core::collection::CollectionHooks;
+use crap_cms::core::collection::Hooks;
 use crap_cms::db::{migrate, pool, query};
 use crap_cms::hooks;
 use crap_cms::hooks::lifecycle::{HookRunner, HookContext, HookEvent, FieldHookEvent};
@@ -180,7 +180,7 @@ fn before_broadcast_transforms_data() {
     let (_tmp, _pool, _registry, runner) = setup();
 
     // Build hooks with a before_broadcast hook
-    let hooks = CollectionHooks {
+    let hooks = Hooks {
         before_broadcast: vec!["hooks.live.transform_broadcast".to_string()],
         ..Default::default()
     };
@@ -203,7 +203,7 @@ fn before_broadcast_transforms_data() {
 fn before_broadcast_suppresses_event() {
     let (_tmp, _pool, _registry, runner) = setup();
 
-    let hooks = CollectionHooks {
+    let hooks = Hooks {
         before_broadcast: vec!["hooks.live.suppress_broadcast".to_string()],
         ..Default::default()
     };
@@ -734,7 +734,7 @@ fn apply_after_read_many_empty_hooks_passthrough() {
     let doc = create_article(&pool, &registry, &HashMap::from([
         ("title".to_string(), "Test".to_string()),
     ]));
-    let hooks = CollectionHooks::default();
+    let hooks = Hooks::default();
     let fields: Vec<FieldDefinition> = Vec::new();
     let docs = vec![doc.clone()];
     let result = runner.apply_after_read_many(&hooks, &fields, "articles", "find", docs);
@@ -768,7 +768,7 @@ fn registered_before_broadcast_suppresses_event() {
         .build()
         .expect("HookRunner::new");
 
-    let hooks = CollectionHooks::default();
+    let hooks = Hooks::default();
     let mut data = HashMap::new();
     data.insert("title".to_string(), serde_json::json!("Test"));
     let result = runner.run_before_broadcast(&hooks, "articles", "create", data)
@@ -801,7 +801,7 @@ fn registered_before_broadcast_transforms_data() {
         .build()
         .expect("HookRunner::new");
 
-    let hooks = CollectionHooks::default();
+    let hooks = Hooks::default();
     let mut data = HashMap::new();
     data.insert("title".to_string(), serde_json::json!("Test"));
     let result = runner.run_before_broadcast(&hooks, "articles", "create", data)

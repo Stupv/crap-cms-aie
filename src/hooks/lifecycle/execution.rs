@@ -5,7 +5,7 @@ use mlua::{Lua, Value};
 use std::collections::{HashMap, HashSet};
 
 use crate::core::document::DocumentBuilder;
-use crate::core::collection::CollectionHooks;
+use crate::core::collection::Hooks;
 use crate::core::Document;
 use crate::core::field::{FieldDefinition, FieldHooks};
 
@@ -18,7 +18,7 @@ use super::validation::evaluate_condition_table;
 /// On error: logs warning, returns original doc unmodified.
 pub(crate) fn apply_after_read_inner(
     lua: &Lua,
-    hooks: &CollectionHooks,
+    hooks: &Hooks,
     fields: &[FieldDefinition],
     collection: &str,
     operation: &str,
@@ -101,7 +101,7 @@ pub(crate) fn apply_after_read_inner(
 /// TxContext must already be set in app_data if CRUD access is needed.
 pub(crate) fn run_hooks_inner(
     lua: &Lua,
-    hooks: &CollectionHooks,
+    hooks: &Hooks,
     event: HookEvent,
     mut context: HookContext,
 ) -> Result<HookContext> {
@@ -119,7 +119,7 @@ pub(crate) fn run_hooks_inner(
 }
 
 /// Get the list of hook references for a given event.
-pub(crate) fn get_hook_refs<'a>(hooks: &'a CollectionHooks, event: &HookEvent) -> &'a [String] {
+pub(crate) fn get_hook_refs<'a>(hooks: &'a Hooks, event: &HookEvent) -> &'a [String] {
     match event {
         HookEvent::BeforeValidate => &hooks.before_validate,
         HookEvent::BeforeChange => &hooks.before_change,
@@ -483,7 +483,7 @@ pub(crate) fn call_hook_ref(lua: &Lua, hook_ref: &str, context: HookContext) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::field::FieldHooks;
+    use crate::core::field::{FieldHooks, FieldType};
     use serde_json::json;
     use std::collections::HashMap;
 
@@ -491,11 +491,8 @@ mod tests {
     fn apply_after_read_no_hooks_returns_unchanged() {
         let lua = mlua::Lua::new();
         lua.load("_crap_event_hooks = {}").exec().unwrap();
-        let hooks = CollectionHooks::default();
-        let fields = vec![FieldDefinition {
-            name: "title".to_string(),
-            ..Default::default()
-        }];
+        let hooks = Hooks::default();
+        let fields = vec![FieldDefinition::builder("title", FieldType::Text).build()];
         let mut doc = crate::core::Document::new("doc1".to_string());
         doc.fields.insert("title".to_string(), json!("Hello"));
         doc.created_at = Some("2024-01-01".to_string());
@@ -533,7 +530,7 @@ mod tests {
 
     #[test]
     fn get_hook_refs_maps_events() {
-        let hooks = CollectionHooks {
+        let hooks = Hooks {
             before_validate: vec!["hooks.validate".to_string()],
             before_change: vec!["hooks.change".to_string()],
             after_change: vec!["hooks.after".to_string()],
@@ -609,14 +606,12 @@ mod tests {
             end
         "#).exec().unwrap();
 
-        let fields = vec![FieldDefinition {
-            name: "title".to_string(),
-            hooks: FieldHooks {
+        let fields = vec![FieldDefinition::builder("title", FieldType::Text)
+            .hooks(FieldHooks {
                 before_validate: vec!["hooks.noop".to_string()],
                 ..Default::default()
-            },
-            ..Default::default()
-        }];
+            })
+            .build()];
 
         let mut data: HashMap<String, serde_json::Value> = HashMap::new();
         data.insert("content".to_string(), json!("updated"));
@@ -643,14 +638,12 @@ mod tests {
             end
         "#).exec().unwrap();
 
-        let fields = vec![FieldDefinition {
-            name: "slug".to_string(),
-            hooks: FieldHooks {
+        let fields = vec![FieldDefinition::builder("slug", FieldType::Text)
+            .hooks(FieldHooks {
                 before_validate: vec!["hooks.default_val".to_string()],
                 ..Default::default()
-            },
-            ..Default::default()
-        }];
+            })
+            .build()];
 
         let mut data: HashMap<String, serde_json::Value> = HashMap::new();
         data.insert("title".to_string(), json!("Hello"));

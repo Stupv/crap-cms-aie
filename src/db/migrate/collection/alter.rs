@@ -185,7 +185,7 @@ mod tests {
 
         // Now make it an auth collection with verify_email
         let mut def2 = simple_collection("users", vec![text_field("email")]);
-        def2.auth = Some(CollectionAuth {
+        def2.auth = Some(Auth {
             enabled: true,
             verify_email: true,
             ..Default::default()
@@ -261,12 +261,9 @@ mod tests {
 
         let def2 = simple_collection("posts", vec![
             text_field("title"),
-            FieldDefinition {
-                name: "seo".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![text_field("meta_title"), text_field("meta_desc")],
-                ..Default::default()
-            },
+            FieldDefinition::builder("seo", FieldType::Group)
+                .fields(vec![text_field("meta_title"), text_field("meta_desc")])
+                .build(),
         ]);
         alter_collection_table(&conn, "posts", &def2, &no_locale()).unwrap();
 
@@ -284,13 +281,10 @@ mod tests {
 
         let def2 = simple_collection("posts", vec![
             text_field("title"),
-            FieldDefinition {
-                name: "seo".to_string(),
-                field_type: FieldType::Group,
-                localized: true,
-                fields: vec![text_field("meta_title")],
-                ..Default::default()
-            },
+            FieldDefinition::builder("seo", FieldType::Group)
+                .localized(true)
+                .fields(vec![text_field("meta_title")])
+                .build(),
         ]);
         alter_collection_table(&conn, "posts", &def2, &locale_en_de()).unwrap();
 
@@ -308,12 +302,9 @@ mod tests {
 
         let def2 = simple_collection("posts", vec![
             text_field("title"),
-            FieldDefinition {
-                name: "names".to_string(),
-                field_type: FieldType::Row,
-                fields: vec![text_field("first"), text_field("last")],
-                ..Default::default()
-            },
+            FieldDefinition::builder("names", FieldType::Row)
+                .fields(vec![text_field("first"), text_field("last")])
+                .build(),
         ]);
         alter_collection_table(&conn, "posts", &def2, &no_locale()).unwrap();
 
@@ -331,12 +322,9 @@ mod tests {
 
         let def2 = simple_collection("posts", vec![
             text_field("title"),
-            FieldDefinition {
-                name: "extra".to_string(),
-                field_type: FieldType::Collapsible,
-                fields: vec![text_field("notes")],
-                ..Default::default()
-            },
+            FieldDefinition::builder("extra", FieldType::Collapsible)
+                .fields(vec![text_field("notes")])
+                .build(),
         ]);
         alter_collection_table(&conn, "posts", &def2, &no_locale()).unwrap();
 
@@ -353,14 +341,11 @@ mod tests {
 
         let def2 = simple_collection("posts", vec![
             text_field("title"),
-            FieldDefinition {
-                name: "tabs".to_string(),
-                field_type: FieldType::Tabs,
-                tabs: vec![
+            FieldDefinition::builder("tabs", FieldType::Tabs)
+                .tabs(vec![
                     FieldTab::new("T1", vec![text_field("body")]),
-                ],
-                ..Default::default()
-            },
+                ])
+                .build(),
         ]);
         alter_collection_table(&conn, "posts", &def2, &no_locale()).unwrap();
 
@@ -377,21 +362,15 @@ mod tests {
 
         let def2 = simple_collection("posts", vec![
             text_field("title"),
-            FieldDefinition {
-                name: "tabs".to_string(),
-                field_type: FieldType::Tabs,
-                tabs: vec![
+            FieldDefinition::builder("tabs", FieldType::Tabs)
+                .tabs(vec![
                     FieldTab::new("SEO", vec![
-                        FieldDefinition {
-                            name: "seo".to_string(),
-                            field_type: FieldType::Group,
-                            fields: vec![text_field("og_title"), text_field("og_desc")],
-                            ..Default::default()
-                        },
+                        FieldDefinition::builder("seo", FieldType::Group)
+                            .fields(vec![text_field("og_title"), text_field("og_desc")])
+                            .build(),
                     ]),
-                ],
-                ..Default::default()
-            },
+                ])
+                .build(),
         ]);
         alter_collection_table(&conn, "posts", &def2, &no_locale()).unwrap();
 

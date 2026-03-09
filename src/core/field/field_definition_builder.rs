@@ -1,6 +1,6 @@
-//! Builder for [`FieldDefinition`](crate::core::field::FieldDefinition).
+//! Builder for [`FieldDefinition`](super::FieldDefinition).
 
-use crate::core::field::{
+use super::{
     BlockDefinition, FieldAccess, FieldAdmin, FieldDefinition, FieldHooks, FieldTab, FieldType,
     JoinConfig, McpFieldConfig, RelationshipConfig, SelectOption,
 };
@@ -205,8 +205,8 @@ mod tests {
         let fd = FieldDefinitionBuilder::new("tags", FieldType::Select)
             .has_many(true)
             .options(vec![
-                SelectOption::new(crate::core::field::LocalizedString::Plain("A".into()), "a"),
-                SelectOption::new(crate::core::field::LocalizedString::Plain("B".into()), "b"),
+                SelectOption::new(super::super::LocalizedString::Plain("A".into()), "a"),
+                SelectOption::new(super::super::LocalizedString::Plain("B".into()), "b"),
             ])
             .build();
         assert!(fd.has_many);

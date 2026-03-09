@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 
-use crate::core::collection::CollectionHooks;
+use crate::core::collection::Hooks;
 use crate::core::field::FieldDefinition;
 use crate::core::validate::{FieldError, ValidationError};
 use crate::core::Document;
@@ -21,7 +21,7 @@ impl HookRunner {
     /// No CRUD access — uses `run_hooks` (no connection).
     pub fn fire_before_read(
         &self,
-        hooks: &CollectionHooks,
+        hooks: &Hooks,
         collection: &str,
         operation: &str,
         data: HashMap<String, serde_json::Value>,
@@ -38,7 +38,7 @@ impl HookRunner {
     /// On error: logs warning, returns original doc unmodified.
     pub fn apply_after_read(
         &self,
-        hooks: &CollectionHooks,
+        hooks: &Hooks,
         fields: &[FieldDefinition],
         collection: &str,
         operation: &str,
@@ -58,7 +58,7 @@ impl HookRunner {
     /// Acquires a single VM for the entire batch instead of one per document.
     pub fn apply_after_read_many(
         &self,
-        hooks: &CollectionHooks,
+        hooks: &Hooks,
         fields: &[FieldDefinition],
         collection: &str,
         operation: &str,
@@ -97,7 +97,7 @@ impl HookRunner {
     #[allow(clippy::too_many_arguments)]
     pub fn run_before_write(
         &self,
-        hooks: &CollectionHooks,
+        hooks: &Hooks,
         fields: &[FieldDefinition],
         mut ctx: HookContext,
         conn: &rusqlite::Connection,
@@ -141,7 +141,7 @@ impl HookRunner {
     #[allow(clippy::too_many_arguments)]
     pub fn run_after_write(
         &self,
-        hooks: &CollectionHooks,
+        hooks: &Hooks,
         fields: &[FieldDefinition],
         event: HookEvent,
         ctx: HookContext,

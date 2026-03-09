@@ -294,14 +294,11 @@ mod tests {
     fn auth_def() -> CollectionDefinition {
         let mut def = CollectionDefinition::new("users");
         def.fields = vec![
-            FieldDefinition {
-                name: "email".to_string(),
-                field_type: FieldType::Email,
-                required: true,
-                unique: true,
-                ..Default::default()
-            },
-            FieldDefinition { name: "name".to_string(), ..Default::default() },
+            FieldDefinition::builder("email", FieldType::Email)
+                .required(true)
+                .unique(true)
+                .build(),
+            FieldDefinition::builder("name", FieldType::Text).build(),
         ];
         def
     }

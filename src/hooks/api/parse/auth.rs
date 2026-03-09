@@ -2,14 +2,14 @@
 
 use mlua::{Table, Value};
 
-use crate::core::collection::{AuthStrategy, CollectionAuth};
+use crate::core::collection::{AuthStrategy, Auth};
 
 use super::helpers::*;
 
-pub(super) fn parse_collection_auth(config: &Table) -> Option<CollectionAuth> {
+pub(super) fn parse_collection_auth(config: &Table) -> Option<Auth> {
     let val: Value = config.get("auth").ok()?;
     match val {
-        Value::Boolean(true) => Some(CollectionAuth::new(true)),
+        Value::Boolean(true) => Some(Auth::new(true)),
         Value::Boolean(false) | Value::Nil => None,
         Value::Table(tbl) => {
             let token_expiry = tbl.get::<u64>("token_expiry").unwrap_or(7200);
@@ -17,7 +17,7 @@ pub(super) fn parse_collection_auth(config: &Table) -> Option<CollectionAuth> {
             let verify_email = get_bool(&tbl, "verify_email", false);
             let forgot_password = get_bool(&tbl, "forgot_password", true);
             let strategies = parse_auth_strategies(&tbl);
-            let mut auth = CollectionAuth::new(true);
+            let mut auth = Auth::new(true);
             auth.token_expiry = token_expiry;
             auth.strategies = strategies;
             auth.disable_local = disable_local;

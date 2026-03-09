@@ -144,20 +144,11 @@ mod tests {
     }
 
     fn text_field(name: &str) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Text,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Text).build()
     }
 
     fn localized_field(name: &str) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Text,
-            localized: true,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Text).localized(true).build()
     }
 
     // ── global table ──────────────────────────────────────────────────────
@@ -239,12 +230,9 @@ mod tests {
         let pool = in_memory_pool();
         let conn = pool.get().unwrap();
         let def = simple_global("settings", vec![
-            FieldDefinition {
-                name: "seo".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![text_field("title"), text_field("description")],
-                ..Default::default()
-            },
+            FieldDefinition::builder("seo", FieldType::Group)
+                .fields(vec![text_field("title"), text_field("description")])
+                .build(),
         ]);
         sync_global_table(&conn, "settings", &def, &no_locale()).unwrap();
 
@@ -263,12 +251,9 @@ mod tests {
         // Add a group field to existing table
         let def2 = simple_global("settings", vec![
             text_field("name"),
-            FieldDefinition {
-                name: "seo".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![text_field("title")],
-                ..Default::default()
-            },
+            FieldDefinition::builder("seo", FieldType::Group)
+                .fields(vec![text_field("title")])
+                .build(),
         ]);
         sync_global_table(&conn, "settings", &def2, &no_locale()).unwrap();
 
@@ -283,13 +268,10 @@ mod tests {
         let pool = in_memory_pool();
         let conn = pool.get().unwrap();
         let def = simple_global("settings", vec![
-            FieldDefinition {
-                name: "seo".to_string(),
-                field_type: FieldType::Group,
-                localized: true,
-                fields: vec![text_field("title")],
-                ..Default::default()
-            },
+            FieldDefinition::builder("seo", FieldType::Group)
+                .localized(true)
+                .fields(vec![text_field("title")])
+                .build(),
         ]);
         sync_global_table(&conn, "settings", &def, &locale_en_de()).unwrap();
 
@@ -307,13 +289,10 @@ mod tests {
 
         let def2 = simple_global("settings", vec![
             text_field("name"),
-            FieldDefinition {
-                name: "seo".to_string(),
-                field_type: FieldType::Group,
-                localized: true,
-                fields: vec![text_field("title")],
-                ..Default::default()
-            },
+            FieldDefinition::builder("seo", FieldType::Group)
+                .localized(true)
+                .fields(vec![text_field("title")])
+                .build(),
         ]);
         sync_global_table(&conn, "settings", &def2, &locale_en_de()).unwrap();
 
@@ -365,12 +344,9 @@ mod tests {
         let pool = in_memory_pool();
         let conn = pool.get().unwrap();
         let def = simple_global("settings", vec![
-            FieldDefinition {
-                name: "items".to_string(),
-                field_type: FieldType::Array,
-                fields: vec![text_field("label")],
-                ..Default::default()
-            },
+            FieldDefinition::builder("items", FieldType::Array)
+                .fields(vec![text_field("label")])
+                .build(),
         ]);
         sync_global_table(&conn, "settings", &def, &no_locale()).unwrap();
 
@@ -384,12 +360,9 @@ mod tests {
         let pool = in_memory_pool();
         let conn = pool.get().unwrap();
         let def = simple_global("settings", vec![
-            FieldDefinition {
-                name: "extra".to_string(),
-                field_type: FieldType::Collapsible,
-                fields: vec![text_field("notes"), text_field("footer")],
-                ..Default::default()
-            },
+            FieldDefinition::builder("extra", FieldType::Collapsible)
+                .fields(vec![text_field("notes"), text_field("footer")])
+                .build(),
         ]);
         sync_global_table(&conn, "settings", &def, &no_locale()).unwrap();
 
@@ -407,15 +380,12 @@ mod tests {
         let pool = in_memory_pool();
         let conn = pool.get().unwrap();
         let def = simple_global("settings", vec![
-            FieldDefinition {
-                name: "layout".to_string(),
-                field_type: FieldType::Tabs,
-                tabs: vec![
+            FieldDefinition::builder("layout", FieldType::Tabs)
+                .tabs(vec![
                     FieldTab::new("General", vec![text_field("site_name")]),
                     FieldTab::new("Footer", vec![text_field("copyright")]),
-                ],
-                ..Default::default()
-            },
+                ])
+                .build(),
         ]);
         sync_global_table(&conn, "settings", &def, &no_locale()).unwrap();
 
@@ -433,21 +403,15 @@ mod tests {
         let pool = in_memory_pool();
         let conn = pool.get().unwrap();
         let def = simple_global("settings", vec![
-            FieldDefinition {
-                name: "layout".to_string(),
-                field_type: FieldType::Tabs,
-                tabs: vec![
+            FieldDefinition::builder("layout", FieldType::Tabs)
+                .tabs(vec![
                     FieldTab::new("Social", vec![
-                        FieldDefinition {
-                            name: "social".to_string(),
-                            field_type: FieldType::Group,
-                            fields: vec![text_field("github"), text_field("twitter")],
-                            ..Default::default()
-                        },
+                        FieldDefinition::builder("social", FieldType::Group)
+                            .fields(vec![text_field("github"), text_field("twitter")])
+                            .build(),
                     ]),
-                ],
-                ..Default::default()
-            },
+                ])
+                .build(),
         ]);
         sync_global_table(&conn, "settings", &def, &no_locale()).unwrap();
 
@@ -464,19 +428,13 @@ mod tests {
         let pool = in_memory_pool();
         let conn = pool.get().unwrap();
         let def = simple_global("settings", vec![
-            FieldDefinition {
-                name: "extra".to_string(),
-                field_type: FieldType::Collapsible,
-                fields: vec![
-                    FieldDefinition {
-                        name: "seo".to_string(),
-                        field_type: FieldType::Group,
-                        fields: vec![text_field("title"), text_field("desc")],
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
+            FieldDefinition::builder("extra", FieldType::Collapsible)
+                .fields(vec![
+                    FieldDefinition::builder("seo", FieldType::Group)
+                        .fields(vec![text_field("title"), text_field("desc")])
+                        .build(),
+                ])
+                .build(),
         ]);
         sync_global_table(&conn, "settings", &def, &no_locale()).unwrap();
 
@@ -497,21 +455,15 @@ mod tests {
 
         let def2 = simple_global("settings", vec![
             text_field("name"),
-            FieldDefinition {
-                name: "layout".to_string(),
-                field_type: FieldType::Tabs,
-                tabs: vec![
+            FieldDefinition::builder("layout", FieldType::Tabs)
+                .tabs(vec![
                     FieldTab::new("Social", vec![
-                        FieldDefinition {
-                            name: "social".to_string(),
-                            field_type: FieldType::Group,
-                            fields: vec![text_field("github")],
-                            ..Default::default()
-                        },
+                        FieldDefinition::builder("social", FieldType::Group)
+                            .fields(vec![text_field("github")])
+                            .build(),
                     ]),
-                ],
-                ..Default::default()
-            },
+                ])
+                .build(),
         ]);
         sync_global_table(&conn, "settings", &def2, &no_locale()).unwrap();
 
@@ -527,29 +479,20 @@ mod tests {
         let pool = in_memory_pool();
         let conn = pool.get().unwrap();
         let def = simple_global("settings", vec![
-            FieldDefinition {
-                name: "layout".to_string(),
-                field_type: FieldType::Tabs,
-                tabs: vec![
+            FieldDefinition::builder("layout", FieldType::Tabs)
+                .tabs(vec![
                     FieldTab::new("Advanced", vec![
-                        FieldDefinition {
-                            name: "advanced".to_string(),
-                            field_type: FieldType::Collapsible,
-                            fields: vec![
-                                FieldDefinition {
-                                    name: "og".to_string(),
-                                    field_type: FieldType::Group,
-                                    fields: vec![text_field("image")],
-                                    ..Default::default()
-                                },
+                        FieldDefinition::builder("advanced", FieldType::Collapsible)
+                            .fields(vec![
+                                FieldDefinition::builder("og", FieldType::Group)
+                                    .fields(vec![text_field("image")])
+                                    .build(),
                                 text_field("canonical"),
-                            ],
-                            ..Default::default()
-                        },
+                            ])
+                            .build(),
                     ]),
-                ],
-                ..Default::default()
-            },
+                ])
+                .build(),
         ]);
         sync_global_table(&conn, "settings", &def, &no_locale()).unwrap();
 
@@ -565,19 +508,13 @@ mod tests {
         let pool = in_memory_pool();
         let conn = pool.get().unwrap();
         let def = simple_global("settings", vec![
-            FieldDefinition {
-                name: "branding".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![
-                    FieldDefinition {
-                        name: "row1".to_string(),
-                        field_type: FieldType::Row,
-                        fields: vec![text_field("logo"), text_field("favicon")],
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
+            FieldDefinition::builder("branding", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("row1", FieldType::Row)
+                        .fields(vec![text_field("logo"), text_field("favicon")])
+                        .build(),
+                ])
+                .build(),
         ]);
         sync_global_table(&conn, "settings", &def, &no_locale()).unwrap();
         let cols = get_table_columns(&conn, "_global_settings").unwrap();
@@ -591,22 +528,16 @@ mod tests {
         let pool = in_memory_pool();
         let conn = pool.get().unwrap();
         let def = simple_global("settings", vec![
-            FieldDefinition {
-                name: "config".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![
-                    FieldDefinition {
-                        name: "layout".to_string(),
-                        field_type: FieldType::Tabs,
-                        tabs: vec![
+            FieldDefinition::builder("config", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("layout", FieldType::Tabs)
+                        .tabs(vec![
                             FieldTab::new("General", vec![text_field("site_name")]),
                             FieldTab::new("Social", vec![text_field("twitter")]),
-                        ],
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
+                        ])
+                        .build(),
+                ])
+                .build(),
         ]);
         sync_global_table(&conn, "settings", &def, &no_locale()).unwrap();
         let cols = get_table_columns(&conn, "_global_settings").unwrap();
@@ -620,26 +551,17 @@ mod tests {
         let pool = in_memory_pool();
         let conn = pool.get().unwrap();
         let def = simple_global("settings", vec![
-            FieldDefinition {
-                name: "a".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![
-                    FieldDefinition {
-                        name: "t".to_string(),
-                        field_type: FieldType::Tabs,
-                        tabs: vec![FieldTab::new("Tab", vec![
-                            FieldDefinition {
-                                name: "b".to_string(),
-                                field_type: FieldType::Group,
-                                fields: vec![text_field("leaf")],
-                                ..Default::default()
-                            },
-                        ])],
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
+            FieldDefinition::builder("a", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("t", FieldType::Tabs)
+                        .tabs(vec![FieldTab::new("Tab", vec![
+                            FieldDefinition::builder("b", FieldType::Group)
+                                .fields(vec![text_field("leaf")])
+                                .build(),
+                        ])])
+                        .build(),
+                ])
+                .build(),
         ]);
         sync_global_table(&conn, "settings", &def, &no_locale()).unwrap();
         let cols = get_table_columns(&conn, "_global_settings").unwrap();

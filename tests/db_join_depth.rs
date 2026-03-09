@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crap_cms::config::{CrapConfig, LocaleConfig};
-use crap_cms::core::collection::{CollectionDefinition, CollectionLabels, GlobalDefinition};
+use crap_cms::core::collection::{CollectionDefinition, Labels, GlobalDefinition};
 use crap_cms::core::field::{
     BlockDefinition, FieldDefinition, FieldType, LocalizedString, RelationshipConfig,
 };
@@ -10,23 +10,16 @@ use crap_cms::db::{migrate, pool, query};
 
 fn make_posts_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("posts");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Post".to_string())),
         plural: Some(LocalizedString::Plain("Posts".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "title".to_string(),
-            required: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "status".to_string(),
-            field_type: FieldType::Select,
-            default_value: Some(serde_json::json!("draft")),
-            ..Default::default()
-        },
+        FieldDefinition::builder("title", FieldType::Text).required(true).build(),
+        FieldDefinition::builder("status", FieldType::Select)
+            .default_value(serde_json::json!("draft"))
+            .build(),
     ];
     def
 }
@@ -40,61 +33,42 @@ fn create_test_pool() -> (tempfile::TempDir, crap_cms::db::DbPool) {
 }
 
 fn make_field(name: &str, field_type: FieldType) -> FieldDefinition {
-    FieldDefinition {
-        name: name.to_string(),
-        field_type,
-        ..Default::default()
-    }
+    FieldDefinition::builder(name, field_type).build()
 }
 
 fn make_global_with_join_fields() -> GlobalDefinition {
     let mut def = GlobalDefinition::new("homepage");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Homepage".to_string())),
         plural: None,
     };
     def.fields = vec![
-        FieldDefinition {
-            name: "title".to_string(),
-            ..Default::default()
-        },
+        FieldDefinition::builder("title", FieldType::Text).build(),
         // Group field — expanded into sub-columns (same as collections)
-        FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![
+        FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![
                 make_field("meta_title", FieldType::Text),
                 make_field("meta_description", FieldType::Textarea),
-            ],
-            ..Default::default()
-        },
+            ])
+            .build(),
         // Array field — uses join table
-        FieldDefinition {
-            name: "links".to_string(),
-            field_type: FieldType::Array,
-            fields: vec![
+        FieldDefinition::builder("links", FieldType::Array)
+            .fields(vec![
                 make_field("url", FieldType::Text),
                 make_field("label", FieldType::Text),
-            ],
-            ..Default::default()
-        },
+            ])
+            .build(),
         // Blocks field — uses join table
-        FieldDefinition {
-            name: "content".to_string(),
-            field_type: FieldType::Blocks,
-            blocks: vec![
+        FieldDefinition::builder("content", FieldType::Blocks)
+            .blocks(vec![
                 BlockDefinition::new("paragraph", vec![make_field("text", FieldType::Textarea)]),
                 BlockDefinition::new("image", vec![make_field("url", FieldType::Text)]),
-            ],
-            ..Default::default()
-        },
+            ])
+            .build(),
         // Has-many relationship — uses junction table
-        FieldDefinition {
-            name: "featured_posts".to_string(),
-            field_type: FieldType::Relationship,
-            relationship: Some(RelationshipConfig::new("posts", true)),
-            ..Default::default()
-        },
+        FieldDefinition::builder("featured_posts", FieldType::Relationship)
+            .relationship(RelationshipConfig::new("posts", true))
+            .build(),
     ];
     def
 }
@@ -513,12 +487,9 @@ fn global_alter_table_adds_join_tables() {
     let mut def_v2 = GlobalDefinition::new("growing");
     def_v2.fields = vec![
         make_field("title", FieldType::Text),
-        FieldDefinition {
-            name: "items".to_string(),
-            field_type: FieldType::Array,
-            fields: vec![make_field("label", FieldType::Text)],
-            ..Default::default()
-        },
+        FieldDefinition::builder("items", FieldType::Array)
+            .fields(vec![make_field("label", FieldType::Text)])
+            .build(),
     ];
     {
         let mut reg = registry.write().unwrap();
@@ -575,14 +546,11 @@ fn hydrate_document_skips_group_reconstruction_for_globals() {
 
     let fields = vec![
         make_field("title", FieldType::Text),
-        FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![
+        FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![
                 make_field("meta_title", FieldType::Text),
-            ],
-            ..Default::default()
-        },
+            ])
+            .build(),
     ];
 
     // Simulate what get_global does: read the row, then hydrate
@@ -625,15 +593,12 @@ fn hydrate_document_reconstructs_group_for_collections() {
 
     let fields = vec![
         make_field("title", FieldType::Text),
-        FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![
+        FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![
                 make_field("meta_title", FieldType::Text),
                 make_field("meta_description", FieldType::Textarea),
-            ],
-            ..Default::default()
-        },
+            ])
+            .build(),
     ];
 
     let mut doc = conn.query_row(
@@ -710,15 +675,14 @@ fn collection_alter_adds_group_sub_columns() {
     let doc = query::create(&conn, "articles", &def, &data, None).expect("Create");
 
     // Second sync: add a group field
-    def.fields.push(FieldDefinition {
-        name: "seo".to_string(),
-        field_type: FieldType::Group,
-        fields: vec![
-            make_field("meta_title", FieldType::Text),
-            make_field("meta_description", FieldType::Textarea),
-        ],
-        ..Default::default()
-    });
+    def.fields.push(
+        FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![
+                make_field("meta_title", FieldType::Text),
+                make_field("meta_description", FieldType::Textarea),
+            ])
+            .build()
+    );
     {
         let mut reg = registry.write().unwrap();
         reg.register_collection(def.clone());
@@ -777,15 +741,12 @@ fn global_alter_adds_group_sub_columns() {
     let mut def_v2 = GlobalDefinition::new("settings");
     def_v2.fields = vec![
         make_field("site_name", FieldType::Text),
-        FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![
+        FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![
                 make_field("meta_title", FieldType::Text),
                 make_field("og_image", FieldType::Text),
-            ],
-            ..Default::default()
-        },
+            ])
+            .build(),
     ];
     {
         let mut reg = registry.write().unwrap();
@@ -836,12 +797,9 @@ fn collection_alter_adds_localized_group_columns() {
     def.timestamps = true;
     def.fields = vec![
         make_field("title", FieldType::Text),
-        FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![make_field("meta_title", FieldType::Text)],
-            ..Default::default()
-        },
+        FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![make_field("meta_title", FieldType::Text)])
+            .build(),
     ];
     {
         let mut reg = registry.write().unwrap();
@@ -859,11 +817,9 @@ fn collection_alter_adds_localized_group_columns() {
     assert!(!columns_v1.contains("seo__meta_title__en"), "Locale columns should not exist yet");
 
     // Second sync: add a new localized sub-field to the group
-    def.fields[1].fields.push(FieldDefinition {
-        name: "og_description".to_string(),
-        localized: true,
-        ..Default::default()
-    });
+    def.fields[1].fields.push(
+        FieldDefinition::builder("og_description", FieldType::Text).localized(true).build()
+    );
     {
         let mut reg = registry.write().unwrap();
         reg.register_collection(def.clone());

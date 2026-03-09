@@ -18,11 +18,7 @@ fn create_test_pool() -> (tempfile::TempDir, crap_cms::db::DbPool) {
 }
 
 fn make_field(name: &str, field_type: FieldType) -> FieldDefinition {
-    FieldDefinition {
-        name: name.to_string(),
-        field_type,
-        ..Default::default()
-    }
+    FieldDefinition::builder(name, field_type).build()
 }
 
 // ── 1C. Join Tables ──────────────────────────────────────────────────────────
@@ -33,32 +29,23 @@ fn make_articles_with_join_tables() -> CollectionDefinition {
     def.fields = vec![
         make_field("title", FieldType::Text),
         // has-many relationship
-        FieldDefinition {
-            name: "tags".to_string(),
-            field_type: FieldType::Relationship,
-            relationship: Some(RelationshipConfig::new("tags", true)),
-            ..make_field("tags", FieldType::Relationship)
-        },
+        FieldDefinition::builder("tags", FieldType::Relationship)
+            .relationship(RelationshipConfig::new("tags", true))
+            .build(),
         // array field with sub-fields
-        FieldDefinition {
-            name: "links".to_string(),
-            field_type: FieldType::Array,
-            fields: vec![
+        FieldDefinition::builder("links", FieldType::Array)
+            .fields(vec![
                 make_field("url", FieldType::Text),
                 make_field("label", FieldType::Text),
-            ],
-            ..make_field("links", FieldType::Array)
-        },
+            ])
+            .build(),
         // blocks field
-        FieldDefinition {
-            name: "content".to_string(),
-            field_type: FieldType::Blocks,
-            blocks: vec![
+        FieldDefinition::builder("content", FieldType::Blocks)
+            .blocks(vec![
                 BlockDefinition::new("paragraph", vec![make_field("text", FieldType::Textarea)]),
                 BlockDefinition::new("image", vec![make_field("url", FieldType::Text)]),
-            ],
-            ..make_field("content", FieldType::Blocks)
-        },
+            ])
+            .build(),
     ];
     def
 }
@@ -448,12 +435,9 @@ fn make_categories_def() -> CollectionDefinition {
     def.fields = vec![
         make_field("name", FieldType::Text),
         // Self-referencing parent (for circular ref test)
-        FieldDefinition {
-            name: "parent".to_string(),
-            field_type: FieldType::Relationship,
-            relationship: Some(RelationshipConfig::new("categories", false)),
-            ..make_field("parent", FieldType::Relationship)
-        },
+        FieldDefinition::builder("parent", FieldType::Relationship)
+            .relationship(RelationshipConfig::new("categories", false))
+            .build(),
     ];
     def
 }
@@ -464,30 +448,21 @@ fn make_posts_with_category() -> CollectionDefinition {
     def.fields = vec![
         make_field("title", FieldType::Text),
         // has-one relationship to categories
-        FieldDefinition {
-            name: "category".to_string(),
-            field_type: FieldType::Relationship,
-            relationship: Some(RelationshipConfig::new("categories", false)),
-            ..make_field("category", FieldType::Relationship)
-        },
+        FieldDefinition::builder("category", FieldType::Relationship)
+            .relationship(RelationshipConfig::new("categories", false))
+            .build(),
         // has-many relationship to categories
-        FieldDefinition {
-            name: "secondary_categories".to_string(),
-            field_type: FieldType::Relationship,
-            relationship: Some(RelationshipConfig::new("categories", true)),
-            ..make_field("secondary_categories", FieldType::Relationship)
-        },
+        FieldDefinition::builder("secondary_categories", FieldType::Relationship)
+            .relationship(RelationshipConfig::new("categories", true))
+            .build(),
         // field with max_depth cap
-        FieldDefinition {
-            name: "limited_cat".to_string(),
-            field_type: FieldType::Relationship,
-            relationship: Some({
+        FieldDefinition::builder("limited_cat", FieldType::Relationship)
+            .relationship({
                 let mut rc = RelationshipConfig::new("categories", false);
                 rc.max_depth = Some(0);
                 rc
-            }),
-            ..make_field("limited_cat", FieldType::Relationship)
-        },
+            })
+            .build(),
     ];
     def
 }
@@ -718,11 +693,7 @@ fn populate_with_localized_related_collection() {
     media_def.timestamps = true;
     media_def.fields = vec![
         make_field("url", FieldType::Text),
-        FieldDefinition {
-            name: "caption".to_string(),
-            localized: true,
-            ..make_field("caption", FieldType::Text)
-        },
+        FieldDefinition::builder("caption", FieldType::Text).localized(true).build(),
     ];
 
     // "articles" collection with a relationship to media
@@ -730,12 +701,9 @@ fn populate_with_localized_related_collection() {
     articles_def.timestamps = true;
     articles_def.fields = vec![
         make_field("title", FieldType::Text),
-        FieldDefinition {
-            name: "image".to_string(),
-            field_type: FieldType::Relationship,
-            relationship: Some(RelationshipConfig::new("media", false)),
-            ..make_field("image", FieldType::Relationship)
-        },
+        FieldDefinition::builder("image", FieldType::Relationship)
+            .relationship(RelationshipConfig::new("media", false))
+            .build(),
     ];
 
     {

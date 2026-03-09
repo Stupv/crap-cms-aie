@@ -199,8 +199,8 @@ mod tests {
     fn test_def() -> CollectionDefinition {
         let mut def = CollectionDefinition::new("posts");
         def.fields = vec![
-            FieldDefinition { name: "title".to_string(), ..Default::default() },
-            FieldDefinition { name: "status".to_string(), ..Default::default() },
+            FieldDefinition::builder("title", FieldType::Text).build(),
+            FieldDefinition::builder("status", FieldType::Text).build(),
         ];
         def
     }
@@ -630,12 +630,15 @@ mod tests {
             create(&conn, "posts", &def, &data, None).unwrap();
         }
 
-        // Use a filter (creates WHERE) plus cursor (appends AND condition)
+        // Use a filter (creates WHERE) plus cursor (appends AND condition).
+        // Anchor id must sort after all nanoid chars ('~' = ASCII 126 > 'z' = 122)
+        // so the tie-break condition `id > anchor` is always false for Post 01,
+        // guaranteeing only strictly-after-title results are returned.
         let cursor = super::super::super::cursor::CursorData {
             sort_col: "title".to_string(),
             sort_dir: "ASC".to_string(),
             sort_val: serde_json::json!("Post 01"),
-            id: "someanchorid".to_string(),
+            id: "~".to_string(),
         };
         let mut q = FindQuery::new();
         q.order_by = Some("title".to_string());
@@ -659,7 +662,7 @@ mod tests {
         let mut def = CollectionDefinition::new("items");
         def.timestamps = false; // No timestamps
         def.fields = vec![
-            FieldDefinition { name: "name".to_string(), ..Default::default() },
+            FieldDefinition::builder("name", FieldType::Text).build(),
         ];
         let def = def;
 

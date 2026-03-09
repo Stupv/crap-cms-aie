@@ -172,14 +172,8 @@ mod tests {
 
     fn array_sub_fields() -> Vec<FieldDefinition> {
         vec![
-            FieldDefinition {
-                name: "label".to_string(),
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "value".to_string(),
-                ..Default::default()
-            },
+            FieldDefinition::builder("label", FieldType::Text).build(),
+            FieldDefinition::builder("value", FieldType::Text).build(),
         ]
     }
 
@@ -271,21 +265,12 @@ mod tests {
 
         // Sub-fields wrapped in Tabs
         let sub_fields = vec![
-            FieldDefinition {
-                name: "layout".to_string(),
-                field_type: FieldType::Tabs,
-                tabs: vec![
-                    FieldTab::new("General", vec![FieldDefinition {
-                        name: "title".to_string(),
-                        ..Default::default()
-                    }]),
-                    FieldTab::new("Content", vec![FieldDefinition {
-                        name: "body".to_string(),
-                        ..Default::default()
-                    }]),
-                ],
-                ..Default::default()
-            },
+            FieldDefinition::builder("layout", FieldType::Tabs)
+                .tabs(vec![
+                    FieldTab::new("General", vec![FieldDefinition::builder("title", FieldType::Text).build()]),
+                    FieldTab::new("Content", vec![FieldDefinition::builder("body", FieldType::Text).build()]),
+                ])
+                .build(),
         ];
 
         let mut row = HashMap::new();
@@ -315,15 +300,12 @@ mod tests {
         ).unwrap();
 
         let sub_fields = vec![
-            FieldDefinition {
-                name: "row_wrap".to_string(),
-                field_type: FieldType::Row,
-                fields: vec![
-                    FieldDefinition { name: "x".to_string(), ..Default::default() },
-                    FieldDefinition { name: "y".to_string(), ..Default::default() },
-                ],
-                ..Default::default()
-            },
+            FieldDefinition::builder("row_wrap", FieldType::Row)
+                .fields(vec![
+                    FieldDefinition::builder("x", FieldType::Text).build(),
+                    FieldDefinition::builder("y", FieldType::Text).build(),
+                ])
+                .build(),
         ];
 
         let mut row = HashMap::new();

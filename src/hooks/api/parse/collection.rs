@@ -4,8 +4,8 @@ use anyhow::Result;
 use mlua::{Lua, Table, Value};
 
 use crate::core::collection::{
-    CollectionAccess, CollectionAdmin, CollectionDefinition,
-    CollectionLabels, GlobalDefinition, IndexDefinition, LiveSetting, VersionsConfig,
+    Access, AdminConfig, CollectionDefinition,
+    Labels, GlobalDefinition, IndexDefinition, LiveSetting, VersionsConfig,
 };
 use crate::core::field::{FieldAdmin, FieldDefinition, FieldType, LocalizedString};
 
@@ -48,12 +48,12 @@ pub(super) fn warn_deep_nesting(kind: &str, slug: &str, fields: &[FieldDefinitio
 /// Parse a Lua table into a `CollectionDefinition`, extracting fields, hooks, auth, upload, etc.
 pub fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Result<CollectionDefinition> {
     let labels = if let Ok(labels_tbl) = get_table(config, "labels") {
-        CollectionLabels {
+        Labels {
             singular: get_localized_string(&labels_tbl, "singular"),
             plural: get_localized_string(&labels_tbl, "plural"),
         }
     } else {
-        CollectionLabels::default()
+        Labels::default()
     };
 
     let timestamps = get_bool(config, "timestamps", true);
@@ -64,14 +64,14 @@ pub fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Re
         } else {
             Vec::new()
         };
-        CollectionAdmin {
+        AdminConfig {
             use_as_title: get_string(&admin_tbl, "use_as_title"),
             default_sort: get_string(&admin_tbl, "default_sort"),
             hidden: get_bool(&admin_tbl, "hidden", false),
             list_searchable_fields,
         }
     } else {
-        CollectionAdmin::default()
+        AdminConfig::default()
     };
 
     let mut fields = if let Ok(fields_tbl) = get_table(config, "fields") {
@@ -85,7 +85,7 @@ pub fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Re
     let hooks = if let Ok(hooks_tbl) = get_table(config, "hooks") {
         parse_hooks(&hooks_tbl)?
     } else {
-        crate::core::collection::CollectionHooks::default()
+        crate::core::collection::Hooks::default()
     };
 
     // Parse auth: true | { token_expiry = 3600 }
@@ -116,23 +116,19 @@ pub fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Re
     // If auth enabled and no email field defined, inject one at index 0
     if let Some(ref a) = auth {
         if a.enabled && !fields.iter().any(|f| f.name == "email") {
-            fields.insert(0, FieldDefinition {
-                name: "email".to_string(),
-                field_type: FieldType::Email,
-                required: true,
-                unique: true,
-                admin: FieldAdmin {
-                    placeholder: Some(LocalizedString::Plain("user@example.com".to_string())),
-                    ..Default::default()
-                },
-                ..Default::default()
-            });
+            fields.insert(0, FieldDefinition::builder("email", FieldType::Email)
+                .required(true)
+                .unique(true)
+                .admin(FieldAdmin::builder()
+                    .placeholder(LocalizedString::Plain("user@example.com".to_string()))
+                    .build())
+                .build());
         }
     }
 
     // Parse MCP config
     let mcp = if let Ok(mcp_tbl) = get_table(config, "mcp") {
-        crate::core::collection::McpCollectionConfig {
+        crate::core::collection::McpConfig {
             description: get_string(&mcp_tbl, "description"),
         }
     } else {
@@ -158,12 +154,12 @@ pub fn parse_collection_definition(_lua: &Lua, slug: &str, config: &Table) -> Re
 /// Parse a Lua table into a `GlobalDefinition`, extracting fields, hooks, and access config.
 pub fn parse_global_definition(_lua: &Lua, slug: &str, config: &Table) -> Result<GlobalDefinition> {
     let labels = if let Ok(labels_tbl) = get_table(config, "labels") {
-        CollectionLabels {
+        Labels {
             singular: get_localized_string(&labels_tbl, "singular"),
             plural: get_localized_string(&labels_tbl, "plural"),
         }
     } else {
-        CollectionLabels::default()
+        Labels::default()
     };
 
     let fields = if let Ok(fields_tbl) = get_table(config, "fields") {
@@ -193,7 +189,7 @@ pub fn parse_global_definition(_lua: &Lua, slug: &str, config: &Table) -> Result
     let hooks = if let Ok(hooks_tbl) = get_table(config, "hooks") {
         parse_hooks(&hooks_tbl)?
     } else {
-        crate::core::collection::CollectionHooks::default()
+        crate::core::collection::Hooks::default()
     };
 
     let access = parse_access_config(config);
@@ -202,7 +198,7 @@ pub fn parse_global_definition(_lua: &Lua, slug: &str, config: &Table) -> Result
 
     // Parse MCP config
     let mcp = if let Ok(mcp_tbl) = get_table(config, "mcp") {
-        crate::core::collection::McpCollectionConfig {
+        crate::core::collection::McpConfig {
             description: get_string(&mcp_tbl, "description"),
         }
     } else {
@@ -291,12 +287,12 @@ pub(super) fn parse_indexes(config: &Table) -> Vec<IndexDefinition> {
     indexes
 }
 
-pub(super) fn parse_access_config(config: &Table) -> CollectionAccess {
+pub(super) fn parse_access_config(config: &Table) -> Access {
     let access_tbl = match get_table(config, "access") {
         Ok(t) => t,
-        Err(_) => return CollectionAccess::default(),
+        Err(_) => return Access::default(),
     };
-    CollectionAccess {
+    Access {
         read: get_string(&access_tbl, "read"),
         create: get_string(&access_tbl, "create"),
         update: get_string(&access_tbl, "update"),
@@ -584,36 +580,22 @@ mod tests {
 
     #[test]
     fn test_max_field_nesting_via_blocks() {
-        let inner = FieldDefinition {
-            name: "text".to_string(),
-            field_type: FieldType::Text,
-            ..Default::default()
-        };
+        let inner = FieldDefinition::builder("text", FieldType::Text).build();
         let block = BlockDefinition::new("para", vec![inner]);
-        let outer = FieldDefinition {
-            name: "content".to_string(),
-            field_type: FieldType::Blocks,
-            blocks: vec![block],
-            ..Default::default()
-        };
+        let outer = FieldDefinition::builder("content", FieldType::Blocks)
+            .blocks(vec![block])
+            .build();
         let depth = max_field_nesting(&[outer], 0);
         assert_eq!(depth, 2);
     }
 
     #[test]
     fn test_max_field_nesting_via_tabs() {
-        let inner = FieldDefinition {
-            name: "bio".to_string(),
-            field_type: FieldType::Textarea,
-            ..Default::default()
-        };
+        let inner = FieldDefinition::builder("bio", FieldType::Textarea).build();
         let tab = FieldTab::new("General", vec![inner]);
-        let outer = FieldDefinition {
-            name: "tabs".to_string(),
-            field_type: FieldType::Tabs,
-            tabs: vec![tab],
-            ..Default::default()
-        };
+        let outer = FieldDefinition::builder("tabs", FieldType::Tabs)
+            .tabs(vec![tab])
+            .build();
         let depth = max_field_nesting(&[outer], 0);
         assert_eq!(depth, 2);
     }
@@ -622,18 +604,11 @@ mod tests {
     fn test_warn_deep_nesting_triggers_for_deep_fields() {
         fn nest(depth: usize) -> FieldDefinition {
             if depth == 0 {
-                FieldDefinition {
-                    name: "leaf".to_string(),
-                    field_type: FieldType::Text,
-                    ..Default::default()
-                }
+                FieldDefinition::builder("leaf", FieldType::Text).build()
             } else {
-                FieldDefinition {
-                    name: format!("level_{}", depth),
-                    field_type: FieldType::Group,
-                    fields: vec![nest(depth - 1)],
-                    ..Default::default()
-                }
+                FieldDefinition::builder(format!("level_{}", depth), FieldType::Group)
+                    .fields(vec![nest(depth - 1)])
+                    .build()
             }
         }
         let deep_field = nest(6);

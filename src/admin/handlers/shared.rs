@@ -478,26 +478,10 @@ mod tests {
         let mut def = CollectionDefinition::new("posts");
         def.timestamps = true;
         def.fields = vec![
-            FieldDefinition {
-                name: "title".to_string(),
-                field_type: FieldType::Text,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "status".to_string(),
-                field_type: FieldType::Select,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "body".to_string(),
-                field_type: FieldType::Richtext,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "count".to_string(),
-                field_type: FieldType::Number,
-                ..Default::default()
-            },
+            FieldDefinition::builder("title", FieldType::Text).build(),
+            FieldDefinition::builder("status", FieldType::Select).build(),
+            FieldDefinition::builder("body", FieldType::Richtext).build(),
+            FieldDefinition::builder("count", FieldType::Number).build(),
         ];
         def
     }
@@ -768,10 +752,7 @@ mod tests {
 
     #[test]
     fn compute_row_label_from_label_field() {
-        let admin = FieldAdmin {
-            label_field: Some("title".to_string()),
-            ..Default::default()
-        };
+        let admin = FieldAdmin::builder().label_field("title").build();
         let mut row = serde_json::Map::new();
         row.insert("title".to_string(), serde_json::json!("My Title"));
         // Construct a minimal mock HookRunner -- compute_row_label with no row_label set

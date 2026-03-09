@@ -26,42 +26,29 @@ use crap_cms::hooks::lifecycle::HookRunner;
 
 fn make_posts_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("posts");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Post".to_string())),
         plural: Some(LocalizedString::Plain("Posts".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "title".to_string(),
-            required: true,
-            ..Default::default()
-        },
+        FieldDefinition::builder("title", FieldType::Text).required(true).build(),
     ];
     def
 }
 
 fn make_users_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("users");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("User".to_string())),
         plural: Some(LocalizedString::Plain("Users".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "email".to_string(),
-            field_type: FieldType::Email,
-            required: true,
-            unique: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "name".to_string(),
-            ..Default::default()
-        },
+        FieldDefinition::builder("email", FieldType::Email).required(true).unique(true).build(),
+        FieldDefinition::builder("name", FieldType::Text).build(),
     ];
-    def.auth = Some(CollectionAuth { enabled: true, ..Default::default() });
+    def.auth = Some(Auth { enabled: true, ..Default::default() });
     def
 }
 
@@ -201,28 +188,18 @@ fn make_locale_config() -> LocaleConfig {
 
 fn make_localized_pages_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("pages");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Page".to_string())),
         plural: Some(LocalizedString::Plain("Pages".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "title".to_string(),
-            required: true,
-            localized: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "body".to_string(),
-            field_type: FieldType::Textarea,
-            localized: true,
-            ..Default::default()
-        },
+        FieldDefinition::builder("title", FieldType::Text).required(true).localized(true).build(),
+        FieldDefinition::builder("body", FieldType::Textarea).localized(true).build(),
     ];
-    def.admin = CollectionAdmin {
+    def.admin = AdminConfig {
         use_as_title: Some("title".to_string()),
-        ..CollectionAdmin::default()
+        ..AdminConfig::default()
     };
     def
 }
@@ -241,26 +218,18 @@ fn setup_localized_app() -> TestApp {
 
 fn make_versioned_posts_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("articles");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Article".to_string())),
         plural: Some(LocalizedString::Plain("Articles".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "title".to_string(),
-            required: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "body".to_string(),
-            field_type: FieldType::Textarea,
-            ..Default::default()
-        },
+        FieldDefinition::builder("title", FieldType::Text).required(true).build(),
+        FieldDefinition::builder("body", FieldType::Textarea).build(),
     ];
-    def.admin = CollectionAdmin {
+    def.admin = AdminConfig {
         use_as_title: Some("title".to_string()),
-        ..CollectionAdmin::default()
+        ..AdminConfig::default()
     };
     def.versions = Some(VersionsConfig::new(true, 10));
     def
@@ -268,26 +237,18 @@ fn make_versioned_posts_def() -> CollectionDefinition {
 
 fn make_posts_with_required_title() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("articles");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Article".to_string())),
         plural: Some(LocalizedString::Plain("Articles".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "title".to_string(),
-            required: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "body".to_string(),
-            field_type: FieldType::Textarea,
-            ..Default::default()
-        },
+        FieldDefinition::builder("title", FieldType::Text).required(true).build(),
+        FieldDefinition::builder("body", FieldType::Textarea).build(),
     ];
-    def.admin = CollectionAdmin {
+    def.admin = AdminConfig {
         use_as_title: Some("title".to_string()),
-        ..CollectionAdmin::default()
+        ..AdminConfig::default()
     };
     def
 }

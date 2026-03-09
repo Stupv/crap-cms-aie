@@ -26,22 +26,14 @@ use crap_cms::hooks::lifecycle::HookRunner;
 
 fn make_versioned_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("articles");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Article".to_string())),
         plural: Some(LocalizedString::Plain("Articles".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "title".to_string(),
-            required: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "body".to_string(),
-            field_type: FieldType::Textarea,
-            ..Default::default()
-        },
+        FieldDefinition::builder("title", FieldType::Text).required(true).build(),
+        FieldDefinition::builder("body", FieldType::Textarea).build(),
     ];
     def.versions = Some(VersionsConfig::new(true, 0));
     def

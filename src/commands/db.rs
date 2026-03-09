@@ -577,11 +577,7 @@ mod tests {
     }
 
     fn text_field(name: &str) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Text,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Text).build()
     }
 
     fn make_conn() -> rusqlite::Connection {
@@ -639,12 +635,9 @@ mod tests {
 
         let mut reg = Registry::default();
         reg.collections.insert("posts".to_string(), simple_collection("posts", vec![
-            FieldDefinition {
-                name: "seo".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![text_field("meta_title"), text_field("meta_desc")],
-                ..Default::default()
-            },
+            FieldDefinition::builder("seo", FieldType::Group)
+                .fields(vec![text_field("meta_title"), text_field("meta_desc")])
+                .build(),
         ]));
 
         let orphans = find_orphan_columns(&conn, &reg, &no_locale()).unwrap();
@@ -661,12 +654,7 @@ mod tests {
 
         let mut reg = Registry::default();
         reg.collections.insert("posts".to_string(), simple_collection("posts", vec![
-            FieldDefinition {
-                name: "title".to_string(),
-                field_type: FieldType::Text,
-                localized: true,
-                ..Default::default()
-            },
+            FieldDefinition::builder("title", FieldType::Text).localized(true).build(),
         ]));
 
         let orphans = find_orphan_columns(&conn, &reg, &locale_en_de()).unwrap();
@@ -684,12 +672,9 @@ mod tests {
         let mut reg = Registry::default();
         reg.collections.insert("posts".to_string(), simple_collection("posts", vec![
             text_field("title"),
-            FieldDefinition {
-                name: "seo".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![text_field("meta")],
-                ..Default::default()
-            },
+            FieldDefinition::builder("seo", FieldType::Group)
+                .fields(vec![text_field("meta")])
+                .build(),
         ]));
 
         let orphans = find_orphan_columns(&conn, &reg, &no_locale()).unwrap();

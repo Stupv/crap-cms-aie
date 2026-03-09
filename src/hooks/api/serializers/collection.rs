@@ -148,7 +148,7 @@ pub(crate) fn global_config_to_lua(lua: &Lua, def: &crate::core::collection::Glo
 }
 
 /// Convert collection-level hooks to a Lua table.
-fn collection_hooks_to_lua(lua: &Lua, hooks: &crate::core::collection::CollectionHooks) -> mlua::Result<Table> {
+fn collection_hooks_to_lua(lua: &Lua, hooks: &crate::core::collection::Hooks) -> mlua::Result<Table> {
     let tbl = lua.create_table()?;
     let pairs: &[(&str, &[String])] = &[
         ("before_validate", &hooks.before_validate),
@@ -181,18 +181,15 @@ mod tests {
     fn test_collection_config_to_lua_basic() {
         let lua = Lua::new();
         let mut def = crate::core::CollectionDefinition::new("posts");
-        def.labels = crate::core::collection::CollectionLabels {
+        def.labels = crate::core::collection::Labels {
             singular: Some(crate::core::field::LocalizedString::Plain("Post".to_string())),
             plural: Some(crate::core::field::LocalizedString::Plain("Posts".to_string())),
         };
         def.timestamps = true;
         def.fields = vec![
-            crate::core::field::FieldDefinition {
-                name: "title".to_string(),
-                field_type: crate::core::field::FieldType::Text,
-                required: true,
-                ..Default::default()
-            },
+            crate::core::field::FieldDefinition::builder("title", crate::core::field::FieldType::Text)
+                .required(true)
+                .build(),
         ];
         let tbl = collection_config_to_lua(&lua, &def).unwrap();
         let labels: mlua::Table = tbl.get("labels").unwrap();
@@ -251,14 +248,11 @@ mod tests {
     fn test_global_config_to_lua_basic() {
         let lua = Lua::new();
         let mut def = crate::core::collection::GlobalDefinition::new("settings");
-        def.labels = crate::core::collection::CollectionLabels {
+        def.labels = crate::core::collection::Labels {
             singular: Some(crate::core::field::LocalizedString::Plain("Settings".to_string())),
             plural: None,
         };
-        def.fields = vec![crate::core::field::FieldDefinition {
-            name: "site_name".to_string(),
-            ..Default::default()
-        }];
+        def.fields = vec![crate::core::field::FieldDefinition::builder("site_name", crate::core::field::FieldType::Text).build()];
         let tbl = global_config_to_lua(&lua, &def).unwrap();
         let labels: mlua::Table = tbl.get("labels").unwrap();
         let singular: String = labels.get("singular").unwrap();
@@ -272,7 +266,7 @@ mod tests {
     fn test_global_config_to_lua_with_live() {
         let lua = Lua::new();
         let mut def = crate::core::collection::GlobalDefinition::new("settings");
-        def.access = crate::core::collection::CollectionAccess {
+        def.access = crate::core::collection::Access {
             read: Some("hooks.access.allow".to_string()),
             ..Default::default()
         };
@@ -286,7 +280,7 @@ mod tests {
     #[test]
     fn test_collection_hooks_to_lua() {
         let lua = Lua::new();
-        let hooks = crate::core::collection::CollectionHooks {
+        let hooks = crate::core::collection::Hooks {
             before_validate: vec!["hooks.v".to_string()],
             before_change: vec!["hooks.c1".to_string(), "hooks.c2".to_string()],
             after_change: Vec::new(),
@@ -313,7 +307,7 @@ mod tests {
         let lua = Lua::new();
         let mut def = crate::core::CollectionDefinition::new("posts");
         def.timestamps = true;
-        def.admin = crate::core::collection::CollectionAdmin {
+        def.admin = crate::core::collection::AdminConfig {
             use_as_title: Some("title".to_string()),
             default_sort: Some("-created_at".to_string()),
             hidden: true,
@@ -333,7 +327,7 @@ mod tests {
         let lua = Lua::new();
         let mut def = crate::core::CollectionDefinition::new("posts");
         def.timestamps = false;
-        def.mcp = crate::core::collection::McpCollectionConfig {
+        def.mcp = crate::core::collection::McpConfig {
             description: Some("Manages blog posts".to_string()),
         };
         let tbl = collection_config_to_lua(&lua, &def).unwrap();
@@ -345,7 +339,7 @@ mod tests {
     fn test_global_config_to_lua_mcp_description() {
         let lua = Lua::new();
         let mut def = crate::core::collection::GlobalDefinition::new("settings");
-        def.mcp = crate::core::collection::McpCollectionConfig {
+        def.mcp = crate::core::collection::McpConfig {
             description: Some("Global site settings".to_string()),
         };
         let tbl = global_config_to_lua(&lua, &def).unwrap();

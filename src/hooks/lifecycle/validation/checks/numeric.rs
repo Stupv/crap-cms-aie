@@ -44,12 +44,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, score REAL)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "score".to_string(),
-            field_type: FieldType::Number,
-            min: Some(0.0),
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("score", FieldType::Number).min(0.0).build()];
         let mut data = HashMap::new();
         data.insert("score".to_string(), json!("-5"));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -62,12 +57,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, score REAL)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "score".to_string(),
-            field_type: FieldType::Number,
-            max: Some(100.0),
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("score", FieldType::Number).max(100.0).build()];
         let mut data = HashMap::new();
         data.insert("score".to_string(), json!("150"));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -80,13 +70,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, score REAL)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "score".to_string(),
-            field_type: FieldType::Number,
-            min: Some(0.0),
-            max: Some(100.0),
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("score", FieldType::Number).min(0.0).max(100.0).build()];
         let mut data = HashMap::new();
         data.insert("score".to_string(), json!("50"));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -98,12 +82,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, score REAL)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "score".to_string(),
-            field_type: FieldType::Number,
-            min: Some(10.0),
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("score", FieldType::Number).min(10.0).build()];
         let mut data = HashMap::new();
         data.insert("score".to_string(), json!(""));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -115,13 +94,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, score REAL)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "score".to_string(),
-            field_type: FieldType::Number,
-            min: Some(0.0),
-            max: Some(10.0),
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("score", FieldType::Number).min(0.0).max(10.0).build()];
         let mut data = HashMap::new();
         data.insert("score".to_string(), json!(15));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);

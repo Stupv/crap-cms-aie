@@ -214,38 +214,22 @@ pub(super) mod test_helpers {
 
     pub fn array_sub_fields() -> Vec<FieldDefinition> {
         vec![
-            FieldDefinition {
-                name: "label".to_string(),
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "value".to_string(),
-                ..Default::default()
-            },
+            FieldDefinition::builder("label", FieldType::Text).build(),
+            FieldDefinition::builder("value", FieldType::Text).build(),
         ]
     }
 
     pub fn posts_def_with_joins() -> CollectionDefinition {
         let mut def = CollectionDefinition::new("posts");
         def.fields = vec![
-            FieldDefinition { name: "title".to_string(), ..Default::default() },
-            FieldDefinition {
-                name: "tags".to_string(),
-                field_type: FieldType::Relationship,
-                relationship: Some(RelationshipConfig::new("tags", true)),
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "items".to_string(),
-                field_type: FieldType::Array,
-                fields: array_sub_fields(),
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "content".to_string(),
-                field_type: FieldType::Blocks,
-                ..Default::default()
-            },
+            FieldDefinition::builder("title", FieldType::Text).build(),
+            FieldDefinition::builder("tags", FieldType::Relationship)
+                .relationship(RelationshipConfig::new("tags", true))
+                .build(),
+            FieldDefinition::builder("items", FieldType::Array)
+                .fields(array_sub_fields())
+                .build(),
+            FieldDefinition::builder("content", FieldType::Blocks).build(),
         ];
         def
     }
@@ -357,19 +341,13 @@ mod tests {
         ).unwrap();
 
         let fields = vec![
-            FieldDefinition {
-                name: "title".to_string(),
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "seo".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![
-                    FieldDefinition { name: "meta_title".to_string(), ..Default::default() },
-                    FieldDefinition { name: "meta_desc".to_string(), ..Default::default() },
-                ],
-                ..Default::default()
-            },
+            FieldDefinition::builder("title", FieldType::Text).build(),
+            FieldDefinition::builder("seo", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("meta_title", FieldType::Text).build(),
+                    FieldDefinition::builder("meta_desc", FieldType::Text).build(),
+                ])
+                .build(),
         ];
 
         let mut doc = Document::new("p1".to_string());
@@ -397,20 +375,14 @@ mod tests {
             INSERT INTO posts VALUES ('p1', 'OG Title Value');",
         ).unwrap();
 
-        let inner_group = FieldDefinition {
-            name: "social".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![
-                FieldDefinition { name: "og_title".to_string(), ..Default::default() },
-            ],
-            ..Default::default()
-        };
-        let outer_group = FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![inner_group],
-            ..Default::default()
-        };
+        let inner_group = FieldDefinition::builder("social", FieldType::Group)
+            .fields(vec![
+                FieldDefinition::builder("og_title", FieldType::Text).build(),
+            ])
+            .build();
+        let outer_group = FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![inner_group])
+            .build();
 
         let mut doc = Document::new("p1".to_string());
         doc.fields.insert("seo__social__og_title".to_string(), serde_json::json!("OG Title Value"));
@@ -431,21 +403,15 @@ mod tests {
              INSERT INTO posts (id) VALUES ('p1');",
         ).unwrap();
 
-        let row_wrapper = FieldDefinition {
-            name: "layout_row".to_string(),
-            field_type: FieldType::Row,
-            fields: vec![
-                FieldDefinition { name: "col_a".to_string(), ..Default::default() },
-                FieldDefinition { name: "col_b".to_string(), ..Default::default() },
-            ],
-            ..Default::default()
-        };
-        let outer_group = FieldDefinition {
-            name: "layout".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![row_wrapper],
-            ..Default::default()
-        };
+        let row_wrapper = FieldDefinition::builder("layout_row", FieldType::Row)
+            .fields(vec![
+                FieldDefinition::builder("col_a", FieldType::Text).build(),
+                FieldDefinition::builder("col_b", FieldType::Text).build(),
+            ])
+            .build();
+        let outer_group = FieldDefinition::builder("layout", FieldType::Group)
+            .fields(vec![row_wrapper])
+            .build();
 
         let mut doc = Document::new("p1".to_string());
         doc.fields.insert("layout__col_a".to_string(), serde_json::json!("A"));
@@ -469,21 +435,15 @@ mod tests {
              INSERT INTO posts (id) VALUES ('p1');",
         ).unwrap();
 
-        let tabs_wrapper = FieldDefinition {
-            name: "tabs".to_string(),
-            field_type: FieldType::Tabs,
-            tabs: vec![
-                FieldTab::new("Tab A", vec![FieldDefinition { name: "field_a".to_string(), ..Default::default() }]),
-                FieldTab::new("Tab B", vec![FieldDefinition { name: "field_b".to_string(), ..Default::default() }]),
-            ],
-            ..Default::default()
-        };
-        let outer_group = FieldDefinition {
-            name: "settings".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![tabs_wrapper],
-            ..Default::default()
-        };
+        let tabs_wrapper = FieldDefinition::builder("tabs", FieldType::Tabs)
+            .tabs(vec![
+                FieldTab::new("Tab A", vec![FieldDefinition::builder("field_a", FieldType::Text).build()]),
+                FieldTab::new("Tab B", vec![FieldDefinition::builder("field_b", FieldType::Text).build()]),
+            ])
+            .build();
+        let outer_group = FieldDefinition::builder("settings", FieldType::Group)
+            .fields(vec![tabs_wrapper])
+            .build();
 
         let mut doc = Document::new("p1".to_string());
         doc.fields.insert("settings__field_a".to_string(), serde_json::json!("val_a"));
@@ -522,12 +482,9 @@ mod tests {
         let mut refs_rel = RelationshipConfig::new("articles", true);
         refs_rel.polymorphic = vec!["articles".to_string(), "pages".to_string()];
         let fields = vec![
-            FieldDefinition {
-                name: "refs".to_string(),
-                field_type: FieldType::Relationship,
-                relationship: Some(refs_rel),
-                ..Default::default()
-            },
+            FieldDefinition::builder("refs", FieldType::Relationship)
+                .relationship(refs_rel)
+                .build(),
         ];
 
         let mut doc = Document::new("p1".to_string());
@@ -549,21 +506,14 @@ mod tests {
         use super::save::save_join_table_data;
         let conn = setup_join_db();
 
-        let blocks_field = FieldDefinition {
-            name: "content".to_string(),
-            field_type: FieldType::Blocks,
-            ..Default::default()
-        };
-        let tabs_field = FieldDefinition {
-            name: "page_settings".to_string(),
-            field_type: FieldType::Tabs,
-            tabs: vec![
+        let blocks_field = FieldDefinition::builder("content", FieldType::Blocks).build();
+        let tabs_field = FieldDefinition::builder("page_settings", FieldType::Tabs)
+            .tabs(vec![
                 FieldTab::new("Content", vec![blocks_field]),
-            ],
-            ..Default::default()
-        };
+            ])
+            .build();
         let fields = vec![
-            FieldDefinition { name: "title".to_string(), ..Default::default() },
+            FieldDefinition::builder("title", FieldType::Text).build(),
             tabs_field,
         ];
 
@@ -596,20 +546,14 @@ mod tests {
         use super::save::save_join_table_data;
         let conn = setup_join_db();
 
-        let array_field = FieldDefinition {
-            name: "items".to_string(),
-            field_type: FieldType::Array,
-            fields: array_sub_fields(),
-            ..Default::default()
-        };
-        let row_field = FieldDefinition {
-            name: "main_row".to_string(),
-            field_type: FieldType::Row,
-            fields: vec![array_field],
-            ..Default::default()
-        };
+        let array_field = FieldDefinition::builder("items", FieldType::Array)
+            .fields(array_sub_fields())
+            .build();
+        let row_field = FieldDefinition::builder("main_row", FieldType::Row)
+            .fields(vec![array_field])
+            .build();
         let fields = vec![
-            FieldDefinition { name: "title".to_string(), ..Default::default() },
+            FieldDefinition::builder("title", FieldType::Text).build(),
             row_field,
         ];
 
@@ -641,19 +585,12 @@ mod tests {
         use super::save::save_join_table_data;
         let conn = setup_join_db();
 
-        let blocks_field = FieldDefinition {
-            name: "content".to_string(),
-            field_type: FieldType::Blocks,
-            ..Default::default()
-        };
-        let collapsible_field = FieldDefinition {
-            name: "advanced".to_string(),
-            field_type: FieldType::Collapsible,
-            fields: vec![blocks_field],
-            ..Default::default()
-        };
+        let blocks_field = FieldDefinition::builder("content", FieldType::Blocks).build();
+        let collapsible_field = FieldDefinition::builder("advanced", FieldType::Collapsible)
+            .fields(vec![blocks_field])
+            .build();
         let fields = vec![
-            FieldDefinition { name: "title".to_string(), ..Default::default() },
+            FieldDefinition::builder("title", FieldType::Text).build(),
             collapsible_field,
         ];
 
@@ -696,13 +633,10 @@ mod tests {
              INSERT INTO posts_tags (parent_id, related_id, _order, _locale) VALUES ('p1', 't1', 0, 'en');",
         ).unwrap();
 
-        let tags_field = FieldDefinition {
-            name: "tags".to_string(),
-            field_type: FieldType::Relationship,
-            localized: true,
-            relationship: Some(RelationshipConfig::new("tags", true)),
-            ..Default::default()
-        };
+        let tags_field = FieldDefinition::builder("tags", FieldType::Relationship)
+            .localized(true)
+            .relationship(RelationshipConfig::new("tags", true))
+            .build();
 
         let locale_config = LocaleConfig {
             default_locale: "en".to_string(),
@@ -741,13 +675,10 @@ mod tests {
              INSERT INTO posts_items (id, parent_id, _order, label, _locale) VALUES ('i1', 'p1', 0, 'EN Item', 'en');",
         ).unwrap();
 
-        let items_field = FieldDefinition {
-            name: "items".to_string(),
-            field_type: FieldType::Array,
-            localized: true,
-            fields: vec![FieldDefinition { name: "label".to_string(), ..Default::default() }],
-            ..Default::default()
-        };
+        let items_field = FieldDefinition::builder("items", FieldType::Array)
+            .localized(true)
+            .fields(vec![FieldDefinition::builder("label", FieldType::Text).build()])
+            .build();
 
         let locale_config = LocaleConfig {
             default_locale: "en".to_string(),
@@ -788,12 +719,9 @@ mod tests {
                  VALUES ('b1', 'p1', 0, 'text', '{\"body\":\"EN Content\"}', 'en');",
         ).unwrap();
 
-        let content_field = FieldDefinition {
-            name: "content".to_string(),
-            field_type: FieldType::Blocks,
-            localized: true,
-            ..Default::default()
-        };
+        let content_field = FieldDefinition::builder("content", FieldType::Blocks)
+            .localized(true)
+            .build();
 
         let locale_config = LocaleConfig {
             default_locale: "en".to_string(),
@@ -832,13 +760,10 @@ mod tests {
              INSERT INTO posts_tags (parent_id, related_id, _order, _locale) VALUES ('p1', 'en_tag1', 0, 'en');",
         ).unwrap();
 
-        let tags_field = FieldDefinition {
-            name: "tags".to_string(),
-            field_type: FieldType::Relationship,
-            localized: true,
-            relationship: Some(RelationshipConfig::new("tags", true)),
-            ..Default::default()
-        };
+        let tags_field = FieldDefinition::builder("tags", FieldType::Relationship)
+            .localized(true)
+            .relationship(RelationshipConfig::new("tags", true))
+            .build();
 
         let locale_config = LocaleConfig {
             default_locale: "en".to_string(),
@@ -880,13 +805,10 @@ mod tests {
 
         let mut refs_rel = RelationshipConfig::new("articles", true);
         refs_rel.polymorphic = vec!["articles".to_string(), "pages".to_string()];
-        let refs_field = FieldDefinition {
-            name: "refs".to_string(),
-            field_type: FieldType::Relationship,
-            localized: true,
-            relationship: Some(refs_rel),
-            ..Default::default()
-        };
+        let refs_field = FieldDefinition::builder("refs", FieldType::Relationship)
+            .localized(true)
+            .relationship(refs_rel)
+            .build();
 
         let locale_config = LocaleConfig {
             default_locale: "en".to_string(),

@@ -261,12 +261,9 @@ mod tests {
         let mut refs_rel = RelationshipConfig::new("articles", true);
         refs_rel.polymorphic = vec!["articles".to_string(), "pages".to_string()];
         let fields = vec![
-            FieldDefinition {
-                name: "refs".to_string(),
-                field_type: FieldType::Relationship,
-                relationship: Some(refs_rel),
-                ..Default::default()
-            },
+            FieldDefinition::builder("refs", FieldType::Relationship)
+                .relationship(refs_rel)
+                .build(),
         ];
 
         let mut data = HashMap::new();

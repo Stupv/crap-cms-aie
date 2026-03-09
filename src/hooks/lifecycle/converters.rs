@@ -454,28 +454,13 @@ mod tests {
         tbl.set("title", "Hello").unwrap();
 
         let fields = vec![
-            FieldDefinition {
-                name: "seo".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![
-                    FieldDefinition {
-                        name: "meta_title".to_string(),
-                        field_type: FieldType::Text,
-                        ..Default::default()
-                    },
-                    FieldDefinition {
-                        name: "meta_description".to_string(),
-                        field_type: FieldType::Textarea,
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "title".to_string(),
-                field_type: FieldType::Text,
-                ..Default::default()
-            },
+            FieldDefinition::builder("seo", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("meta_title", FieldType::Text).build(),
+                    FieldDefinition::builder("meta_description", FieldType::Textarea).build(),
+                ])
+                .build(),
+            FieldDefinition::builder("title", FieldType::Text).build(),
         ];
 
         let mut data = HashMap::new();
@@ -492,16 +477,9 @@ mod tests {
         let tbl = lua.create_table().unwrap();
         // No "seo" key at all
 
-        let fields = vec![FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![FieldDefinition {
-                name: "meta_title".to_string(),
-                field_type: FieldType::Text,
-                ..Default::default()
-            }],
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![FieldDefinition::builder("meta_title", FieldType::Text).build()])
+            .build()];
 
         let mut data = HashMap::new();
         flatten_lua_groups(&tbl, &fields, &mut data).unwrap();
@@ -517,23 +495,12 @@ mod tests {
         metrics.set("rating", 4.5).unwrap();
         tbl.set("metrics", metrics).unwrap();
 
-        let fields = vec![FieldDefinition {
-            name: "metrics".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![
-                FieldDefinition {
-                    name: "views".to_string(),
-                    field_type: FieldType::Number,
-                    ..Default::default()
-                },
-                FieldDefinition {
-                    name: "rating".to_string(),
-                    field_type: FieldType::Number,
-                    ..Default::default()
-                },
-            ],
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("metrics", FieldType::Group)
+            .fields(vec![
+                FieldDefinition::builder("views", FieldType::Number).build(),
+                FieldDefinition::builder("rating", FieldType::Number).build(),
+            ])
+            .build()];
 
         let mut data = HashMap::new();
         flatten_lua_groups(&tbl, &fields, &mut data).unwrap();

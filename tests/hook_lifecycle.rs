@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use crap_cms::config::CrapConfig;
 use crap_cms::core::Document;
 use crap_cms::core::field::{FieldDefinition, FieldType};
-use crap_cms::core::collection::CollectionHooks;
+use crap_cms::core::collection::Hooks;
 use crap_cms::db::{migrate, pool, query};
 use crap_cms::db::query::AccessResult;
 use crap_cms::hooks;
@@ -312,11 +312,7 @@ fn eval_lua_crud_in_hook_context() {
 // ── Helper: build a minimal FieldDefinition ──────────────────────────────────
 
 fn make_field(name: &str, field_type: FieldType) -> FieldDefinition {
-    FieldDefinition {
-        name: name.to_string(),
-        field_type,
-        ..Default::default()
-    }
+    FieldDefinition::builder(name, field_type).build()
 }
 
 fn make_field_with_read_access(name: &str, read_ref: &str) -> FieldDefinition {
@@ -623,7 +619,7 @@ fn apply_after_read_no_hooks_returns_same() {
     let doc = create_article(&pool, &registry, &data);
 
     // Use empty hooks (no after_read configured)
-    let empty_hooks = CollectionHooks::default();
+    let empty_hooks = Hooks::default();
     let empty_fields: Vec<FieldDefinition> = Vec::new();
 
     let original_id = doc.id.clone();

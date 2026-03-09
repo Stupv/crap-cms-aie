@@ -74,8 +74,8 @@ pub struct FieldAdmin {
 }
 
 impl FieldAdmin {
-    pub fn builder() -> crate::core::field_admin_builder::FieldAdminBuilder {
-        crate::core::field_admin_builder::FieldAdminBuilder::new()
+    pub fn builder() -> super::FieldAdminBuilder {
+        super::FieldAdminBuilder::new()
     }
 }
 

@@ -6,8 +6,6 @@ pub mod document;
 pub mod email;
 pub mod event;
 pub mod field;
-pub mod field_admin_builder;
-pub mod field_definition_builder;
 pub mod job;
 pub mod rate_limit;
 pub mod registry;

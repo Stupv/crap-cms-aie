@@ -54,11 +54,7 @@ fn create_article(
 }
 
 fn make_field(name: &str, field_type: FieldType) -> FieldDefinition {
-    FieldDefinition {
-        name: name.to_string(),
-        field_type,
-        ..Default::default()
-    }
+    FieldDefinition::builder(name, field_type).build()
 }
 
 // ── 2B. Validate Fields ──────────────────────────────────────────────────────
@@ -242,17 +238,14 @@ fn validate_blocks_required_subfield_fails_when_empty() {
     let (_tmp, pool, _registry, runner) = setup();
 
     // Build a blocks field definition with a required sub-field
-    let blocks_field = FieldDefinition {
-        name: "content".to_string(),
-        field_type: FieldType::Blocks,
-        blocks: vec![
+    let blocks_field = FieldDefinition::builder("content", FieldType::Blocks)
+        .blocks(vec![
             crap_cms::core::field::BlockDefinition::new("text", vec![
-                FieldDefinition { name: "title".to_string(), field_type: FieldType::Text, required: true, ..Default::default() },
-                FieldDefinition { name: "body".to_string(), field_type: FieldType::Textarea, ..Default::default() },
+                FieldDefinition::builder("title", FieldType::Text).required(true).build(),
+                FieldDefinition::builder("body", FieldType::Textarea).build(),
             ]),
-        ],
-        ..Default::default()
-    };
+        ])
+        .build();
 
     let fields = vec![blocks_field];
     let mut data = HashMap::new();
@@ -275,16 +268,13 @@ fn validate_blocks_required_subfield_fails_when_empty() {
 fn validate_blocks_required_subfield_passes_when_present() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let blocks_field = FieldDefinition {
-        name: "content".to_string(),
-        field_type: FieldType::Blocks,
-        blocks: vec![
+    let blocks_field = FieldDefinition::builder("content", FieldType::Blocks)
+        .blocks(vec![
             crap_cms::core::field::BlockDefinition::new("text", vec![
-                FieldDefinition { name: "title".to_string(), field_type: FieldType::Text, required: true, ..Default::default() },
+                FieldDefinition::builder("title", FieldType::Text).required(true).build(),
             ]),
-        ],
-        ..Default::default()
-    };
+        ])
+        .build();
 
     let fields = vec![blocks_field];
     let mut data = HashMap::new();
@@ -301,16 +291,13 @@ fn validate_blocks_required_subfield_passes_when_present() {
 fn validate_blocks_skips_required_for_drafts() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let blocks_field = FieldDefinition {
-        name: "content".to_string(),
-        field_type: FieldType::Blocks,
-        blocks: vec![
+    let blocks_field = FieldDefinition::builder("content", FieldType::Blocks)
+        .blocks(vec![
             crap_cms::core::field::BlockDefinition::new("text", vec![
-                FieldDefinition { name: "title".to_string(), field_type: FieldType::Text, required: true, ..Default::default() },
+                FieldDefinition::builder("title", FieldType::Text).required(true).build(),
             ]),
-        ],
-        ..Default::default()
-    };
+        ])
+        .build();
 
     let fields = vec![blocks_field];
     let mut data = HashMap::new();
@@ -327,19 +314,11 @@ fn validate_blocks_skips_required_for_drafts() {
 fn validate_array_required_subfield_fails_when_empty() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let array_field = FieldDefinition {
-        name: "items".to_string(),
-        field_type: FieldType::Array,
-        fields: vec![
-            FieldDefinition {
-                name: "label".to_string(),
-                field_type: FieldType::Text,
-                required: true,
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
+    let array_field = FieldDefinition::builder("items", FieldType::Array)
+        .fields(vec![
+            FieldDefinition::builder("label", FieldType::Text).required(true).build(),
+        ])
+        .build();
 
     let fields = vec![array_field];
     let mut data = HashMap::new();
@@ -370,19 +349,11 @@ fn validate_array_required_subfield_fails_when_empty() {
 fn validate_group_required_subfield_fails() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let group_field = FieldDefinition {
-        name: "seo".to_string(),
-        field_type: FieldType::Group,
-        fields: vec![
-            FieldDefinition {
-                name: "meta_title".to_string(),
-                field_type: FieldType::Text,
-                required: true,
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
+    let group_field = FieldDefinition::builder("seo", FieldType::Group)
+        .fields(vec![
+            FieldDefinition::builder("meta_title", FieldType::Text).required(true).build(),
+        ])
+        .build();
 
     let fields = vec![group_field];
     let mut data = HashMap::new();
@@ -404,19 +375,11 @@ fn validate_group_required_subfield_fails() {
 fn validate_group_required_subfield_passes() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let group_field = FieldDefinition {
-        name: "seo".to_string(),
-        field_type: FieldType::Group,
-        fields: vec![
-            FieldDefinition {
-                name: "meta_title".to_string(),
-                field_type: FieldType::Text,
-                required: true,
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
+    let group_field = FieldDefinition::builder("seo", FieldType::Group)
+        .fields(vec![
+            FieldDefinition::builder("meta_title", FieldType::Text).required(true).build(),
+        ])
+        .build();
 
     let fields = vec![group_field];
     let mut data = HashMap::new();
@@ -431,19 +394,11 @@ fn validate_group_required_subfield_passes() {
 fn validate_group_skips_for_drafts() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let group_field = FieldDefinition {
-        name: "seo".to_string(),
-        field_type: FieldType::Group,
-        fields: vec![
-            FieldDefinition {
-                name: "meta_title".to_string(),
-                field_type: FieldType::Text,
-                required: true,
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
+    let group_field = FieldDefinition::builder("seo", FieldType::Group)
+        .fields(vec![
+            FieldDefinition::builder("meta_title", FieldType::Text).required(true).build(),
+        ])
+        .build();
 
     let fields = vec![group_field];
     let mut data = HashMap::new();
@@ -460,19 +415,12 @@ fn validate_group_skips_for_drafts() {
 fn validate_min_rows_fails() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let array_field = FieldDefinition {
-        name: "items".to_string(),
-        field_type: FieldType::Array,
-        min_rows: Some(2),
-        fields: vec![
-            FieldDefinition {
-                name: "label".to_string(),
-                field_type: FieldType::Text,
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
+    let array_field = FieldDefinition::builder("items", FieldType::Array)
+        .min_rows(2)
+        .fields(vec![
+            FieldDefinition::builder("label", FieldType::Text).build(),
+        ])
+        .build();
 
     let fields = vec![array_field];
     let mut data = HashMap::new();
@@ -491,19 +439,12 @@ fn validate_min_rows_fails() {
 fn validate_max_rows_fails() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let array_field = FieldDefinition {
-        name: "items".to_string(),
-        field_type: FieldType::Array,
-        max_rows: Some(1),
-        fields: vec![
-            FieldDefinition {
-                name: "label".to_string(),
-                field_type: FieldType::Text,
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
+    let array_field = FieldDefinition::builder("items", FieldType::Array)
+        .max_rows(1)
+        .fields(vec![
+            FieldDefinition::builder("label", FieldType::Text).build(),
+        ])
+        .build();
 
     let fields = vec![array_field];
     let mut data = HashMap::new();
@@ -523,20 +464,13 @@ fn validate_max_rows_fails() {
 fn validate_min_max_rows_passes_when_in_range() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let array_field = FieldDefinition {
-        name: "items".to_string(),
-        field_type: FieldType::Array,
-        min_rows: Some(1),
-        max_rows: Some(3),
-        fields: vec![
-            FieldDefinition {
-                name: "label".to_string(),
-                field_type: FieldType::Text,
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
+    let array_field = FieldDefinition::builder("items", FieldType::Array)
+        .min_rows(1)
+        .max_rows(3)
+        .fields(vec![
+            FieldDefinition::builder("label", FieldType::Text).build(),
+        ])
+        .build();
 
     let fields = vec![array_field];
     let mut data = HashMap::new();
@@ -554,19 +488,12 @@ fn validate_min_max_rows_passes_when_in_range() {
 fn validate_min_rows_skips_for_drafts() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let array_field = FieldDefinition {
-        name: "items".to_string(),
-        field_type: FieldType::Array,
-        min_rows: Some(5),
-        fields: vec![
-            FieldDefinition {
-                name: "label".to_string(),
-                field_type: FieldType::Text,
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
+    let array_field = FieldDefinition::builder("items", FieldType::Array)
+        .min_rows(5)
+        .fields(vec![
+            FieldDefinition::builder("label", FieldType::Text).build(),
+        ])
+        .build();
 
     let fields = vec![array_field];
     let mut data = HashMap::new();
@@ -583,11 +510,7 @@ fn validate_min_rows_skips_for_drafts() {
 fn validate_date_field_valid_formats() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let date_field = FieldDefinition {
-        name: "due_date".to_string(),
-        field_type: FieldType::Date,
-        ..Default::default()
-    };
+    let date_field = FieldDefinition::builder("due_date", FieldType::Date).build();
 
     let fields = vec![date_field];
     let conn = pool.get().expect("DB connection");
@@ -626,11 +549,7 @@ fn validate_date_field_valid_formats() {
 fn validate_date_field_invalid_format() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let date_field = FieldDefinition {
-        name: "due_date".to_string(),
-        field_type: FieldType::Date,
-        ..Default::default()
-    };
+    let date_field = FieldDefinition::builder("due_date", FieldType::Date).build();
 
     let fields = vec![date_field];
     let conn = pool.get().expect("DB connection");
@@ -647,11 +566,7 @@ fn validate_date_field_invalid_format() {
 fn validate_date_empty_is_ok() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let date_field = FieldDefinition {
-        name: "due_date".to_string(),
-        field_type: FieldType::Date,
-        ..Default::default()
-    };
+    let date_field = FieldDefinition::builder("due_date", FieldType::Date).build();
 
     let fields = vec![date_field];
     let conn = pool.get().expect("DB connection");
@@ -672,18 +587,11 @@ fn validate_date_empty_is_ok() {
 fn validate_date_subfield_in_array_rows() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let array_field = FieldDefinition {
-        name: "events".to_string(),
-        field_type: FieldType::Array,
-        fields: vec![
-            FieldDefinition {
-                name: "event_date".to_string(),
-                field_type: FieldType::Date,
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
+    let array_field = FieldDefinition::builder("events", FieldType::Array)
+        .fields(vec![
+            FieldDefinition::builder("event_date", FieldType::Date).build(),
+        ])
+        .build();
 
     let fields = vec![array_field];
     let mut data = HashMap::new();
@@ -707,19 +615,13 @@ fn validate_date_subfield_in_array_rows() {
 fn validate_custom_function_in_array_subfield() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let array_field = FieldDefinition {
-        name: "scores".to_string(),
-        field_type: FieldType::Array,
-        fields: vec![
-            FieldDefinition {
-                name: "value".to_string(),
-                field_type: FieldType::Number,
-                validate: Some("hooks.validators.positive_number".to_string()),
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
+    let array_field = FieldDefinition::builder("scores", FieldType::Array)
+        .fields(vec![
+            FieldDefinition::builder("value", FieldType::Number)
+                .validate("hooks.validators.positive_number")
+                .build(),
+        ])
+        .build();
 
     let fields = vec![array_field];
     let mut data = HashMap::new();
@@ -745,26 +647,15 @@ fn validate_custom_function_in_array_subfield() {
 fn validate_nested_array_in_array_rows() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let nested_array = FieldDefinition {
-        name: "outer".to_string(),
-        field_type: FieldType::Array,
-        fields: vec![
-            FieldDefinition {
-                name: "inner".to_string(),
-                field_type: FieldType::Array,
-                fields: vec![
-                    FieldDefinition {
-                        name: "value".to_string(),
-                        field_type: FieldType::Text,
-                        required: true,
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
+    let nested_array = FieldDefinition::builder("outer", FieldType::Array)
+        .fields(vec![
+            FieldDefinition::builder("inner", FieldType::Array)
+                .fields(vec![
+                    FieldDefinition::builder("value", FieldType::Text).required(true).build(),
+                ])
+                .build(),
+        ])
+        .build();
 
     let fields = vec![nested_array];
     let mut data = HashMap::new();
@@ -792,23 +683,17 @@ fn validate_nested_array_in_array_rows() {
 fn validate_nested_blocks_in_array_rows() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let outer = FieldDefinition {
-        name: "sections".to_string(),
-        field_type: FieldType::Array,
-        fields: vec![
-            FieldDefinition {
-                name: "content".to_string(),
-                field_type: FieldType::Blocks,
-                blocks: vec![
+    let outer = FieldDefinition::builder("sections", FieldType::Array)
+        .fields(vec![
+            FieldDefinition::builder("content", FieldType::Blocks)
+                .blocks(vec![
                     BlockDefinition::new("text", vec![
-                        FieldDefinition { name: "body".to_string(), field_type: FieldType::Text, required: true, ..Default::default() },
+                        FieldDefinition::builder("body", FieldType::Text).required(true).build(),
                     ]),
-                ],
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
+                ])
+                .build(),
+        ])
+        .build();
 
     let fields = vec![outer];
     let mut data = HashMap::new();
@@ -837,26 +722,15 @@ fn validate_nested_blocks_in_array_rows() {
 fn validate_group_in_array_row_required_subfield() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let array_field = FieldDefinition {
-        name: "items".to_string(),
-        field_type: FieldType::Array,
-        fields: vec![
-            FieldDefinition {
-                name: "meta".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![
-                    FieldDefinition {
-                        name: "author".to_string(),
-                        field_type: FieldType::Text,
-                        required: true,
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
+    let array_field = FieldDefinition::builder("items", FieldType::Array)
+        .fields(vec![
+            FieldDefinition::builder("meta", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("author", FieldType::Text).required(true).build(),
+                ])
+                .build(),
+        ])
+        .build();
 
     let fields = vec![array_field];
     let mut data = HashMap::new();
@@ -880,25 +754,15 @@ fn validate_group_in_array_row_required_subfield() {
 fn validate_group_date_subfield_in_array_row() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let array_field = FieldDefinition {
-        name: "items".to_string(),
-        field_type: FieldType::Array,
-        fields: vec![
-            FieldDefinition {
-                name: "meta".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![
-                    FieldDefinition {
-                        name: "published_at".to_string(),
-                        field_type: FieldType::Date,
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
+    let array_field = FieldDefinition::builder("items", FieldType::Array)
+        .fields(vec![
+            FieldDefinition::builder("meta", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("published_at", FieldType::Date).build(),
+                ])
+                .build(),
+        ])
+        .build();
 
     let fields = vec![array_field];
     let mut data = HashMap::new();
@@ -921,26 +785,17 @@ fn validate_group_date_subfield_in_array_row() {
 fn validate_group_custom_validate_in_array_row() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let array_field = FieldDefinition {
-        name: "items".to_string(),
-        field_type: FieldType::Array,
-        fields: vec![
-            FieldDefinition {
-                name: "meta".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![
-                    FieldDefinition {
-                        name: "score".to_string(),
-                        field_type: FieldType::Number,
-                        validate: Some("hooks.validators.positive_number".to_string()),
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
+    let array_field = FieldDefinition::builder("items", FieldType::Array)
+        .fields(vec![
+            FieldDefinition::builder("meta", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("score", FieldType::Number)
+                        .validate("hooks.validators.positive_number")
+                        .build(),
+                ])
+                .build(),
+        ])
+        .build();
 
     let fields = vec![array_field];
     let mut data = HashMap::new();
@@ -966,17 +821,8 @@ fn validate_required_field_on_update_skips_when_absent() {
     let (_tmp, pool, _registry, runner) = setup();
 
     let fields = vec![
-        FieldDefinition {
-            name: "title".to_string(),
-            field_type: FieldType::Text,
-            required: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "body".to_string(),
-            field_type: FieldType::Textarea,
-            ..Default::default()
-        },
+        FieldDefinition::builder("title", FieldType::Text).required(true).build(),
+        FieldDefinition::builder("body", FieldType::Textarea).build(),
     ];
 
     // On update (exclude_id set), if the required field is absent from data
@@ -995,12 +841,7 @@ fn validate_required_field_checkbox_always_passes() {
     let (_tmp, pool, _registry, runner) = setup();
 
     let fields = vec![
-        FieldDefinition {
-            name: "active".to_string(),
-            field_type: FieldType::Checkbox,
-            required: true,
-            ..Default::default()
-        },
+        FieldDefinition::builder("active", FieldType::Checkbox).required(true).build(),
     ];
 
     // Checkbox with required=true should pass even with no data
@@ -1017,12 +858,9 @@ fn custom_validate_returns_false_generic_message() {
     let (_tmp, pool, _registry, runner) = setup();
 
     // Create a field with a validate function that returns false (not a string)
-    let fields = vec![FieldDefinition {
-        name: "title".to_string(),
-        field_type: FieldType::Text,
-        validate: Some("hooks.access.deny_all".to_string()), // returns false
-        ..Default::default()
-    }];
+    let fields = vec![FieldDefinition::builder("title", FieldType::Text)
+        .validate("hooks.access.deny_all") // returns false
+        .build()];
 
     let mut data = HashMap::new();
     data.insert("title".to_string(), serde_json::json!("any value"));
@@ -1044,13 +882,10 @@ fn custom_validate_returns_false_generic_message() {
 fn validate_required_array_must_have_items() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let fields = vec![FieldDefinition {
-        name: "tags".to_string(),
-        field_type: FieldType::Array,
-        required: true,
-        fields: vec![make_field("label", FieldType::Text)],
-        ..Default::default()
-    }];
+    let fields = vec![FieldDefinition::builder("tags", FieldType::Array)
+        .required(true)
+        .fields(vec![make_field("label", FieldType::Text)])
+        .build()];
 
     let conn = pool.get().expect("DB connection");
 
@@ -1072,16 +907,13 @@ fn validate_required_array_must_have_items() {
 fn validate_blocks_unknown_block_type_skips() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let blocks_field = FieldDefinition {
-        name: "content".to_string(),
-        field_type: FieldType::Blocks,
-        blocks: vec![
+    let blocks_field = FieldDefinition::builder("content", FieldType::Blocks)
+        .blocks(vec![
             BlockDefinition::new("text", vec![
-                FieldDefinition { name: "body".to_string(), field_type: FieldType::Text, required: true, ..Default::default() },
+                FieldDefinition::builder("body", FieldType::Text).required(true).build(),
             ]),
-        ],
-        ..Default::default()
-    };
+        ])
+        .build();
 
     let fields = vec![blocks_field];
     let mut data = HashMap::new();
@@ -1101,19 +933,11 @@ fn validate_blocks_unknown_block_type_skips() {
 fn validate_checkbox_subfield_in_array_never_fails_required() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let array_field = FieldDefinition {
-        name: "items".to_string(),
-        field_type: FieldType::Array,
-        fields: vec![
-            FieldDefinition {
-                name: "active".to_string(),
-                field_type: FieldType::Checkbox,
-                required: true,
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
+    let array_field = FieldDefinition::builder("items", FieldType::Array)
+        .fields(vec![
+            FieldDefinition::builder("active", FieldType::Checkbox).required(true).build(),
+        ])
+        .build();
 
     let fields = vec![array_field];
     let mut data = HashMap::new();
@@ -1131,26 +955,15 @@ fn validate_checkbox_subfield_in_array_never_fails_required() {
 fn validate_checkbox_group_subfield_in_array_never_fails_required() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let array_field = FieldDefinition {
-        name: "items".to_string(),
-        field_type: FieldType::Array,
-        fields: vec![
-            FieldDefinition {
-                name: "meta".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![
-                    FieldDefinition {
-                        name: "featured".to_string(),
-                        field_type: FieldType::Checkbox,
-                        required: true,
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
-        ],
-        ..Default::default()
-    };
+    let array_field = FieldDefinition::builder("items", FieldType::Array)
+        .fields(vec![
+            FieldDefinition::builder("meta", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("featured", FieldType::Checkbox).required(true).build(),
+                ])
+                .build(),
+        ])
+        .build();
 
     let fields = vec![array_field];
     let mut data = HashMap::new();
@@ -1167,16 +980,13 @@ fn validate_checkbox_group_subfield_in_array_never_fails_required() {
 fn validate_blocks_non_object_row_skips() {
     let (_tmp, pool, _registry, runner) = setup();
 
-    let blocks_field = FieldDefinition {
-        name: "content".to_string(),
-        field_type: FieldType::Blocks,
-        blocks: vec![
+    let blocks_field = FieldDefinition::builder("content", FieldType::Blocks)
+        .blocks(vec![
             BlockDefinition::new("text", vec![
-                FieldDefinition { name: "body".to_string(), field_type: FieldType::Text, required: true, ..Default::default() },
+                FieldDefinition::builder("body", FieldType::Text).required(true).build(),
             ]),
-        ],
-        ..Default::default()
-    };
+        ])
+        .build();
 
     let fields = vec![blocks_field];
     let mut data = HashMap::new();

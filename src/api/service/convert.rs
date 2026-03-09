@@ -440,20 +440,15 @@ mod tests {
     // ── field_def_to_proto ─────────────────────────────────────────────────
 
     fn make_field(name: &str, field_type: FieldType) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, field_type).build()
     }
 
     #[test]
     fn field_def_to_proto_simple_text() {
-        let field = FieldDefinition {
-            required: true,
-            unique: true,
-            ..make_field("title", FieldType::Text)
-        };
+        let field = FieldDefinition::builder("title", FieldType::Text)
+            .required(true)
+            .unique(true)
+            .build();
 
         let proto = field_def_to_proto(&field);
         assert_eq!(proto.name, "title");
@@ -470,14 +465,13 @@ mod tests {
 
     #[test]
     fn field_def_to_proto_with_relationship() {
-        let field = FieldDefinition {
-            relationship: Some({
+        let field = FieldDefinition::builder("author", FieldType::Relationship)
+            .relationship({
                 let mut rc = RelationshipConfig::new("authors", true);
                 rc.max_depth = Some(3);
                 rc
-            }),
-            ..make_field("author", FieldType::Relationship)
-        };
+            })
+            .build();
 
         let proto = field_def_to_proto(&field);
         assert_eq!(proto.r#type, "relationship");
@@ -488,13 +482,12 @@ mod tests {
 
     #[test]
     fn field_def_to_proto_with_options() {
-        let field = FieldDefinition {
-            options: vec![
+        let field = FieldDefinition::builder("status", FieldType::Select)
+            .options(vec![
                 SelectOption::new(LocalizedString::Plain("Draft".to_string()), "draft"),
                 SelectOption::new(LocalizedString::Plain("Published".to_string()), "published"),
-            ],
-            ..make_field("status", FieldType::Select)
-        };
+            ])
+            .build();
 
         let proto = field_def_to_proto(&field);
         assert_eq!(proto.options.len(), 2);
@@ -506,14 +499,13 @@ mod tests {
 
     #[test]
     fn field_def_to_proto_with_blocks() {
-        let field = FieldDefinition {
-            blocks: vec![{
+        let field = FieldDefinition::builder("content", FieldType::Blocks)
+            .blocks(vec![{
                 let mut bd = BlockDefinition::new("text_block", vec![make_field("body", FieldType::Textarea)]);
                 bd.label = Some(LocalizedString::Plain("Text Block".to_string()));
                 bd
-            }],
-            ..make_field("content", FieldType::Blocks)
-        };
+            }])
+            .build();
 
         let proto = field_def_to_proto(&field);
         assert_eq!(proto.blocks.len(), 1);
@@ -526,10 +518,9 @@ mod tests {
 
     #[test]
     fn field_def_to_proto_localized() {
-        let field = FieldDefinition {
-            localized: true,
-            ..make_field("title", FieldType::Text)
-        };
+        let field = FieldDefinition::builder("title", FieldType::Text)
+            .localized(true)
+            .build();
 
         let proto = field_def_to_proto(&field);
         assert!(proto.localized);

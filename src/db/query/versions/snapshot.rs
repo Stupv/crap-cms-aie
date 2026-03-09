@@ -148,16 +148,8 @@ mod tests {
     #[test]
     fn extract_snapshot_data_basic() {
         let fields = vec![
-            FieldDefinition {
-                name: "title".to_string(),
-                field_type: crate::core::field::FieldType::Text,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "count".to_string(),
-                field_type: crate::core::field::FieldType::Number,
-                ..Default::default()
-            },
+            FieldDefinition::builder("title", crate::core::field::FieldType::Text).build(),
+            FieldDefinition::builder("count", crate::core::field::FieldType::Number).build(),
         ];
 
         let obj: serde_json::Map<String, serde_json::Value> = serde_json::from_value(
@@ -172,17 +164,8 @@ mod tests {
     #[test]
     fn extract_snapshot_data_skips_localized_when_enabled() {
         let fields = vec![
-            FieldDefinition {
-                name: "title".to_string(),
-                field_type: crate::core::field::FieldType::Text,
-                localized: true,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "slug".to_string(),
-                field_type: crate::core::field::FieldType::Text,
-                ..Default::default()
-            },
+            FieldDefinition::builder("title", crate::core::field::FieldType::Text).localized(true).build(),
+            FieldDefinition::builder("slug", crate::core::field::FieldType::Text).build(),
         ];
 
         let obj: serde_json::Map<String, serde_json::Value> = serde_json::from_value(
@@ -197,18 +180,11 @@ mod tests {
     #[test]
     fn extract_snapshot_data_group_fields() {
         let fields = vec![
-            FieldDefinition {
-                name: "seo".to_string(),
-                field_type: crate::core::field::FieldType::Group,
-                fields: vec![
-                    FieldDefinition {
-                        name: "title".to_string(),
-                        field_type: crate::core::field::FieldType::Text,
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
+            FieldDefinition::builder("seo", crate::core::field::FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("title", crate::core::field::FieldType::Text).build(),
+                ])
+                .build(),
         ];
 
         // Flat format: seo__title
@@ -230,23 +206,12 @@ mod tests {
     fn extract_snapshot_data_tabs_promotes_sub_fields() {
         // Fields inside Tabs should be promoted as top-level columns (no prefix)
         let fields = vec![
-            FieldDefinition {
-                name: "page_settings".to_string(),
-                field_type: crate::core::field::FieldType::Tabs,
-                tabs: vec![crate::core::field::FieldTab::new("Settings", vec![
-                    FieldDefinition {
-                        name: "template".to_string(),
-                        field_type: crate::core::field::FieldType::Select,
-                        ..Default::default()
-                    },
-                    FieldDefinition {
-                        name: "show_in_nav".to_string(),
-                        field_type: crate::core::field::FieldType::Checkbox,
-                        ..Default::default()
-                    },
-                ])],
-                ..Default::default()
-            },
+            FieldDefinition::builder("page_settings", crate::core::field::FieldType::Tabs)
+                .tabs(vec![crate::core::field::FieldTab::new("Settings", vec![
+                    FieldDefinition::builder("template", crate::core::field::FieldType::Select).build(),
+                    FieldDefinition::builder("show_in_nav", crate::core::field::FieldType::Checkbox).build(),
+                ])])
+                .build(),
         ];
 
         let obj: serde_json::Map<String, serde_json::Value> = serde_json::from_value(
@@ -261,18 +226,11 @@ mod tests {
     #[test]
     fn extract_snapshot_data_row_promotes_sub_fields() {
         let fields = vec![
-            FieldDefinition {
-                name: "main_row".to_string(),
-                field_type: crate::core::field::FieldType::Row,
-                fields: vec![
-                    FieldDefinition {
-                        name: "width".to_string(),
-                        field_type: crate::core::field::FieldType::Number,
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
+            FieldDefinition::builder("main_row", crate::core::field::FieldType::Row)
+                .fields(vec![
+                    FieldDefinition::builder("width", crate::core::field::FieldType::Number).build(),
+                ])
+                .build(),
         ];
 
         let obj: serde_json::Map<String, serde_json::Value> = serde_json::from_value(
@@ -288,24 +246,18 @@ mod tests {
         // Regression: Row inside Tabs at the collection top level was not recursed
         use crate::core::field::FieldTab;
         let fields = vec![
-            FieldDefinition {
-                name: "layout".to_string(),
-                field_type: crate::core::field::FieldType::Tabs,
-                tabs: vec![
+            FieldDefinition::builder("layout", crate::core::field::FieldType::Tabs)
+                .tabs(vec![
                     FieldTab::new("General", vec![
-                        FieldDefinition {
-                            name: "inner_row".to_string(),
-                            field_type: crate::core::field::FieldType::Row,
-                            fields: vec![
-                                FieldDefinition { name: "title".to_string(), ..Default::default() },
-                                FieldDefinition { name: "slug".to_string(), ..Default::default() },
-                            ],
-                            ..Default::default()
-                        },
+                        FieldDefinition::builder("inner_row", crate::core::field::FieldType::Row)
+                            .fields(vec![
+                                FieldDefinition::builder("title", crate::core::field::FieldType::Text).build(),
+                                FieldDefinition::builder("slug", crate::core::field::FieldType::Text).build(),
+                            ])
+                            .build(),
                     ]),
-                ],
-                ..Default::default()
-            },
+                ])
+                .build(),
         ];
 
         let obj: serde_json::Map<String, serde_json::Value> = serde_json::from_value(
@@ -322,21 +274,12 @@ mod tests {
     fn collect_join_data_from_snapshot_tabs() {
         // Blocks inside Tabs should be collected as join data
         let fields = vec![
-            FieldDefinition {
-                name: "title".to_string(),
-                field_type: crate::core::field::FieldType::Text,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "page_settings".to_string(),
-                field_type: crate::core::field::FieldType::Tabs,
-                tabs: vec![crate::core::field::FieldTab::new("Content", vec![FieldDefinition {
-                    name: "content".to_string(),
-                    field_type: crate::core::field::FieldType::Blocks,
-                    ..Default::default()
-                }])],
-                ..Default::default()
-            },
+            FieldDefinition::builder("title", crate::core::field::FieldType::Text).build(),
+            FieldDefinition::builder("page_settings", crate::core::field::FieldType::Tabs)
+                .tabs(vec![crate::core::field::FieldTab::new("Content", vec![
+                    FieldDefinition::builder("content", crate::core::field::FieldType::Blocks).build(),
+                ])])
+                .build(),
         ];
 
         let obj: serde_json::Map<String, serde_json::Value> = serde_json::from_value(
@@ -359,27 +302,18 @@ mod tests {
     #[test]
     fn collect_join_data_from_snapshot_row_and_collapsible() {
         let fields = vec![
-            FieldDefinition {
-                name: "row_wrapper".to_string(),
-                field_type: crate::core::field::FieldType::Row,
-                fields: vec![FieldDefinition {
-                    name: "items".to_string(),
-                    field_type: crate::core::field::FieldType::Array,
-                    ..Default::default()
-                }],
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "advanced".to_string(),
-                field_type: crate::core::field::FieldType::Collapsible,
-                fields: vec![FieldDefinition {
-                    name: "related".to_string(),
-                    field_type: crate::core::field::FieldType::Relationship,
-                    relationship: Some(crate::core::field::RelationshipConfig::new("tags", true)),
-                    ..Default::default()
-                }],
-                ..Default::default()
-            },
+            FieldDefinition::builder("row_wrapper", crate::core::field::FieldType::Row)
+                .fields(vec![
+                    FieldDefinition::builder("items", crate::core::field::FieldType::Array).build(),
+                ])
+                .build(),
+            FieldDefinition::builder("advanced", crate::core::field::FieldType::Collapsible)
+                .fields(vec![
+                    FieldDefinition::builder("related", crate::core::field::FieldType::Relationship)
+                        .relationship(crate::core::field::RelationshipConfig::new("tags", true))
+                        .build(),
+                ])
+                .build(),
         ];
 
         let obj: serde_json::Map<String, serde_json::Value> = serde_json::from_value(

@@ -148,8 +148,8 @@ impl Default for FieldDefinition {
 }
 
 impl FieldDefinition {
-    pub fn builder(name: impl Into<String>, field_type: FieldType) -> crate::core::field_definition_builder::FieldDefinitionBuilder {
-        crate::core::field_definition_builder::FieldDefinitionBuilder::new(name, field_type)
+    pub fn builder(name: impl Into<String>, field_type: FieldType) -> super::FieldDefinitionBuilder {
+        super::FieldDefinitionBuilder::new(name, field_type)
     }
 
     /// Whether this field has a column on the parent table.

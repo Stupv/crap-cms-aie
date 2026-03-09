@@ -262,18 +262,11 @@ mod tests {
     use crate::core::field::LocalizedString;
 
     fn text_field(name: &str) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Text).build()
     }
 
     fn required_text(name: &str) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            required: true,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Text).required(true).build()
     }
 
     #[test]
@@ -285,37 +278,26 @@ mod tests {
 
     #[test]
     fn number_field_schema() {
-        let f = FieldDefinition {
-            name: "count".to_string(),
-            field_type: FieldType::Number,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("count", FieldType::Number).build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "number");
     }
 
     #[test]
     fn checkbox_field_schema() {
-        let f = FieldDefinition {
-            name: "active".to_string(),
-            field_type: FieldType::Checkbox,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("active", FieldType::Checkbox).build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "boolean");
     }
 
     #[test]
     fn select_field_with_options() {
-        let f = FieldDefinition {
-            name: "status".to_string(),
-            field_type: FieldType::Select,
-            options: vec![
+        let f = FieldDefinition::builder("status", FieldType::Select)
+            .options(vec![
                 SelectOption::new(LocalizedString::Plain("Draft".to_string()), "draft"),
                 SelectOption::new(LocalizedString::Plain("Published".to_string()), "published"),
-            ],
-            ..Default::default()
-        };
+            ])
+            .build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "string");
         let enm = s["enum"].as_array().unwrap();
@@ -324,50 +306,36 @@ mod tests {
 
     #[test]
     fn date_field_has_format() {
-        let f = FieldDefinition {
-            name: "created".to_string(),
-            field_type: FieldType::Date,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("created", FieldType::Date).build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["format"], "date-time");
     }
 
     #[test]
     fn relationship_has_many() {
-        let f = FieldDefinition {
-            name: "tags".to_string(),
-            field_type: FieldType::Relationship,
-            relationship: Some(crate::core::field::RelationshipConfig::new("tags", true)),
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("tags", FieldType::Relationship)
+            .relationship(crate::core::field::RelationshipConfig::new("tags", true))
+            .build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "array");
     }
 
     #[test]
     fn mcp_description_included() {
-        let f = FieldDefinition {
-            name: "status".to_string(),
-            mcp: McpFieldConfig {
-                description: Some("Publication status".to_string()),
-            },
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("status", FieldType::Text)
+            .mcp(McpFieldConfig { description: Some("Publication status".to_string()) })
+            .build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["description"], "Publication status");
     }
 
     #[test]
     fn admin_description_fallback() {
-        let f = FieldDefinition {
-            name: "status".to_string(),
-            admin: FieldAdmin {
-                description: Some(LocalizedString::Plain("Admin desc".to_string())),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("status", FieldType::Text)
+            .admin(FieldAdmin::builder()
+                .description(LocalizedString::Plain("Admin desc".to_string()))
+                .build())
+            .build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["description"], "Admin desc");
     }
@@ -409,12 +377,9 @@ mod tests {
 
     #[test]
     fn array_field_schema() {
-        let f = FieldDefinition {
-            name: "items".to_string(),
-            field_type: FieldType::Array,
-            fields: vec![text_field("label"), required_text("value")],
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("items", FieldType::Array)
+            .fields(vec![text_field("label"), required_text("value")])
+            .build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "array");
         assert!(s["items"]["properties"]["label"].is_object());
@@ -422,12 +387,9 @@ mod tests {
 
     #[test]
     fn layout_fields_flattened() {
-        let row = FieldDefinition {
-            name: "row1".to_string(),
-            field_type: FieldType::Row,
-            fields: vec![text_field("first_name"), text_field("last_name")],
-            ..Default::default()
-        };
+        let row = FieldDefinition::builder("row1", FieldType::Row)
+            .fields(vec![text_field("first_name"), text_field("last_name")])
+            .build();
         let mut def = CollectionDefinition::new("people");
         def.fields = vec![row];
         let s = collection_input_schema(&def, CrudOp::Create);
@@ -458,55 +420,35 @@ mod tests {
 
     #[test]
     fn textarea_field_schema() {
-        let f = FieldDefinition {
-            name: "body".to_string(),
-            field_type: FieldType::Textarea,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("body", FieldType::Textarea).build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "string");
     }
 
     #[test]
     fn email_field_schema() {
-        let f = FieldDefinition {
-            name: "email".to_string(),
-            field_type: FieldType::Email,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("email", FieldType::Email).build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "string");
     }
 
     #[test]
     fn code_field_schema() {
-        let f = FieldDefinition {
-            name: "snippet".to_string(),
-            field_type: FieldType::Code,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("snippet", FieldType::Code).build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "string");
     }
 
     #[test]
     fn richtext_field_schema() {
-        let f = FieldDefinition {
-            name: "content".to_string(),
-            field_type: FieldType::Richtext,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("content", FieldType::Richtext).build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "string");
     }
 
     #[test]
     fn json_field_schema() {
-        let f = FieldDefinition {
-            name: "metadata".to_string(),
-            field_type: FieldType::Json,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("metadata", FieldType::Json).build();
         let s = field_to_json_schema(&f);
         // Json fields use an empty schema ({}) — no type restriction
         assert!(s.is_object());
@@ -515,12 +457,9 @@ mod tests {
 
     #[test]
     fn group_field_schema() {
-        let f = FieldDefinition {
-            name: "address".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![text_field("street"), required_text("city")],
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("address", FieldType::Group)
+            .fields(vec![text_field("street"), required_text("city")])
+            .build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "object");
         assert!(s["properties"]["street"].is_object());
@@ -532,16 +471,13 @@ mod tests {
 
     #[test]
     fn radio_field_schema_with_options() {
-        let f = FieldDefinition {
-            name: "size".to_string(),
-            field_type: FieldType::Radio,
-            options: vec![
+        let f = FieldDefinition::builder("size", FieldType::Radio)
+            .options(vec![
                 SelectOption::new(LocalizedString::Plain("S".to_string()), "s"),
                 SelectOption::new(LocalizedString::Plain("M".to_string()), "m"),
                 SelectOption::new(LocalizedString::Plain("L".to_string()), "l"),
-            ],
-            ..Default::default()
-        };
+            ])
+            .build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "string");
         let enm = s["enum"].as_array().unwrap();
@@ -550,12 +486,7 @@ mod tests {
 
     #[test]
     fn radio_field_schema_without_options() {
-        let f = FieldDefinition {
-            name: "mode".to_string(),
-            field_type: FieldType::Radio,
-            options: vec![],
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("mode", FieldType::Radio).build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "string");
         assert!(s.get("enum").is_none());
@@ -563,12 +494,7 @@ mod tests {
 
     #[test]
     fn select_field_without_options() {
-        let f = FieldDefinition {
-            name: "cat".to_string(),
-            field_type: FieldType::Select,
-            options: vec![],
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("cat", FieldType::Select).build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "string");
         assert!(s.get("enum").is_none());
@@ -576,16 +502,13 @@ mod tests {
 
     #[test]
     fn select_field_has_many() {
-        let f = FieldDefinition {
-            name: "tags".to_string(),
-            field_type: FieldType::Select,
-            has_many: true,
-            options: vec![
+        let f = FieldDefinition::builder("tags", FieldType::Select)
+            .has_many(true)
+            .options(vec![
                 SelectOption::new(LocalizedString::Plain("A".to_string()), "a"),
                 SelectOption::new(LocalizedString::Plain("B".to_string()), "b"),
-            ],
-            ..Default::default()
-        };
+            ])
+            .build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "array");
         assert!(s["items"]["enum"].is_array());
@@ -593,23 +516,16 @@ mod tests {
 
     #[test]
     fn upload_field_single() {
-        let f = FieldDefinition {
-            name: "avatar".to_string(),
-            field_type: FieldType::Upload,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("avatar", FieldType::Upload).build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "string");
     }
 
     #[test]
     fn upload_field_has_many() {
-        let f = FieldDefinition {
-            name: "images".to_string(),
-            field_type: FieldType::Upload,
-            relationship: Some(crate::core::field::RelationshipConfig::new("media", true)),
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("images", FieldType::Upload)
+            .relationship(crate::core::field::RelationshipConfig::new("media", true))
+            .build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "array");
     }
@@ -617,12 +533,7 @@ mod tests {
     #[test]
     fn relationship_single_no_config() {
         // has_many from has_many field, no relationship config
-        let f = FieldDefinition {
-            name: "author".to_string(),
-            field_type: FieldType::Relationship,
-            has_many: false,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("author", FieldType::Relationship).build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "string");
     }
@@ -630,12 +541,9 @@ mod tests {
     #[test]
     fn relationship_has_many_via_field() {
         // has_many from has_many field, no relationship config
-        let f = FieldDefinition {
-            name: "categories".to_string(),
-            field_type: FieldType::Relationship,
-            has_many: true,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("categories", FieldType::Relationship)
+            .has_many(true)
+            .build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "array");
     }
@@ -643,12 +551,9 @@ mod tests {
     #[test]
     fn row_field_schema_is_empty_object() {
         // Row as standalone field_to_json_schema → empty object placeholder
-        let f = FieldDefinition {
-            name: "my_row".to_string(),
-            field_type: FieldType::Row,
-            fields: vec![text_field("a"), text_field("b")],
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("my_row", FieldType::Row)
+            .fields(vec![text_field("a"), text_field("b")])
+            .build();
         let s = field_to_json_schema(&f);
         assert!(s.is_object());
         // Empty schema placeholder (no type key)
@@ -657,12 +562,9 @@ mod tests {
 
     #[test]
     fn collapsible_field_schema_is_empty_object() {
-        let f = FieldDefinition {
-            name: "my_collapsible".to_string(),
-            field_type: FieldType::Collapsible,
-            fields: vec![text_field("x")],
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("my_collapsible", FieldType::Collapsible)
+            .fields(vec![text_field("x")])
+            .build();
         let s = field_to_json_schema(&f);
         assert!(s.is_object());
         assert!(s.get("type").is_none());
@@ -670,11 +572,7 @@ mod tests {
 
     #[test]
     fn tabs_field_schema_is_empty_object() {
-        let f = FieldDefinition {
-            name: "my_tabs".to_string(),
-            field_type: FieldType::Tabs,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("my_tabs", FieldType::Tabs).build();
         let s = field_to_json_schema(&f);
         assert!(s.is_object());
         assert!(s.get("type").is_none());
@@ -682,23 +580,14 @@ mod tests {
 
     #[test]
     fn join_field_schema_is_string() {
-        let f = FieldDefinition {
-            name: "related".to_string(),
-            field_type: FieldType::Join,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("related", FieldType::Join).build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "string");
     }
 
     #[test]
     fn blocks_empty_schema() {
-        let f = FieldDefinition {
-            name: "content".to_string(),
-            field_type: FieldType::Blocks,
-            blocks: vec![],
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("content", FieldType::Blocks).build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "array");
         // No items when no blocks defined
@@ -708,15 +597,12 @@ mod tests {
     #[test]
     fn blocks_with_variants_schema() {
         use crate::core::field::BlockDefinition;
-        let f = FieldDefinition {
-            name: "layout".to_string(),
-            field_type: FieldType::Blocks,
-            blocks: vec![
+        let f = FieldDefinition::builder("layout", FieldType::Blocks)
+            .blocks(vec![
                 BlockDefinition::new("hero", vec![required_text("heading")]),
                 BlockDefinition::new("cta", vec![text_field("label"), text_field("url")]),
-            ],
-            ..Default::default()
-        };
+            ])
+            .build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "array");
         let one_of = s["items"]["oneOf"].as_array().unwrap();
@@ -738,15 +624,12 @@ mod tests {
     #[test]
     fn tabs_fields_flattened_in_object_schema() {
         use crate::core::field::{FieldTab};
-        let tabs = FieldDefinition {
-            name: "tabs".to_string(),
-            field_type: FieldType::Tabs,
-            tabs: vec![
+        let tabs = FieldDefinition::builder("tabs", FieldType::Tabs)
+            .tabs(vec![
                 FieldTab::new("SEO", vec![text_field("meta_title"), required_text("meta_desc")]),
                 FieldTab::new("Content", vec![text_field("body")]),
-            ],
-            ..Default::default()
-        };
+            ])
+            .build();
         let mut def = CollectionDefinition::new("pages");
         def.fields = vec![tabs];
         let s = collection_input_schema(&def, CrudOp::Create);
@@ -763,12 +646,9 @@ mod tests {
 
     #[test]
     fn collapsible_fields_flattened_in_object_schema() {
-        let collapsible = FieldDefinition {
-            name: "collapsible_section".to_string(),
-            field_type: FieldType::Collapsible,
-            fields: vec![text_field("internal_notes"), required_text("reference_code")],
-            ..Default::default()
-        };
+        let collapsible = FieldDefinition::builder("collapsible_section", FieldType::Collapsible)
+            .fields(vec![text_field("internal_notes"), required_text("reference_code")])
+            .build();
         let mut def = CollectionDefinition::new("orders");
         def.fields = vec![collapsible];
         let s = collection_input_schema(&def, CrudOp::Create);
@@ -782,11 +662,7 @@ mod tests {
 
     #[test]
     fn join_fields_skipped_in_object_schema() {
-        let join = FieldDefinition {
-            name: "comments".to_string(),
-            field_type: FieldType::Join,
-            ..Default::default()
-        };
+        let join = FieldDefinition::builder("comments", FieldType::Join).build();
         let mut def = CollectionDefinition::new("posts");
         def.fields = vec![text_field("title"), join];
         let s = collection_input_schema(&def, CrudOp::Create);
@@ -799,12 +675,12 @@ mod tests {
 
     #[test]
     fn auth_collection_create_adds_password_field() {
-        use crate::core::collection::CollectionAuth;
+        use crate::core::collection::Auth;
         // Use a required field so the "required" array is already present in the schema,
         // allowing the auth code path to push "password" into it.
         let mut def = CollectionDefinition::new("users");
         def.fields = vec![required_text("email"), text_field("name")];
-        def.auth = Some(CollectionAuth { enabled: true, ..Default::default() });
+        def.auth = Some(Auth { enabled: true, ..Default::default() });
         let s = collection_input_schema(&def, CrudOp::Create);
         assert!(s["properties"]["password"].is_object());
         // password is appended to the existing required array
@@ -814,10 +690,10 @@ mod tests {
 
     #[test]
     fn auth_collection_update_adds_optional_password_field() {
-        use crate::core::collection::CollectionAuth;
+        use crate::core::collection::Auth;
         let mut def = CollectionDefinition::new("users");
         def.fields = vec![text_field("name")];
-        def.auth = Some(CollectionAuth { enabled: true, ..Default::default() });
+        def.auth = Some(Auth { enabled: true, ..Default::default() });
         let s = collection_input_schema(&def, CrudOp::Update);
         // password appears but is not required (optional change)
         assert!(s["properties"]["password"].is_object());
@@ -860,12 +736,9 @@ mod tests {
 
     #[test]
     fn array_field_required_sub_fields() {
-        let f = FieldDefinition {
-            name: "options".to_string(),
-            field_type: FieldType::Array,
-            fields: vec![required_text("key"), text_field("value")],
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("options", FieldType::Array)
+            .fields(vec![required_text("key"), text_field("value")])
+            .build();
         let s = field_to_json_schema(&f);
         assert_eq!(s["type"], "array");
         assert!(s["items"]["properties"]["key"].is_object());

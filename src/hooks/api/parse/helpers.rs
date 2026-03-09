@@ -2,7 +2,7 @@
 
 use mlua::{Table, Value};
 
-use crate::core::collection::CollectionHooks;
+use crate::core::collection::Hooks;
 use crate::core::field::{LocalizedString, SelectOption};
 
 use anyhow::Result;
@@ -74,8 +74,8 @@ pub(super) fn parse_string_list(tbl: &Table, key: &str) -> Result<Vec<String>> {
     }
 }
 
-pub(super) fn parse_hooks(hooks_tbl: &Table) -> Result<CollectionHooks> {
-    Ok(CollectionHooks {
+pub(super) fn parse_hooks(hooks_tbl: &Table) -> Result<Hooks> {
+    Ok(Hooks {
         before_validate: parse_string_list(hooks_tbl, "before_validate")?,
         before_change: parse_string_list(hooks_tbl, "before_change")?,
         after_change: parse_string_list(hooks_tbl, "after_change")?,

@@ -188,54 +188,42 @@ mod tests {
     #[test]
     fn rel_has_many_with_has_many_config() {
         use crate::core::field::RelationshipConfig;
-        let f = FieldDefinition {
-            field_type: crate::core::field::FieldType::Upload,
-            relationship: Some(RelationshipConfig::new("media", true)),
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("", crate::core::field::FieldType::Upload)
+            .relationship(RelationshipConfig::new("media", true))
+            .build();
         assert!(rel_has_many(&f));
     }
 
     #[test]
     fn rel_has_many_with_has_one_config() {
         use crate::core::field::RelationshipConfig;
-        let f = FieldDefinition {
-            field_type: crate::core::field::FieldType::Upload,
-            relationship: Some(RelationshipConfig::new("media", false)),
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("", crate::core::field::FieldType::Upload)
+            .relationship(RelationshipConfig::new("media", false))
+            .build();
         assert!(!rel_has_many(&f));
     }
 
     #[test]
     fn rel_has_many_with_no_config() {
-        let f = FieldDefinition {
-            field_type: crate::core::field::FieldType::Upload,
-            relationship: None,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("", crate::core::field::FieldType::Upload).build();
         assert!(!rel_has_many(&f));
     }
 
     #[test]
     fn is_optional_required_field() {
-        let f = FieldDefinition { required: true, ..Default::default() };
+        let f = FieldDefinition::builder("", FieldType::Text).required(true).build();
         assert!(!is_optional(&f));
     }
 
     #[test]
     fn is_optional_non_required_field() {
-        let f = FieldDefinition { required: false, ..Default::default() };
+        let f = FieldDefinition::builder("", FieldType::Text).required(false).build();
         assert!(is_optional(&f));
     }
 
     #[test]
     fn is_optional_checkbox_always_optional() {
-        let f = FieldDefinition {
-            required: true,
-            field_type: FieldType::Checkbox,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("", FieldType::Checkbox).required(true).build();
         assert!(is_optional(&f), "checkbox should always be optional");
     }
 

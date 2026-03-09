@@ -26,22 +26,14 @@ use crap_cms::hooks::lifecycle::HookRunner;
 
 fn make_versioned_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("articles");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Article".to_string())),
         plural: Some(LocalizedString::Plain("Articles".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "title".to_string(),
-            required: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "body".to_string(),
-            field_type: FieldType::Textarea,
-            ..Default::default()
-        },
+        FieldDefinition::builder("title", FieldType::Text).required(true).build(),
+        FieldDefinition::builder("body", FieldType::Textarea).build(),
     ];
     def.versions = Some(VersionsConfig::new(true, 0));
     def
@@ -551,20 +543,13 @@ fn make_versioned_group_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("pages_ver");
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "title".to_string(),
-            required: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![
-                FieldDefinition { name: "meta_title".to_string(), ..Default::default() },
-                FieldDefinition { name: "meta_description".to_string(), ..Default::default() },
-            ],
-            ..Default::default()
-        },
+        FieldDefinition::builder("title", FieldType::Text).required(true).build(),
+        FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![
+                FieldDefinition::builder("meta_title", FieldType::Text).build(),
+                FieldDefinition::builder("meta_description", FieldType::Text).build(),
+            ])
+            .build(),
     ];
     def.versions = Some(VersionsConfig::new(true, 0));
     def
@@ -573,16 +558,13 @@ fn make_versioned_group_def() -> CollectionDefinition {
 fn make_versioned_global_group_def() -> GlobalDefinition {
     let mut def = GlobalDefinition::new("site_ver");
     def.fields = vec![
-        FieldDefinition { name: "site_name".to_string(), ..Default::default() },
-        FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![
-                FieldDefinition { name: "meta_title".to_string(), ..Default::default() },
-                FieldDefinition { name: "og_image".to_string(), ..Default::default() },
-            ],
-            ..Default::default()
-        },
+        FieldDefinition::builder("site_name", FieldType::Text).build(),
+        FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![
+                FieldDefinition::builder("meta_title", FieldType::Text).build(),
+                FieldDefinition::builder("og_image", FieldType::Text).build(),
+            ])
+            .build(),
     ];
     def.versions = Some(VersionsConfig::new(true, 0));
     def
@@ -939,16 +921,15 @@ fn service_nonversioned_create_no_version_created() {
 fn service_update_draft_preserves_join_data_in_snapshot() {
     // Build a def with a blocks field
     let mut def = make_versioned_def();
-    def.fields.push(FieldDefinition {
-        name: "content".to_string(),
-        field_type: FieldType::Blocks,
-        blocks: vec![
-            crap_cms::core::field::BlockDefinition::new("text", vec![
-                FieldDefinition { name: "body".to_string(), field_type: FieldType::Textarea, ..Default::default() },
-            ]),
-        ],
-        ..Default::default()
-    });
+    def.fields.push(
+        FieldDefinition::builder("content", FieldType::Blocks)
+            .blocks(vec![
+                crap_cms::core::field::BlockDefinition::new("text", vec![
+                    FieldDefinition::builder("body", FieldType::Textarea).build(),
+                ]),
+            ])
+            .build()
+    );
 
     let ts = setup_service(vec![def.clone()]);
     let pool = &ts.pool;

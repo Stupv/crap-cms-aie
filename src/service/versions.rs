@@ -116,10 +116,7 @@ mod tests {
         let mut def = CollectionDefinition::new("posts");
         def.timestamps = true;
         def.fields = vec![
-            FieldDefinition {
-                name: "title".to_string(),
-                ..Default::default()
-            },
+            FieldDefinition::builder("title", FieldType::Text).build(),
         ];
         def
     }
@@ -294,21 +291,14 @@ mod tests {
             )"
         ).unwrap();
 
-        let blocks_field = FieldDefinition {
-            name: "content".to_string(),
-            field_type: FieldType::Blocks,
-            ..Default::default()
-        };
-        let tabs_field = FieldDefinition {
-            name: "page_settings".to_string(),
-            field_type: FieldType::Tabs,
-            tabs: vec![FieldTab::new("Content", vec![blocks_field])],
-            ..Default::default()
-        };
+        let blocks_field = FieldDefinition::builder("content", FieldType::Blocks).build();
+        let tabs_field = FieldDefinition::builder("page_settings", FieldType::Tabs)
+            .tabs(vec![FieldTab::new("Content", vec![blocks_field])])
+            .build();
         let mut def = test_def();
         def.versions = Some(VersionsConfig::new(true, 10));
         def.fields = vec![
-            FieldDefinition { name: "title".to_string(), ..Default::default() },
+            FieldDefinition::builder("title", FieldType::Text).build(),
             tabs_field,
         ];
 

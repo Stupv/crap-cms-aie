@@ -288,11 +288,7 @@ mod tests {
     use crate::db::query::fts::search::fts_search;
 
     fn text_field(name: &str) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Text,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Text).build()
     }
 
     fn simple_def(fields: Vec<FieldDefinition>) -> CollectionDefinition {
@@ -333,12 +329,7 @@ mod tests {
     }
 
     fn localized_text_field(name: &str) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Text,
-            localized: true,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Text).localized(true).build()
     }
 
     // ── sync_fts_table ──────────────────────────────────────────────────
@@ -373,11 +364,7 @@ mod tests {
         conn.execute_batch("CREATE VIRTUAL TABLE _fts_posts USING fts5(id UNINDEXED, title)")
             .unwrap();
 
-        let def = simple_def(vec![FieldDefinition {
-            name: "count".to_string(),
-            field_type: FieldType::Number,
-            ..Default::default()
-        }]);
+        let def = simple_def(vec![FieldDefinition::builder("count", FieldType::Number).build()]);
         sync_fts_table(&conn, "posts", &def, &LocaleConfig::default()).unwrap();
 
         let exists: bool = conn
@@ -486,15 +473,9 @@ mod tests {
 
         let mut def = simple_def(vec![
             text_field("title"),
-            FieldDefinition {
-                name: "content".to_string(),
-                field_type: FieldType::Richtext,
-                admin: FieldAdmin {
-                    richtext_format: Some("json".to_string()),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
+            FieldDefinition::builder("content", FieldType::Richtext)
+                .admin(FieldAdmin::builder().richtext_format("json".to_string()).build())
+                .build(),
         ]);
         def.admin.list_searchable_fields = vec!["title".into(), "content".into()];
 
@@ -518,16 +499,10 @@ mod tests {
         ))
         .unwrap();
 
-        let mut def = simple_def(vec![FieldDefinition {
-            name: "content".to_string(),
-            field_type: FieldType::Richtext,
-            localized: true,
-            admin: FieldAdmin {
-                richtext_format: Some("json".to_string()),
-                ..Default::default()
-            },
-            ..Default::default()
-        }]);
+        let mut def = simple_def(vec![FieldDefinition::builder("content", FieldType::Richtext)
+            .localized(true)
+            .admin(FieldAdmin::builder().richtext_format("json").build())
+            .build()]);
         def.admin.list_searchable_fields = vec!["content".into()];
 
         let locale_config = LocaleConfig {
@@ -643,15 +618,9 @@ mod tests {
 
         let mut def = simple_def(vec![
             text_field("title"),
-            FieldDefinition {
-                name: "content".to_string(),
-                field_type: FieldType::Richtext,
-                admin: FieldAdmin {
-                    richtext_format: Some("json".to_string()),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
+            FieldDefinition::builder("content", FieldType::Richtext)
+                .admin(FieldAdmin::builder().richtext_format("json").build())
+                .build(),
         ]);
         def.admin.list_searchable_fields = vec!["title".into(), "content".into()];
         sync_fts_table(&conn, "posts", &def, &LocaleConfig::default()).unwrap();
@@ -685,16 +654,12 @@ mod tests {
 
         let mut def = simple_def(vec![
             text_field("title"),
-            FieldDefinition {
-                name: "content".to_string(),
-                field_type: FieldType::Richtext,
-                admin: FieldAdmin {
-                    richtext_format: Some("json".to_string()),
-                    nodes: vec!["cta".to_string()],
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
+            FieldDefinition::builder("content", FieldType::Richtext)
+                .admin(FieldAdmin::builder()
+                    .richtext_format("json")
+                    .nodes(vec!["cta".to_string()])
+                    .build())
+                .build(),
         ]);
         def.admin.list_searchable_fields = vec!["title".into(), "content".into()];
 

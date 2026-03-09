@@ -56,11 +56,7 @@ fn create_article(
 }
 
 fn make_field(name: &str, field_type: FieldType) -> FieldDefinition {
-    FieldDefinition {
-        name: name.to_string(),
-        field_type,
-        ..Default::default()
-    }
+    FieldDefinition::builder(name, field_type).build()
 }
 
 // ── 6K. HookContext::to_string_map ──────────────────────────────────────────
@@ -100,15 +96,12 @@ fn to_string_map_flattens_groups() {
 
     let fields = vec![
         make_field("title", FieldType::Text),
-        FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![
+        FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![
                 make_field("meta_title", FieldType::Text),
                 make_field("meta_desc", FieldType::Text),
-            ],
-            ..Default::default()
-        },
+            ])
+            .build(),
     ];
 
     let map = ctx.to_string_map(&fields);
@@ -129,12 +122,9 @@ fn to_string_map_group_as_string_falls_through() {
         .build();
 
     let fields = vec![
-        FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![make_field("meta_title", FieldType::Text)],
-            ..Default::default()
-        },
+        FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![make_field("meta_title", FieldType::Text)])
+            .build(),
     ];
 
     let map = ctx.to_string_map(&fields);

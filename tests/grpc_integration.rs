@@ -29,61 +29,42 @@ use crap_cms::hooks::lifecycle::HookRunner;
 
 fn make_posts_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("posts");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Post".to_string())),
         plural: Some(LocalizedString::Plain("Posts".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "title".to_string(),
-            required: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "status".to_string(),
-            field_type: FieldType::Select,
-            default_value: Some(serde_json::json!("draft")),
-            ..Default::default()
-        },
+        FieldDefinition::builder("title", FieldType::Text).required(true).build(),
+        FieldDefinition::builder("status", FieldType::Select)
+            .default_value(serde_json::json!("draft"))
+            .build(),
     ];
     def
 }
 
 fn make_users_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("users");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("User".to_string())),
         plural: Some(LocalizedString::Plain("Users".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "email".to_string(),
-            field_type: FieldType::Email,
-            required: true,
-            unique: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "name".to_string(),
-            ..Default::default()
-        },
+        FieldDefinition::builder("email", FieldType::Email).required(true).unique(true).build(),
+        FieldDefinition::builder("name", FieldType::Text).build(),
     ];
-    def.auth = Some(CollectionAuth { enabled: true, ..Default::default() });
+    def.auth = Some(Auth { enabled: true, ..Default::default() });
     def
 }
 
 fn make_global_def() -> GlobalDefinition {
     let mut def = GlobalDefinition::new("settings");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Settings".to_string())),
         plural: None,
     };
-    def.fields = vec![FieldDefinition {
-        name: "site_name".to_string(),
-        ..Default::default()
-    }];
+    def.fields = vec![FieldDefinition::builder("site_name", FieldType::Text).build()];
     def
 }
 

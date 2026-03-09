@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crap_cms::config::CrapConfig;
 use crap_cms::core::collection::{
     CollectionDefinition,
-    CollectionLabels,
+    Labels,
 };
 use crap_cms::core::field::{
     BlockDefinition, FieldDefinition, FieldType,
@@ -14,23 +14,16 @@ use crap_cms::db::{migrate, ops, pool, query};
 
 fn make_posts_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("posts");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Post".to_string())),
         plural: Some(LocalizedString::Plain("Posts".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "title".to_string(),
-            required: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "status".to_string(),
-            field_type: FieldType::Select,
-            default_value: Some(serde_json::json!("draft")),
-            ..Default::default()
-        },
+        FieldDefinition::builder("title", FieldType::Text).required(true).build(),
+        FieldDefinition::builder("status", FieldType::Select)
+            .default_value(serde_json::json!("draft"))
+            .build(),
     ];
     def
 }
@@ -44,11 +37,7 @@ fn create_test_pool() -> (tempfile::TempDir, crap_cms::db::DbPool) {
 }
 
 fn make_field(name: &str, field_type: FieldType) -> FieldDefinition {
-    FieldDefinition {
-        name: name.to_string(),
-        field_type,
-        ..Default::default()
-    }
+    FieldDefinition::builder(name, field_type).build()
 }
 
 // ── Filter operator tests ────────────────────────────────────────────────────
@@ -531,40 +520,29 @@ fn make_filterable_def() -> CollectionDefinition {
     def.fields = vec![
         make_field("name", FieldType::Text),
         // Group field
-        FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![
+        FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![
                 make_field("meta_title", FieldType::Text),
                 make_field("meta_description", FieldType::Text),
-            ],
-            ..make_field("seo", FieldType::Group)
-        },
+            ])
+            .build(),
         // Array field with sub-fields (including a Group sub-field)
-        FieldDefinition {
-            name: "variants".to_string(),
-            field_type: FieldType::Array,
-            fields: vec![
+        FieldDefinition::builder("variants", FieldType::Array)
+            .fields(vec![
                 make_field("sku", FieldType::Text),
                 make_field("color", FieldType::Text),
                 make_field("size", FieldType::Text),
-                FieldDefinition {
-                    name: "dimensions".to_string(),
-                    field_type: FieldType::Group,
-                    fields: vec![
+                FieldDefinition::builder("dimensions", FieldType::Group)
+                    .fields(vec![
                         make_field("width", FieldType::Text),
                         make_field("height", FieldType::Text),
-                    ],
-                    ..make_field("dimensions", FieldType::Group)
-                },
-            ],
-            ..make_field("variants", FieldType::Array)
-        },
+                    ])
+                    .build(),
+            ])
+            .build(),
         // Blocks field
-        FieldDefinition {
-            name: "content".to_string(),
-            field_type: FieldType::Blocks,
-            blocks: vec![
+        FieldDefinition::builder("content", FieldType::Blocks)
+            .blocks(vec![
                 BlockDefinition::new("text", vec![make_field("body", FieldType::Textarea)]),
                 BlockDefinition::new("image", vec![
                     make_field("url", FieldType::Text),
@@ -572,25 +550,18 @@ fn make_filterable_def() -> CollectionDefinition {
                 ]),
                 BlockDefinition::new("section", vec![
                     make_field("heading", FieldType::Text),
-                    FieldDefinition {
-                        name: "meta".to_string(),
-                        field_type: FieldType::Group,
-                        fields: vec![
+                    FieldDefinition::builder("meta", FieldType::Group)
+                        .fields(vec![
                             make_field("author", FieldType::Text),
-                        ],
-                        ..make_field("meta", FieldType::Group)
-                    },
+                        ])
+                        .build(),
                 ]),
-            ],
-            ..make_field("content", FieldType::Blocks)
-        },
+            ])
+            .build(),
         // Has-many relationship
-        FieldDefinition {
-            name: "tags".to_string(),
-            field_type: FieldType::Relationship,
-            relationship: Some(RelationshipConfig::new("product_tags", true)),
-            ..make_field("tags", FieldType::Relationship)
-        },
+        FieldDefinition::builder("tags", FieldType::Relationship)
+            .relationship(RelationshipConfig::new("product_tags", true))
+            .build(),
     ];
     def
 }

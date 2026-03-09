@@ -47,11 +47,7 @@ mod tests {
             "CREATE TABLE test (id TEXT PRIMARY KEY, email TEXT);
              INSERT INTO test (id, email) VALUES ('existing', 'taken@test.com');"
         ).unwrap();
-        let fields = vec![FieldDefinition {
-            name: "email".to_string(),
-            unique: true,
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("email", FieldType::Text).unique(true).build()];
         let mut data = HashMap::new();
         data.insert("email".to_string(), json!("taken@test.com"));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -67,11 +63,7 @@ mod tests {
             "CREATE TABLE test (id TEXT PRIMARY KEY, email TEXT);
              INSERT INTO test (id, email) VALUES ('self', 'me@test.com');"
         ).unwrap();
-        let fields = vec![FieldDefinition {
-            name: "email".to_string(),
-            unique: true,
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("email", FieldType::Text).unique(true).build()];
         let mut data = HashMap::new();
         data.insert("email".to_string(), json!("me@test.com"));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", Some("self"), false);
@@ -86,11 +78,7 @@ mod tests {
             "CREATE TABLE test (id TEXT PRIMARY KEY, slug TEXT);
              INSERT INTO test (id, slug) VALUES ('a', '');"
         ).unwrap();
-        let fields = vec![FieldDefinition {
-            name: "slug".to_string(),
-            unique: true,
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("slug", FieldType::Text).unique(true).build()];
         let mut data = HashMap::new();
         data.insert("slug".to_string(), json!(""));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -105,12 +93,7 @@ mod tests {
             "CREATE TABLE test (id TEXT PRIMARY KEY, rank REAL);
              INSERT INTO test (id, rank) VALUES ('existing', 42);"
         ).unwrap();
-        let fields = vec![FieldDefinition {
-            name: "rank".to_string(),
-            field_type: FieldType::Number,
-            unique: true,
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("rank", FieldType::Number).unique(true).build()];
         let mut data = HashMap::new();
         data.insert("rank".to_string(), json!(42));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -123,12 +106,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "items".to_string(),
-            field_type: FieldType::Array,
-            unique: true,
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("items", FieldType::Array).unique(true).build()];
         let mut data = HashMap::new();
         data.insert("items".to_string(), json!(["a", "b"]));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);

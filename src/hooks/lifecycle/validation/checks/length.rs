@@ -40,11 +40,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, name TEXT)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "name".to_string(),
-            min_length: Some(5),
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("name", crate::core::field::FieldType::Text).min_length(5).build()];
         let mut data = HashMap::new();
         data.insert("name".to_string(), json!("ab"));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -57,11 +53,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, name TEXT)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "name".to_string(),
-            min_length: Some(3),
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("name", crate::core::field::FieldType::Text).min_length(3).build()];
         let mut data = HashMap::new();
         data.insert("name".to_string(), json!("hello"));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -73,11 +65,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, name TEXT)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "name".to_string(),
-            max_length: Some(5),
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("name", crate::core::field::FieldType::Text).max_length(5).build()];
         let mut data = HashMap::new();
         data.insert("name".to_string(), json!("toolongvalue"));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -90,11 +78,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, name TEXT)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "name".to_string(),
-            max_length: Some(10),
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("name", crate::core::field::FieldType::Text).max_length(10).build()];
         let mut data = HashMap::new();
         data.insert("name".to_string(), json!("short"));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -106,11 +90,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, name TEXT)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "name".to_string(),
-            min_length: Some(5),
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("name", crate::core::field::FieldType::Text).min_length(5).build()];
         let mut data = HashMap::new();
         data.insert("name".to_string(), json!(""));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);

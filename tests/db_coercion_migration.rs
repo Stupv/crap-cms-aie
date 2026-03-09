@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crap_cms::config::{CrapConfig, LocaleConfig};
 use crap_cms::core::collection::{
-    CollectionAuth, CollectionDefinition, CollectionLabels, GlobalDefinition,
+    Auth, CollectionDefinition, Labels, GlobalDefinition,
 };
 use crap_cms::core::field::{
     BlockDefinition, FieldDefinition, FieldType,
@@ -13,23 +13,16 @@ use crap_cms::db::{migrate, ops, pool, query};
 
 fn make_posts_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("posts");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Post".to_string())),
         plural: Some(LocalizedString::Plain("Posts".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "title".to_string(),
-            required: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "status".to_string(),
-            field_type: FieldType::Select,
-            default_value: Some(serde_json::json!("draft")),
-            ..Default::default()
-        },
+        FieldDefinition::builder("title", FieldType::Text).required(true).build(),
+        FieldDefinition::builder("status", FieldType::Select)
+            .default_value(serde_json::json!("draft"))
+            .build(),
     ];
     def
 }
@@ -43,11 +36,7 @@ fn create_test_pool() -> (tempfile::TempDir, crap_cms::db::DbPool) {
 }
 
 fn make_field(name: &str, field_type: FieldType) -> FieldDefinition {
-    FieldDefinition {
-        name: name.to_string(),
-        field_type,
-        ..Default::default()
-    }
+    FieldDefinition::builder(name, field_type).build()
 }
 
 fn seed_posts() -> (tempfile::TempDir, crap_cms::db::DbPool, CollectionDefinition) {
@@ -85,28 +74,19 @@ fn seed_posts() -> (tempfile::TempDir, crap_cms::db::DbPool, CollectionDefinitio
 
 fn make_users_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("users");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("User".to_string())),
         plural: Some(LocalizedString::Plain("Users".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "email".to_string(),
-            field_type: FieldType::Email,
-            required: true,
-            unique: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "name".to_string(),
-            ..Default::default()
-        },
+        FieldDefinition::builder("email", FieldType::Email).required(true).unique(true).build(),
+        FieldDefinition::builder("name", FieldType::Text).build(),
     ];
-    def.auth = Some(CollectionAuth {
+    def.auth = Some(Auth {
         enabled: true,
         verify_email: true,
-        ..CollectionAuth::default()
+        ..Auth::default()
     });
     def
 }
@@ -117,32 +97,23 @@ fn make_articles_with_join_tables() -> CollectionDefinition {
     def.fields = vec![
         make_field("title", FieldType::Text),
         // has-many relationship
-        FieldDefinition {
-            name: "tags".to_string(),
-            field_type: FieldType::Relationship,
-            relationship: Some(RelationshipConfig::new("tags", true)),
-            ..make_field("tags", FieldType::Relationship)
-        },
+        FieldDefinition::builder("tags", FieldType::Relationship)
+            .relationship(RelationshipConfig::new("tags", true))
+            .build(),
         // array field with sub-fields
-        FieldDefinition {
-            name: "links".to_string(),
-            field_type: FieldType::Array,
-            fields: vec![
+        FieldDefinition::builder("links", FieldType::Array)
+            .fields(vec![
                 make_field("url", FieldType::Text),
                 make_field("label", FieldType::Text),
-            ],
-            ..make_field("links", FieldType::Array)
-        },
+            ])
+            .build(),
         // blocks field
-        FieldDefinition {
-            name: "content".to_string(),
-            field_type: FieldType::Blocks,
-            blocks: vec![
+        FieldDefinition::builder("content", FieldType::Blocks)
+            .blocks(vec![
                 BlockDefinition::new("paragraph", vec![make_field("text", FieldType::Textarea)]),
                 BlockDefinition::new("image", vec![make_field("url", FieldType::Text)]),
-            ],
-            ..make_field("content", FieldType::Blocks)
-        },
+            ])
+            .build(),
     ];
     def
 }
@@ -165,19 +136,13 @@ fn setup_articles() -> (tempfile::TempDir, crap_cms::db::DbPool, CollectionDefin
 
 fn make_global_def() -> GlobalDefinition {
     let mut def = GlobalDefinition::new("site_settings");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Site Settings".to_string())),
         plural: None,
     };
     def.fields = vec![
-        FieldDefinition {
-            name: "site_name".to_string(),
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "tagline".to_string(),
-            ..Default::default()
-        },
+        FieldDefinition::builder("site_name", FieldType::Text).build(),
+        FieldDefinition::builder("tagline", FieldType::Text).build(),
     ];
     def
 }
@@ -202,11 +167,7 @@ fn coerce_checkbox_values() {
     let registry = Registry::shared();
     let mut def = CollectionDefinition::new("forms");
     def.timestamps = true;
-    def.fields = vec![FieldDefinition {
-        name: "active".to_string(),
-        field_type: FieldType::Checkbox,
-        ..make_field("active", FieldType::Checkbox)
-    }];
+    def.fields = vec![FieldDefinition::builder("active", FieldType::Checkbox).build()];
     {
         let mut reg = registry.write().unwrap();
         reg.register_collection(def.clone());
@@ -319,11 +280,7 @@ fn checkbox_default_when_field_missing() {
     def.timestamps = true;
     def.fields = vec![
         make_field("title", FieldType::Text),
-        FieldDefinition {
-            name: "enabled".to_string(),
-            field_type: FieldType::Checkbox,
-            ..make_field("enabled", FieldType::Checkbox)
-        },
+        FieldDefinition::builder("enabled", FieldType::Checkbox).build(),
     ];
     {
         let mut reg = registry.write().unwrap();
@@ -449,13 +406,7 @@ fn alter_adds_auth_columns_on_upgrade() {
     let mut def = CollectionDefinition::new("members");
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "email".to_string(),
-            field_type: FieldType::Email,
-            required: true,
-            unique: true,
-            ..make_field("email", FieldType::Email)
-        },
+        FieldDefinition::builder("email", FieldType::Email).required(true).unique(true).build(),
         make_field("name", FieldType::Text),
     ];
     {
@@ -465,10 +416,10 @@ fn alter_adds_auth_columns_on_upgrade() {
     migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("First sync");
 
     // Upgrade to auth
-    def.auth = Some(CollectionAuth {
+    def.auth = Some(Auth {
         enabled: true,
         verify_email: true,
-        ..CollectionAuth::default()
+        ..Auth::default()
     });
     {
         let mut reg = registry.write().unwrap();
@@ -494,11 +445,7 @@ fn sync_adds_locale_columns() {
     let mut def = CollectionDefinition::new("pages");
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "title".to_string(),
-            localized: true,
-            ..Default::default()
-        },
+        FieldDefinition::builder("title", FieldType::Text).localized(true).build(),
         make_field("slug_field", FieldType::Text),
     ];
     {
@@ -547,15 +494,12 @@ fn make_group_def() -> CollectionDefinition {
     def.timestamps = true;
     def.fields = vec![
         make_field("title", FieldType::Text),
-        FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![
+        FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![
                 make_field("meta_title", FieldType::Text),
                 make_field("meta_description", FieldType::Text),
-            ],
-            ..make_field("seo", FieldType::Group)
-        },
+            ])
+            .build(),
     ];
     def
 }
@@ -896,12 +840,9 @@ fn migrate_default_value_with_quotes() {
     def.timestamps = true;
     def.fields = vec![
         make_field("title", FieldType::Text),
-        FieldDefinition {
-            name: "publisher".to_string(),
-            field_type: FieldType::Text,
-            default_value: Some(serde_json::json!("O'Reilly")),
-            ..make_field("publisher", FieldType::Text)
-        },
+        FieldDefinition::builder("publisher", FieldType::Text)
+            .default_value(serde_json::json!("O'Reilly"))
+            .build(),
     ];
     {
         let mut reg = registry.write().unwrap();
@@ -932,11 +873,7 @@ fn create_checkbox_truthy_values() {
     def.timestamps = true;
     def.fields = vec![
         make_field("label", FieldType::Text),
-        FieldDefinition {
-            name: "active".to_string(),
-            field_type: FieldType::Checkbox,
-            ..make_field("active", FieldType::Checkbox)
-        },
+        FieldDefinition::builder("active", FieldType::Checkbox).build(),
     ];
     {
         let mut reg = registry.write().unwrap();
@@ -968,11 +905,7 @@ fn create_checkbox_falsy_values() {
     def.timestamps = true;
     def.fields = vec![
         make_field("label", FieldType::Text),
-        FieldDefinition {
-            name: "active".to_string(),
-            field_type: FieldType::Checkbox,
-            ..make_field("active", FieldType::Checkbox)
-        },
+        FieldDefinition::builder("active", FieldType::Checkbox).build(),
     ];
     {
         let mut reg = registry.write().unwrap();

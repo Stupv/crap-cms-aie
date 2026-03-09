@@ -258,12 +258,7 @@ mod tests {
     use crate::db::query::{Filter, FilterClause, FilterOp, LocaleContext, LocaleMode};
 
     fn make_field(name: &str, ft: FieldType, localized: bool) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: ft,
-            localized,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, ft).localized(localized).build()
     }
 
     fn make_collection(fields: Vec<FieldDefinition>) -> CollectionDefinition {
@@ -281,30 +276,17 @@ mod tests {
     }
 
     fn make_array_field(name: &str, sub_fields: Vec<FieldDefinition>) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Array,
-            fields: sub_fields,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Array).fields(sub_fields).build()
     }
 
     fn make_blocks_field(name: &str, blocks: Vec<BlockDefinition>) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Blocks,
-            blocks,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Blocks).blocks(blocks).build()
     }
 
     fn make_has_many_field(name: &str, collection: &str) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Relationship,
-            relationship: Some(RelationshipConfig::new(collection, true)),
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Relationship)
+            .relationship(RelationshipConfig::new(collection, true))
+            .build()
     }
 
     fn make_block_def(block_type: &str, fields: Vec<FieldDefinition>) -> BlockDefinition {
@@ -616,14 +598,11 @@ mod tests {
     #[test]
     fn resolve_column_tabs_sub_field_localized() {
         // Sub-field inside a Tabs wrapper is localized
-        let tabs_field = FieldDefinition {
-            name: "page_tabs".to_string(),
-            field_type: FieldType::Tabs,
-            tabs: vec![
+        let tabs_field = FieldDefinition::builder("page_tabs", FieldType::Tabs)
+            .tabs(vec![
                 FieldTab::new("Content", vec![make_field("description", FieldType::Textarea, true)]),
-            ],
-            ..Default::default()
-        };
+            ])
+            .build();
         let def = make_collection(vec![tabs_field]);
         let ctx = LocaleContext {
             mode: LocaleMode::Single("de".into()),
@@ -636,14 +615,11 @@ mod tests {
     #[test]
     fn resolve_column_tabs_sub_field_non_localized_passthrough() {
         // Sub-field inside a Tabs wrapper is NOT localized
-        let tabs_field = FieldDefinition {
-            name: "page_tabs".to_string(),
-            field_type: FieldType::Tabs,
-            tabs: vec![
+        let tabs_field = FieldDefinition::builder("page_tabs", FieldType::Tabs)
+            .tabs(vec![
                 FieldTab::new("Content", vec![make_field("description", FieldType::Textarea, false)]),
-            ],
-            ..Default::default()
-        };
+            ])
+            .build();
         let def = make_collection(vec![tabs_field]);
         let ctx = LocaleContext {
             mode: LocaleMode::Single("de".into()),

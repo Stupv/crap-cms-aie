@@ -26,23 +26,16 @@ use crap_cms::hooks::lifecycle::HookRunner;
 #[allow(dead_code)]
 fn make_posts_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("posts");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Post".to_string())),
         plural: Some(LocalizedString::Plain("Posts".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "title".to_string(),
-            required: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "status".to_string(),
-            field_type: FieldType::Select,
-            default_value: Some(serde_json::json!("draft")),
-            ..Default::default()
-        },
+        FieldDefinition::builder("title", FieldType::Text).required(true).build(),
+        FieldDefinition::builder("status", FieldType::Select)
+            .default_value(serde_json::json!("draft"))
+            .build(),
     ];
     def
 }
@@ -245,116 +238,71 @@ fn make_product_struct(
 
 fn make_products_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("products");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Product".to_string())),
         plural: Some(LocalizedString::Plain("Products".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "name".to_string(),
-            required: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![FieldDefinition {
-                name: "meta_title".to_string(),
-                ..Default::default()
-            }],
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "variants".to_string(),
-            field_type: FieldType::Array,
-            fields: vec![
-                FieldDefinition {
-                    name: "color".to_string(),
-                    ..Default::default()
-                },
-                FieldDefinition {
-                    name: "dimensions".to_string(),
-                    field_type: FieldType::Group,
-                    fields: vec![
-                        FieldDefinition {
-                            name: "width".to_string(),
-                            ..Default::default()
-                        },
-                        FieldDefinition {
-                            name: "height".to_string(),
-                            ..Default::default()
-                        },
-                    ],
-                    ..Default::default()
-                },
-            ],
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "content".to_string(),
-            field_type: FieldType::Blocks,
-            blocks: vec![
-                BlockDefinition::new("text", vec![FieldDefinition {
-                    name: "body".to_string(),
-                    ..Default::default()
-                }]),
-                BlockDefinition::new("section", vec![
-                    FieldDefinition {
-                        name: "heading".to_string(),
-                        ..Default::default()
-                    },
-                    FieldDefinition {
-                        name: "meta".to_string(),
-                        field_type: FieldType::Group,
-                        fields: vec![FieldDefinition {
-                            name: "author".to_string(),
-                            ..Default::default()
-                        }],
-                        ..Default::default()
-                    },
+        FieldDefinition::builder("name", FieldType::Text).required(true).build(),
+        FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![
+                FieldDefinition::builder("meta_title", FieldType::Text).build(),
+            ])
+            .build(),
+        FieldDefinition::builder("variants", FieldType::Array)
+            .fields(vec![
+                FieldDefinition::builder("color", FieldType::Text).build(),
+                FieldDefinition::builder("dimensions", FieldType::Group)
+                    .fields(vec![
+                        FieldDefinition::builder("width", FieldType::Text).build(),
+                        FieldDefinition::builder("height", FieldType::Text).build(),
+                    ])
+                    .build(),
+            ])
+            .build(),
+        FieldDefinition::builder("content", FieldType::Blocks)
+            .blocks(vec![
+                BlockDefinition::new("text", vec![
+                    FieldDefinition::builder("body", FieldType::Text).build(),
                 ]),
-            ],
-            ..Default::default()
-        },
+                BlockDefinition::new("section", vec![
+                    FieldDefinition::builder("heading", FieldType::Text).build(),
+                    FieldDefinition::builder("meta", FieldType::Group)
+                        .fields(vec![
+                            FieldDefinition::builder("author", FieldType::Text).build(),
+                        ])
+                        .build(),
+                ]),
+            ])
+            .build(),
     ];
     def
 }
 
 fn make_categories_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("categories");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Category".to_string())),
         plural: Some(LocalizedString::Plain("Categories".to_string())),
     };
     def.timestamps = true;
-    def.fields = vec![FieldDefinition {
-        name: "name".to_string(),
-        required: true,
-        ..Default::default()
-    }];
+    def.fields = vec![FieldDefinition::builder("name", FieldType::Text).required(true).build()];
     def
 }
 
 fn make_posts_with_relationship() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("posts");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Post".to_string())),
         plural: Some(LocalizedString::Plain("Posts".to_string())),
     };
     def.timestamps = true;
     def.fields = vec![
-        FieldDefinition {
-            name: "title".to_string(),
-            required: true,
-            ..Default::default()
-        },
-        FieldDefinition {
-            name: "category".to_string(),
-            field_type: FieldType::Relationship,
-            relationship: Some(RelationshipConfig::new("categories", false)),
-            ..Default::default()
-        },
+        FieldDefinition::builder("title", FieldType::Text).required(true).build(),
+        FieldDefinition::builder("category", FieldType::Relationship)
+            .relationship(RelationshipConfig::new("categories", false))
+            .build(),
     ];
     def
 }

@@ -180,15 +180,12 @@ mod tests {
     #[test]
     fn test_field_config_to_lua_simple() {
         let lua = mlua::Lua::new();
-        let f = crate::core::field::FieldDefinition {
-            name: "title".to_string(),
-            field_type: crate::core::field::FieldType::Text,
-            required: true,
-            unique: true,
-            validate: Some("hooks.validate.title_check".to_string()),
-            default_value: Some(serde_json::json!("untitled")),
-            ..Default::default()
-        };
+        let f = crate::core::field::FieldDefinition::builder("title", crate::core::field::FieldType::Text)
+            .required(true)
+            .unique(true)
+            .validate("hooks.validate.title_check")
+            .default_value(serde_json::json!("untitled"))
+            .build();
         let tbl = field_config_to_lua(&lua, &f).unwrap();
         assert_eq!(tbl.get::<String>("name").unwrap(), "title");
         assert_eq!(tbl.get::<String>("type").unwrap(), "text");
@@ -201,16 +198,13 @@ mod tests {
     #[test]
     fn test_field_config_to_lua_with_relationship() {
         let lua = mlua::Lua::new();
-        let f = crate::core::field::FieldDefinition {
-            name: "author".to_string(),
-            field_type: crate::core::field::FieldType::Relationship,
-            relationship: Some({
+        let f = crate::core::field::FieldDefinition::builder("author", crate::core::field::FieldType::Relationship)
+            .relationship({
                 let mut rc = crate::core::field::RelationshipConfig::new("users", true);
                 rc.max_depth = Some(2);
                 rc
-            }),
-            ..Default::default()
-        };
+            })
+            .build();
         let tbl = field_config_to_lua(&lua, &f).unwrap();
         let rel: mlua::Table = tbl.get("relationship").unwrap();
         assert_eq!(rel.get::<String>("collection").unwrap(), "users");
@@ -221,15 +215,12 @@ mod tests {
     #[test]
     fn test_field_config_to_lua_with_options() {
         let lua = mlua::Lua::new();
-        let f = crate::core::field::FieldDefinition {
-            name: "status".to_string(),
-            field_type: crate::core::field::FieldType::Select,
-            options: vec![
+        let f = crate::core::field::FieldDefinition::builder("status", crate::core::field::FieldType::Select)
+            .options(vec![
                 crate::core::field::SelectOption::new(crate::core::field::LocalizedString::Plain("Draft".to_string()), "draft"),
                 crate::core::field::SelectOption::new(crate::core::field::LocalizedString::Plain("Published".to_string()), "published"),
-            ],
-            ..Default::default()
-        };
+            ])
+            .build();
         let tbl = field_config_to_lua(&lua, &f).unwrap();
         let opts: mlua::Table = tbl.get("options").unwrap();
         let o1: mlua::Table = opts.get(1).unwrap();
@@ -239,19 +230,15 @@ mod tests {
     #[test]
     fn test_field_config_to_lua_with_blocks() {
         let lua = mlua::Lua::new();
-        let f = crate::core::field::FieldDefinition {
-            name: "content".to_string(),
-            field_type: crate::core::field::FieldType::Blocks,
-            blocks: vec![{
-                let mut b = crate::core::field::BlockDefinition::new("text", vec![crate::core::field::FieldDefinition {
-                    name: "body".to_string(),
-                    ..Default::default()
-                }]);
+        let f = crate::core::field::FieldDefinition::builder("content", crate::core::field::FieldType::Blocks)
+            .blocks(vec![{
+                let mut b = crate::core::field::BlockDefinition::new("text", vec![
+                    crate::core::field::FieldDefinition::builder("body", crate::core::field::FieldType::Text).build(),
+                ]);
                 b.label = Some(crate::core::field::LocalizedString::Plain("Text Block".to_string()));
                 b
-            }],
-            ..Default::default()
-        };
+            }])
+            .build();
         let tbl = field_config_to_lua(&lua, &f).unwrap();
         let blocks: mlua::Table = tbl.get("blocks").unwrap();
         let b1: mlua::Table = blocks.get(1).unwrap();
@@ -265,12 +252,9 @@ mod tests {
     #[test]
     fn test_field_config_to_lua_has_many_text() {
         let lua = mlua::Lua::new();
-        let f = crate::core::field::FieldDefinition {
-            name: "tags".to_string(),
-            field_type: crate::core::field::FieldType::Text,
-            has_many: true,
-            ..Default::default()
-        };
+        let f = crate::core::field::FieldDefinition::builder("tags", crate::core::field::FieldType::Text)
+            .has_many(true)
+            .build();
         let tbl = field_config_to_lua(&lua, &f).unwrap();
         assert!(tbl.get::<bool>("has_many").unwrap());
     }
@@ -278,17 +262,14 @@ mod tests {
     #[test]
     fn test_field_config_to_lua_blocks_group_and_image() {
         let lua = mlua::Lua::new();
-        let f = crate::core::field::FieldDefinition {
-            name: "content".to_string(),
-            field_type: crate::core::field::FieldType::Blocks,
-            blocks: vec![{
+        let f = crate::core::field::FieldDefinition::builder("content", crate::core::field::FieldType::Blocks)
+            .blocks(vec![{
                 let mut b = crate::core::field::BlockDefinition::new("hero", vec![]);
                 b.group = Some("Layout".to_string());
                 b.image_url = Some("/static/hero.svg".to_string());
                 b
-            }],
-            ..Default::default()
-        };
+            }])
+            .build();
         let tbl = field_config_to_lua(&lua, &f).unwrap();
         let blocks: mlua::Table = tbl.get("blocks").unwrap();
         let b1: mlua::Table = blocks.get(1).unwrap();
@@ -299,31 +280,28 @@ mod tests {
     #[test]
     fn test_field_config_to_lua_with_admin_and_hooks() {
         let lua = mlua::Lua::new();
-        let f = crate::core::field::FieldDefinition {
-            name: "title".to_string(),
-            admin: crate::core::field::FieldAdmin {
-                label: Some(crate::core::field::LocalizedString::Plain("Title".to_string())),
-                placeholder: Some(crate::core::field::LocalizedString::Plain("Enter title".to_string())),
-                description: Some(crate::core::field::LocalizedString::Plain("The document title".to_string())),
-                hidden: true,
-                readonly: true,
-                width: Some("50%".to_string()),
-                collapsed: false, // non-default, should be serialized
-                ..Default::default()
-            },
-            hooks: crate::core::field::FieldHooks {
+        let f = crate::core::field::FieldDefinition::builder("title", crate::core::field::FieldType::Text)
+            .admin(crate::core::field::FieldAdmin::builder()
+                .label(crate::core::field::LocalizedString::Plain("Title".to_string()))
+                .placeholder(crate::core::field::LocalizedString::Plain("Enter title".to_string()))
+                .description(crate::core::field::LocalizedString::Plain("The document title".to_string()))
+                .hidden(true)
+                .readonly(true)
+                .width("50%")
+                .collapsed(false)
+                .build())
+            .hooks(crate::core::field::FieldHooks {
                 before_validate: vec!["hooks.field.trim".to_string()],
                 before_change: vec!["hooks.field.upper".to_string()],
                 after_change: Vec::new(),
                 after_read: vec!["hooks.field.format".to_string()],
-            },
-            access: crate::core::field::FieldAccess {
+            })
+            .access(crate::core::field::FieldAccess {
                 read: Some("hooks.access.check".to_string()),
                 create: Some("hooks.access.admin".to_string()),
                 update: None,
-            },
-            ..Default::default()
-        };
+            })
+            .build();
         let tbl = field_config_to_lua(&lua, &f).unwrap();
 
         let admin: mlua::Table = tbl.get("admin").unwrap();
@@ -351,33 +329,28 @@ mod tests {
     #[test]
     fn test_field_config_to_lua_admin_roundtrip_all_properties() {
         let lua = mlua::Lua::new();
-        let f = crate::core::field::FieldDefinition {
-            name: "content".to_string(),
-            field_type: crate::core::field::FieldType::Blocks,
-            admin: crate::core::field::FieldAdmin {
-                label: Some(crate::core::field::LocalizedString::Plain("Content".to_string())),
-                placeholder: Some(crate::core::field::LocalizedString::Plain("Add content...".to_string())),
-                description: Some(crate::core::field::LocalizedString::Plain("Main content area".to_string())),
-                hidden: false,
-                readonly: false,
-                width: Some("full".to_string()),
-                collapsed: false, // explicitly false to test serialization
-                label_field: Some("heading".to_string()),
-                row_label: Some("hooks.content_row_label".to_string()),
-                labels_singular: Some(crate::core::field::LocalizedString::Plain("Block".to_string())),
-                labels_plural: Some(crate::core::field::LocalizedString::Plain("Blocks".to_string())),
-                position: Some("main".to_string()),
-                condition: Some("hooks.show_content".to_string()),
-                step: Some("1".to_string()),
-                rows: Some(12),
-                language: Some("json".to_string()),
-                features: vec!["bold".to_string(), "italic".to_string()],
-                picker: Some("card".to_string()),
-                richtext_format: Some("json".to_string()),
-                nodes: vec!["cta".to_string()],
-            },
-            ..Default::default()
-        };
+        let f = crate::core::field::FieldDefinition::builder("content", crate::core::field::FieldType::Blocks)
+            .admin(crate::core::field::FieldAdmin::builder()
+                .label(crate::core::field::LocalizedString::Plain("Content".to_string()))
+                .placeholder(crate::core::field::LocalizedString::Plain("Add content...".to_string()))
+                .description(crate::core::field::LocalizedString::Plain("Main content area".to_string()))
+                .width("full")
+                .collapsed(false)
+                .label_field("heading")
+                .row_label("hooks.content_row_label")
+                .labels_singular(crate::core::field::LocalizedString::Plain("Block".to_string()))
+                .labels_plural(crate::core::field::LocalizedString::Plain("Blocks".to_string()))
+                .position("main")
+                .condition("hooks.show_content")
+                .step("1")
+                .rows(12)
+                .language("json")
+                .features(vec!["bold".to_string(), "italic".to_string()])
+                .picker("card")
+                .richtext_format("json")
+                .nodes(vec!["cta".to_string()])
+                .build())
+            .build();
         let tbl = field_config_to_lua(&lua, &f).unwrap();
         let admin: mlua::Table = tbl.get("admin").unwrap();
 
@@ -411,29 +384,23 @@ mod tests {
         let lua = mlua::Lua::new();
 
         // Bool default
-        let f_bool = crate::core::field::FieldDefinition {
-            name: "active".to_string(),
-            default_value: Some(serde_json::json!(true)),
-            ..Default::default()
-        };
+        let f_bool = crate::core::field::FieldDefinition::builder("active", crate::core::field::FieldType::Text)
+            .default_value(serde_json::json!(true))
+            .build();
         let tbl = field_config_to_lua(&lua, &f_bool).unwrap();
         assert_eq!(tbl.get::<bool>("default_value").unwrap(), true);
 
         // Integer default
-        let f_int = crate::core::field::FieldDefinition {
-            name: "count".to_string(),
-            default_value: Some(serde_json::json!(42)),
-            ..Default::default()
-        };
+        let f_int = crate::core::field::FieldDefinition::builder("count", crate::core::field::FieldType::Text)
+            .default_value(serde_json::json!(42))
+            .build();
         let tbl = field_config_to_lua(&lua, &f_int).unwrap();
         assert_eq!(tbl.get::<i64>("default_value").unwrap(), 42);
 
         // Float default
-        let f_float = crate::core::field::FieldDefinition {
-            name: "price".to_string(),
-            default_value: Some(serde_json::json!(3.14)),
-            ..Default::default()
-        };
+        let f_float = crate::core::field::FieldDefinition::builder("price", crate::core::field::FieldType::Text)
+            .default_value(serde_json::json!(3.14))
+            .build();
         let tbl = field_config_to_lua(&lua, &f_float).unwrap();
         let val: f64 = tbl.get("default_value").unwrap();
         assert!((val - 3.14).abs() < f64::EPSILON);
@@ -442,22 +409,18 @@ mod tests {
     #[test]
     fn test_field_config_to_lua_with_tabs() {
         let lua = mlua::Lua::new();
-        let f = crate::core::field::FieldDefinition {
-            name: "content".to_string(),
-            field_type: crate::core::field::FieldType::Tabs,
-            tabs: vec![
+        let f = crate::core::field::FieldDefinition::builder("content", crate::core::field::FieldType::Tabs)
+            .tabs(vec![
                 {
-                    let mut t = crate::core::field::FieldTab::new("General", vec![crate::core::field::FieldDefinition {
-                        name: "title".to_string(),
-                        ..Default::default()
-                    }]);
+                    let mut t = crate::core::field::FieldTab::new("General", vec![
+                        crate::core::field::FieldDefinition::builder("title", crate::core::field::FieldType::Text).build(),
+                    ]);
                     t.description = Some("General settings".to_string());
                     t
                 },
                 crate::core::field::FieldTab::new("Advanced", vec![]),
-            ],
-            ..Default::default()
-        };
+            ])
+            .build();
         let tbl = field_config_to_lua(&lua, &f).unwrap();
         let tabs: mlua::Table = tbl.get("tabs").unwrap();
         assert_eq!(tabs.raw_len(), 2);
@@ -476,23 +439,12 @@ mod tests {
     #[test]
     fn test_field_config_to_lua_with_sub_fields() {
         let lua = mlua::Lua::new();
-        let f = crate::core::field::FieldDefinition {
-            name: "address".to_string(),
-            field_type: crate::core::field::FieldType::Group,
-            fields: vec![
-                crate::core::field::FieldDefinition {
-                    name: "street".to_string(),
-                    field_type: crate::core::field::FieldType::Text,
-                    ..Default::default()
-                },
-                crate::core::field::FieldDefinition {
-                    name: "city".to_string(),
-                    field_type: crate::core::field::FieldType::Text,
-                    ..Default::default()
-                },
-            ],
-            ..Default::default()
-        };
+        let f = crate::core::field::FieldDefinition::builder("address", crate::core::field::FieldType::Group)
+            .fields(vec![
+                crate::core::field::FieldDefinition::builder("street", crate::core::field::FieldType::Text).build(),
+                crate::core::field::FieldDefinition::builder("city", crate::core::field::FieldType::Text).build(),
+            ])
+            .build();
         let tbl = field_config_to_lua(&lua, &f).unwrap();
         let sub: mlua::Table = tbl.get("fields").unwrap();
         assert_eq!(sub.raw_len(), 2);
@@ -505,13 +457,11 @@ mod tests {
     #[test]
     fn test_field_config_to_lua_mcp_description() {
         let lua = mlua::Lua::new();
-        let f = crate::core::field::FieldDefinition {
-            name: "title".to_string(),
-            mcp: crate::core::field::McpFieldConfig {
+        let f = crate::core::field::FieldDefinition::builder("title", crate::core::field::FieldType::Text)
+            .mcp(crate::core::field::McpFieldConfig {
                 description: Some("The post title".to_string()),
-            },
-            ..Default::default()
-        };
+            })
+            .build();
         let tbl = field_config_to_lua(&lua, &f).unwrap();
         let mcp: mlua::Table = tbl.get("mcp").unwrap();
         assert_eq!(mcp.get::<String>("description").unwrap(), "The post title");
@@ -520,12 +470,10 @@ mod tests {
     #[test]
     fn test_field_config_to_lua_localized_and_picker_appearance() {
         let lua = mlua::Lua::new();
-        let f = crate::core::field::FieldDefinition {
-            name: "body".to_string(),
-            localized: true,
-            picker_appearance: Some("drawer".to_string()),
-            ..Default::default()
-        };
+        let f = crate::core::field::FieldDefinition::builder("body", crate::core::field::FieldType::Text)
+            .localized(true)
+            .picker_appearance("drawer")
+            .build();
         let tbl = field_config_to_lua(&lua, &f).unwrap();
         assert_eq!(tbl.get::<bool>("localized").unwrap(), true);
         assert_eq!(tbl.get::<String>("picker_appearance").unwrap(), "drawer");
@@ -535,15 +483,11 @@ mod tests {
     fn test_field_config_to_lua_admin_labels_plural_only() {
         // When labels_singular is None but labels_plural is Some, the else branch runs
         let lua = mlua::Lua::new();
-        let f = crate::core::field::FieldDefinition {
-            name: "items".to_string(),
-            admin: crate::core::field::FieldAdmin {
-                labels_singular: None,
-                labels_plural: Some(crate::core::field::LocalizedString::Plain("Items".to_string())),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+        let f = crate::core::field::FieldDefinition::builder("items", crate::core::field::FieldType::Text)
+            .admin(crate::core::field::FieldAdmin::builder()
+                .labels_plural(crate::core::field::LocalizedString::Plain("Items".to_string()))
+                .build())
+            .build();
         let tbl = field_config_to_lua(&lua, &f).unwrap();
         let admin: mlua::Table = tbl.get("admin").unwrap();
         let labels: mlua::Table = admin.get("labels").unwrap();

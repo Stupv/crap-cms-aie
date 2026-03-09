@@ -1,6 +1,6 @@
-//! Builder for [`FieldAdmin`](crate::core::field::FieldAdmin).
+//! Builder for [`FieldAdmin`](super::FieldAdmin).
 
-use crate::core::field::{FieldAdmin, LocalizedString};
+use super::{FieldAdmin, LocalizedString};
 
 /// Builder for [`FieldAdmin`].
 ///

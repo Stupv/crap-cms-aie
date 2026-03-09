@@ -147,36 +147,34 @@ pub(crate) fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
             Default::default()
         };
 
-        fields.push(FieldDefinition {
-            name,
-            field_type,
-            required,
-            unique,
-            index,
-            validate,
-            default_value,
-            options,
-            admin,
-            hooks,
-            access,
-            mcp,
-            relationship,
-            fields: sub_fields,
-            blocks: block_defs,
-            tabs: tab_defs,
-            localized,
-            picker_appearance,
-            min_rows,
-            max_rows,
-            min_length,
-            max_length,
-            min,
-            max,
-            has_many,
-            min_date,
-            max_date,
-            join,
-        });
+        let mut fd_builder = FieldDefinition::builder(&name, field_type)
+            .required(required)
+            .unique(unique)
+            .index(index)
+            .admin(admin)
+            .hooks(hooks)
+            .access(access)
+            .mcp(mcp)
+            .fields(sub_fields)
+            .blocks(block_defs)
+            .tabs(tab_defs)
+            .localized(localized)
+            .has_many(has_many)
+            .options(options);
+        if let Some(v) = validate { fd_builder = fd_builder.validate(v); }
+        if let Some(v) = default_value { fd_builder = fd_builder.default_value(v); }
+        if let Some(v) = relationship { fd_builder = fd_builder.relationship(v); }
+        if let Some(v) = picker_appearance { fd_builder = fd_builder.picker_appearance(v); }
+        if let Some(v) = min_rows { fd_builder = fd_builder.min_rows(v); }
+        if let Some(v) = max_rows { fd_builder = fd_builder.max_rows(v); }
+        if let Some(v) = min_length { fd_builder = fd_builder.min_length(v); }
+        if let Some(v) = max_length { fd_builder = fd_builder.max_length(v); }
+        if let Some(v) = min { fd_builder = fd_builder.min(v); }
+        if let Some(v) = max { fd_builder = fd_builder.max(v); }
+        if let Some(v) = min_date { fd_builder = fd_builder.min_date(v); }
+        if let Some(v) = max_date { fd_builder = fd_builder.max_date(v); }
+        if let Some(v) = join { fd_builder = fd_builder.join(v); }
+        fields.push(fd_builder.build());
     }
 
     Ok(fields)

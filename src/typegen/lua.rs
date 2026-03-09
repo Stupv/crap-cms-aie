@@ -335,32 +335,22 @@ mod tests {
     use crate::core::field::{LocalizedString, SelectOption};
 
     fn text_field(name: &str, required: bool) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            required,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Text).required(required).build()
     }
 
     fn select_field(name: &str, required: bool, opts: &[&str]) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Select,
-            required,
-            options: opts
-                .iter()
-                .map(|v| SelectOption::new(LocalizedString::Plain(v.to_string()), *v))
-                .collect(),
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Select)
+            .required(required)
+            .options(
+                opts.iter()
+                    .map(|v| SelectOption::new(LocalizedString::Plain(v.to_string()), *v))
+                    .collect(),
+            )
+            .build()
     }
 
     fn checkbox_field(name: &str) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Checkbox,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Checkbox).build()
     }
 
     #[test]
@@ -483,15 +473,12 @@ mod tests {
     fn render_global_array_row() {
         let mut global = GlobalDefinition::new("navigation");
         global.fields = vec![
-            FieldDefinition {
-                name: "main_nav".to_string(),
-                field_type: FieldType::Array,
-                fields: vec![
+            FieldDefinition::builder("main_nav", FieldType::Array)
+                .fields(vec![
                     text_field("label", true),
                     text_field("url", true),
-                ],
-                ..Default::default()
-            },
+                ])
+                .build(),
         ];
 
         let mut out = String::new();
@@ -560,12 +547,9 @@ mod tests {
 
     #[test]
     fn lua_relationship_has_many() {
-        let f = FieldDefinition {
-            name: "tags".to_string(),
-            field_type: FieldType::Relationship,
-            relationship: Some(crate::core::field::RelationshipConfig::new("tags", true)),
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("tags", FieldType::Relationship)
+            .relationship(crate::core::field::RelationshipConfig::new("tags", true))
+            .build();
         assert_eq!(field_to_lua_type(&f), "string[]");
     }
 
@@ -573,13 +557,10 @@ mod tests {
     fn lua_polymorphic_has_one_type() {
         let mut rc = crate::core::field::RelationshipConfig::new("posts", false);
         rc.polymorphic = vec!["posts".to_string(), "pages".to_string()];
-        let f = FieldDefinition {
-            name: "subject".to_string(),
-            field_type: FieldType::Relationship,
-            required: true,
-            relationship: Some(rc),
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("subject", FieldType::Relationship)
+            .required(true)
+            .relationship(rc)
+            .build();
         // Polymorphic has-one stores "collection/id" composite as string
         assert_eq!(field_to_lua_type(&f), "string");
     }
@@ -588,12 +569,9 @@ mod tests {
     fn lua_polymorphic_has_many_type() {
         let mut rc = crate::core::field::RelationshipConfig::new("articles", true);
         rc.polymorphic = vec!["articles".to_string(), "videos".to_string()];
-        let f = FieldDefinition {
-            name: "related".to_string(),
-            field_type: FieldType::Relationship,
-            relationship: Some(rc),
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("related", FieldType::Relationship)
+            .relationship(rc)
+            .build();
         // Polymorphic has-many stores array of "collection/id" composites
         assert_eq!(field_to_lua_type(&f), "string[]");
     }
@@ -604,13 +582,10 @@ mod tests {
         rc.polymorphic = vec!["posts".to_string(), "pages".to_string()];
         let mut col = CollectionDefinition::new("comments");
         col.fields = vec![
-            FieldDefinition {
-                name: "subject".to_string(),
-                field_type: FieldType::Relationship,
-                required: true,
-                relationship: Some(rc),
-                ..Default::default()
-            },
+            FieldDefinition::builder("subject", FieldType::Relationship)
+                .required(true)
+                .relationship(rc)
+                .build(),
         ];
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -621,127 +596,80 @@ mod tests {
 
     #[test]
     fn lua_relationship_has_one() {
-        let f = FieldDefinition {
-            name: "author".to_string(),
-            field_type: FieldType::Relationship,
-            required: true,
-            relationship: Some(crate::core::field::RelationshipConfig::new("users", false)),
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("author", FieldType::Relationship)
+            .required(true)
+            .relationship(crate::core::field::RelationshipConfig::new("users", false))
+            .build();
         assert_eq!(field_to_lua_type(&f), "string");
     }
 
     #[test]
     fn lua_array_type() {
-        let f = FieldDefinition {
-            name: "items".to_string(),
-            field_type: FieldType::Array,
-            fields: vec![text_field("label", true)],
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("items", FieldType::Array)
+            .fields(vec![text_field("label", true)])
+            .build();
         assert_eq!(field_to_lua_type(&f), "crap.array_row.Items[]");
     }
 
     #[test]
     fn lua_group_type() {
-        let f = FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("seo", FieldType::Group).build();
         assert_eq!(field_to_lua_type(&f), "table");
     }
 
     #[test]
     fn lua_upload_type() {
-        let f = FieldDefinition {
-            name: "image".to_string(),
-            field_type: FieldType::Upload,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("image", FieldType::Upload).build();
         assert_eq!(field_to_lua_type(&f), "string");
     }
 
     #[test]
     fn upload_has_many_generates_array_type() {
-        let f = FieldDefinition {
-            name: "images".to_string(),
-            field_type: FieldType::Upload,
-            relationship: Some(crate::core::field::RelationshipConfig::new("", true)),
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("images", FieldType::Upload)
+            .relationship(crate::core::field::RelationshipConfig::new("", true))
+            .build();
         assert_eq!(field_to_lua_type(&f), "string[]");
     }
 
     #[test]
     fn lua_blocks_type() {
-        let f = FieldDefinition {
-            name: "content".to_string(),
-            field_type: FieldType::Blocks,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("content", FieldType::Blocks).build();
         assert_eq!(field_to_lua_type(&f), "table[]");
     }
 
     #[test]
     fn lua_text_has_many() {
-        let f = FieldDefinition {
-            name: "tags".to_string(),
-            field_type: FieldType::Text,
-            has_many: true,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("tags", FieldType::Text).has_many(true).build();
         assert_eq!(field_to_lua_type(&f), "string[]");
     }
 
     #[test]
     fn lua_number_has_many() {
-        let f = FieldDefinition {
-            name: "scores".to_string(),
-            field_type: FieldType::Number,
-            has_many: true,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("scores", FieldType::Number).has_many(true).build();
         assert_eq!(field_to_lua_type(&f), "number[]");
     }
 
     #[test]
     fn lua_email_type() {
-        let f = FieldDefinition {
-            name: "email".to_string(),
-            field_type: FieldType::Email,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("email", FieldType::Email).build();
         assert_eq!(field_to_lua_type(&f), "string");
     }
 
     #[test]
     fn lua_date_type() {
-        let f = FieldDefinition {
-            name: "at".to_string(),
-            field_type: FieldType::Date,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("at", FieldType::Date).build();
         assert_eq!(field_to_lua_type(&f), "string");
     }
 
     #[test]
     fn lua_richtext_type() {
-        let f = FieldDefinition {
-            name: "body".to_string(),
-            field_type: FieldType::Richtext,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("body", FieldType::Richtext).build();
         assert_eq!(field_to_lua_type(&f), "string");
     }
 
     #[test]
     fn lua_textarea_type() {
-        let f = FieldDefinition {
-            name: "notes".to_string(),
-            field_type: FieldType::Textarea,
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("notes", FieldType::Textarea).build();
         assert_eq!(field_to_lua_type(&f), "string");
     }
 
@@ -749,15 +677,12 @@ mod tests {
     fn render_collection_with_array_subtype() {
         let mut col = CollectionDefinition::new("posts");
         col.fields = vec![
-            FieldDefinition {
-                name: "items".to_string(),
-                field_type: FieldType::Array,
-                fields: vec![
+            FieldDefinition::builder("items", FieldType::Array)
+                .fields(vec![
                     text_field("label", true),
                     text_field("desc", false),
-                ],
-                ..Default::default()
-            },
+                ])
+                .build(),
         ];
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -769,21 +694,9 @@ mod tests {
     #[test]
     fn lua_code_join_radio_fields() {
         // Code maps to string, Join maps to table[], Radio maps to string/union
-        let f_code = FieldDefinition {
-            name: "snippet".to_string(),
-            field_type: FieldType::Code,
-            ..Default::default()
-        };
-        let f_join = FieldDefinition {
-            name: "refs".to_string(),
-            field_type: FieldType::Join,
-            ..Default::default()
-        };
-        let f_radio = FieldDefinition {
-            name: "color".to_string(),
-            field_type: FieldType::Radio,
-            ..Default::default()
-        };
+        let f_code = FieldDefinition::builder("snippet", FieldType::Code).build();
+        let f_join = FieldDefinition::builder("refs", FieldType::Join).build();
+        let f_radio = FieldDefinition::builder("color", FieldType::Radio).build();
         assert_eq!(field_to_lua_type(&f_code), "string");
         assert_eq!(field_to_lua_type(&f_join), "table[]");
         assert_eq!(field_to_lua_type(&f_radio), "string");
@@ -793,28 +706,20 @@ mod tests {
     fn lua_select_has_many_with_and_without_options() {
         use crate::core::field::SelectOption;
         // has_many with options → (opt1 | opt2|string)[]
-        let f_with_opts = FieldDefinition {
-            name: "tags".to_string(),
-            field_type: FieldType::Select,
-            has_many: true,
-            options: vec![
+        let f_with_opts = FieldDefinition::builder("tags", FieldType::Select)
+            .has_many(true)
+            .options(vec![
                 SelectOption::new(LocalizedString::Plain("A".into()), "a"),
                 SelectOption::new(LocalizedString::Plain("B".into()), "b"),
-            ],
-            ..Default::default()
-        };
+            ])
+            .build();
         let result = field_to_lua_type(&f_with_opts);
         assert!(result.contains("\"a\""), "should include option 'a': {}", result);
         assert!(result.contains("\"b\""), "should include option 'b': {}", result);
         assert!(result.ends_with("[]"), "should be an array type: {}", result);
 
         // has_many without options → string[]
-        let f_no_opts = FieldDefinition {
-            name: "cats".to_string(),
-            field_type: FieldType::Select,
-            has_many: true,
-            ..Default::default()
-        };
+        let f_no_opts = FieldDefinition::builder("cats", FieldType::Select).has_many(true).build();
         assert_eq!(field_to_lua_type(&f_no_opts), "string[]");
     }
 
@@ -823,24 +728,15 @@ mod tests {
         use crate::core::field::FieldTab;
         let mut col = CollectionDefinition::new("items");
         col.fields = vec![
-            FieldDefinition {
-                name: "layout_row".to_string(),
-                field_type: FieldType::Row,
-                fields: vec![text_field("first_name", true), text_field("last_name", false)],
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "details".to_string(),
-                field_type: FieldType::Collapsible,
-                fields: vec![text_field("bio", false)],
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "sections".to_string(),
-                field_type: FieldType::Tabs,
-                tabs: vec![FieldTab::new("Tab1", vec![text_field("tab_field", true)])],
-                ..Default::default()
-            },
+            FieldDefinition::builder("layout_row", FieldType::Row)
+                .fields(vec![text_field("first_name", true), text_field("last_name", false)])
+                .build(),
+            FieldDefinition::builder("details", FieldType::Collapsible)
+                .fields(vec![text_field("bio", false)])
+                .build(),
+            FieldDefinition::builder("sections", FieldType::Tabs)
+                .tabs(vec![FieldTab::new("Tab1", vec![text_field("tab_field", true)])])
+                .build(),
         ];
         let mut out = String::new();
         render_collection(&mut out, &col);
@@ -861,46 +757,28 @@ mod tests {
         use crate::core::field::FieldTab;
         // Arrays nested inside Row, Group, and Tabs containers should be discovered
         let fields = vec![
-            FieldDefinition {
-                name: "row_container".to_string(),
-                field_type: FieldType::Row,
-                fields: vec![
-                    FieldDefinition {
-                        name: "row_items".to_string(),
-                        field_type: FieldType::Array,
-                        fields: vec![text_field("val", true)],
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "tab_container".to_string(),
-                field_type: FieldType::Tabs,
-                tabs: vec![FieldTab::new("T", vec![
-                    FieldDefinition {
-                        name: "tab_items".to_string(),
-                        field_type: FieldType::Array,
-                        fields: vec![text_field("name", true)],
-                        ..Default::default()
-                    },
-                ])],
-                ..Default::default()
-            },
+            FieldDefinition::builder("row_container", FieldType::Row)
+                .fields(vec![
+                    FieldDefinition::builder("row_items", FieldType::Array)
+                        .fields(vec![text_field("val", true)])
+                        .build(),
+                ])
+                .build(),
+            FieldDefinition::builder("tab_container", FieldType::Tabs)
+                .tabs(vec![FieldTab::new("T", vec![
+                    FieldDefinition::builder("tab_items", FieldType::Array)
+                        .fields(vec![text_field("name", true)])
+                        .build(),
+                ])])
+                .build(),
             // Nested array inside an array (recursion)
-            FieldDefinition {
-                name: "outer".to_string(),
-                field_type: FieldType::Array,
-                fields: vec![
-                    FieldDefinition {
-                        name: "inner".to_string(),
-                        field_type: FieldType::Array,
-                        fields: vec![text_field("x", true)],
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            },
+            FieldDefinition::builder("outer", FieldType::Array)
+                .fields(vec![
+                    FieldDefinition::builder("inner", FieldType::Array)
+                        .fields(vec![text_field("x", true)])
+                        .build(),
+                ])
+                .build(),
         ];
         let result = collect_array_fields(&fields);
         let names: Vec<&str> = result.iter().map(|f| f.name.as_str()).collect();

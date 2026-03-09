@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use anyhow::Result;
 use mlua::Value;
 
-use crate::core::collection::{CollectionHooks, LiveSetting};
+use crate::core::collection::{Hooks, LiveSetting};
 use crate::core::event::{EventBus, EventOperation, EventTarget, EventUser};
 use crate::hooks::lifecycle::context::HookContext;
 use crate::hooks::lifecycle::execution::{
@@ -22,7 +22,7 @@ impl HookRunner {
     /// No CRUD access (fires after commit, same as after_change).
     pub fn run_before_broadcast(
         &self,
-        hooks: &CollectionHooks,
+        hooks: &Hooks,
         collection: &str,
         operation: &str,
         data: HashMap<String, serde_json::Value>,
@@ -107,7 +107,7 @@ impl HookRunner {
     pub fn publish_event(
         &self,
         event_bus: &Option<EventBus>,
-        hooks: &CollectionHooks,
+        hooks: &Hooks,
         live_setting: Option<&LiveSetting>,
         target: EventTarget,
         operation: EventOperation,

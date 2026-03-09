@@ -699,42 +699,19 @@ mod tests {
         let mut def = CollectionDefinition::new("posts");
         def.timestamps = true;
         def.fields = vec![
-            FieldDefinition {
-                name: "title".to_string(),
-                field_type: FieldType::Text,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "status".to_string(),
-                field_type: FieldType::Select,
-                options: vec![
+            FieldDefinition::builder("title", FieldType::Text).build(),
+            FieldDefinition::builder("status", FieldType::Select)
+                .options(vec![
                     SelectOption::new(LocalizedString::Plain("Draft".into()), "draft"),
                     SelectOption::new(LocalizedString::Plain("Published".into()), "published"),
-                ],
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "body".to_string(),
-                field_type: FieldType::Richtext,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "views".to_string(),
-                field_type: FieldType::Number,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "active".to_string(),
-                field_type: FieldType::Checkbox,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "date".to_string(),
-                field_type: FieldType::Date,
-                ..Default::default()
-            },
+                ])
+                .build(),
+            FieldDefinition::builder("body", FieldType::Richtext).build(),
+            FieldDefinition::builder("views", FieldType::Number).build(),
+            FieldDefinition::builder("active", FieldType::Checkbox).build(),
+            FieldDefinition::builder("date", FieldType::Date).build(),
         ];
-        def.admin = CollectionAdmin {
+        def.admin = AdminConfig {
             use_as_title: Some("title".to_string()),
             ..Default::default()
         };
@@ -745,23 +722,15 @@ mod tests {
 
     #[test]
     fn field_label_uses_admin_label() {
-        let f = FieldDefinition {
-            name: "my_field".to_string(),
-            admin: FieldAdmin {
-                label: Some(LocalizedString::Plain("Custom Label".into())),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("my_field", FieldType::Text)
+            .admin(FieldAdmin::builder().label(LocalizedString::Plain("Custom Label".into())).build())
+            .build();
         assert_eq!(field_label(&f), "Custom Label");
     }
 
     #[test]
     fn field_label_falls_back_to_name() {
-        let f = FieldDefinition {
-            name: "my_field".to_string(),
-            ..Default::default()
-        };
+        let f = FieldDefinition::builder("my_field", FieldType::Text).build();
         assert_eq!(field_label(&f), "My Field");
     }
 

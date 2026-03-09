@@ -26,7 +26,7 @@ use crap_cms::hooks::lifecycle::HookRunner;
 #[allow(dead_code)]
 fn make_posts_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("posts");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Post".to_string())),
         plural: Some(LocalizedString::Plain("Posts".to_string())),
     };
@@ -132,7 +132,7 @@ fn setup_service(
 
 fn make_categories_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("categories");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Category".to_string())),
         plural: Some(LocalizedString::Plain("Categories".to_string())),
     };
@@ -146,7 +146,7 @@ fn make_categories_def() -> CollectionDefinition {
 
 fn make_posts_with_relationship() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("posts");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Post".to_string())),
         plural: Some(LocalizedString::Plain("Posts".to_string())),
     };
@@ -164,7 +164,7 @@ fn make_posts_with_relationship() -> CollectionDefinition {
 
 fn make_numbered_posts_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("items");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Item".to_string())),
         plural: Some(LocalizedString::Plain("Items".to_string())),
     };
@@ -187,7 +187,7 @@ fn make_item(name: &str, score: &str, tag: &str) -> Struct {
 
 fn make_posts_with_unique_slug() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("articles");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Article".to_string())),
         plural: Some(LocalizedString::Plain("Articles".to_string())),
     };
@@ -447,7 +447,7 @@ return M
     config.auth.secret = "test-jwt-secret".to_string();
 
     let mut def = CollectionDefinition::new("scored");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Scored".to_string())),
         plural: Some(LocalizedString::Plain("Scored".to_string())),
     };
@@ -550,7 +550,7 @@ return M
     config.auth.secret = "test-jwt-secret".to_string();
 
     let mut def = CollectionDefinition::new("pages");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Page".to_string())),
         plural: Some(LocalizedString::Plain("Pages".to_string())),
     };
@@ -638,7 +638,7 @@ return M
     config.auth.secret = "test-jwt-secret".to_string();
 
     let mut def = CollectionDefinition::new("entries");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Entry".to_string())),
         plural: Some(LocalizedString::Plain("Entries".to_string())),
     };
@@ -734,7 +734,7 @@ return M
     config.auth.secret = "test-jwt-secret".to_string();
 
     let mut def = CollectionDefinition::new("notes");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Note".to_string())),
         plural: Some(LocalizedString::Plain("Notes".to_string())),
     };
@@ -829,7 +829,7 @@ return M
     config.auth.secret = "test-jwt-secret".to_string();
 
     let mut def = CollectionDefinition::new("moderated");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Moderated".to_string())),
         plural: Some(LocalizedString::Plain("Moderated".to_string())),
     };

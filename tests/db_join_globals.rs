@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crap_cms::config::{CrapConfig, LocaleConfig};
 use crap_cms::core::collection::{
     CollectionDefinition,
-    CollectionLabels, GlobalDefinition,
+    Labels, GlobalDefinition,
 };
 use crap_cms::core::field::{
     BlockDefinition, FieldDefinition, FieldType,
@@ -14,7 +14,7 @@ use crap_cms::db::{migrate, pool, query};
 
 fn make_posts_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("posts");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Post".to_string())),
         plural: Some(LocalizedString::Plain("Posts".to_string())),
     };
@@ -39,18 +39,14 @@ fn create_test_pool() -> (tempfile::TempDir, crap_cms::db::DbPool) {
 }
 
 fn make_field(name: &str, field_type: FieldType) -> FieldDefinition {
-    FieldDefinition {
-        name: name.to_string(),
-        field_type,
-        ..Default::default()
-    }
+    FieldDefinition::builder(name, field_type).build()
 }
 
 // ── 5. Global join table support (arrays, blocks, has-many) ───────────────
 
 fn make_global_with_join_fields() -> GlobalDefinition {
     let mut def = GlobalDefinition::new("homepage");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Homepage".to_string())),
         plural: None,
     };
@@ -555,14 +551,11 @@ fn hydrate_document_skips_group_reconstruction_for_globals() {
 
     let fields = vec![
         make_field("title", FieldType::Text),
-        FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![
+        FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![
                 make_field("meta_title", FieldType::Text),
-            ],
-            ..Default::default()
-        },
+            ])
+            .build(),
     ];
 
     // Simulate what get_global does: read the row, then hydrate
@@ -605,15 +598,12 @@ fn hydrate_document_reconstructs_group_for_collections() {
 
     let fields = vec![
         make_field("title", FieldType::Text),
-        FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            fields: vec![
+        FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![
                 make_field("meta_title", FieldType::Text),
                 make_field("meta_description", FieldType::Textarea),
-            ],
-            ..Default::default()
-        },
+            ])
+            .build(),
     ];
 
     let mut doc = conn.query_row(
@@ -690,15 +680,14 @@ fn collection_alter_adds_group_sub_columns() {
     let doc = query::create(&conn, "articles", &def, &data, None).expect("Create");
 
     // Second sync: add a group field
-    def.fields.push(FieldDefinition {
-        name: "seo".to_string(),
-        field_type: FieldType::Group,
-        fields: vec![
-            make_field("meta_title", FieldType::Text),
-            make_field("meta_description", FieldType::Textarea),
-        ],
-        ..Default::default()
-    });
+    def.fields.push(
+        FieldDefinition::builder("seo", FieldType::Group)
+            .fields(vec![
+                make_field("meta_title", FieldType::Text),
+                make_field("meta_description", FieldType::Textarea),
+            ])
+            .build()
+    );
     {
         let mut reg = registry.write().unwrap();
         reg.register_collection(def.clone());
@@ -831,11 +820,9 @@ fn collection_alter_adds_localized_group_columns() {
     assert!(!columns_v1.contains("seo__meta_title__en"), "Locale columns should not exist yet");
 
     // Second sync: add a new localized sub-field to the group
-    def.fields[1].fields.push(FieldDefinition {
-        name: "og_description".to_string(),
-        localized: true,
-        ..Default::default()
-    });
+    def.fields[1].fields.push(
+        FieldDefinition::builder("og_description", FieldType::Text).localized(true).build()
+    );
     {
         let mut reg = registry.write().unwrap();
         reg.register_collection(def.clone());

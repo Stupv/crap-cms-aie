@@ -79,7 +79,7 @@ pub(crate) fn build_before_ctx(
 /// This pattern is repeated across create, update, unpublish, and global update.
 pub(crate) fn run_after_change_hooks(
     runner: &HookRunner,
-    hooks: &crate::core::collection::CollectionHooks,
+    hooks: &crate::core::collection::Hooks,
     fields: &[FieldDefinition],
     slug: &str,
     operation: &str,
@@ -223,10 +223,7 @@ mod tests {
         let mut def = CollectionDefinition::new("posts");
         def.timestamps = true;
         def.fields = vec![
-            FieldDefinition {
-                name: "title".to_string(),
-                ..Default::default()
-            },
+            FieldDefinition::builder("title", FieldType::Text).build(),
         ];
         def
     }
@@ -279,20 +276,16 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
 
         let mut fields = vec![
-            FieldDefinition {
-                name: "alt".to_string(),
-                required: true,
-                ..Default::default()
-            },
+            FieldDefinition::builder("alt", FieldType::Text).required(true).build(),
         ];
 
         let upload_fields = vec![
-            FieldDefinition { name: "filename".to_string(), required: true, ..Default::default() },
-            FieldDefinition { name: "mime_type".to_string(), admin: FieldAdmin { hidden: true, ..Default::default() }, ..Default::default() },
-            FieldDefinition { name: "filesize".to_string(), field_type: FieldType::Number, admin: FieldAdmin { hidden: true, ..Default::default() }, ..Default::default() },
-            FieldDefinition { name: "width".to_string(), field_type: FieldType::Number, admin: FieldAdmin { hidden: true, ..Default::default() }, ..Default::default() },
-            FieldDefinition { name: "height".to_string(), field_type: FieldType::Number, admin: FieldAdmin { hidden: true, ..Default::default() }, ..Default::default() },
-            FieldDefinition { name: "url".to_string(), admin: FieldAdmin { hidden: true, ..Default::default() }, ..Default::default() },
+            FieldDefinition::builder("filename", FieldType::Text).required(true).build(),
+            FieldDefinition::builder("mime_type", FieldType::Text).admin(FieldAdmin::builder().hidden(true).build()).build(),
+            FieldDefinition::builder("filesize", FieldType::Number).admin(FieldAdmin::builder().hidden(true).build()).build(),
+            FieldDefinition::builder("width", FieldType::Number).admin(FieldAdmin::builder().hidden(true).build()).build(),
+            FieldDefinition::builder("height", FieldType::Number).admin(FieldAdmin::builder().hidden(true).build()).build(),
+            FieldDefinition::builder("url", FieldType::Text).admin(FieldAdmin::builder().hidden(true).build()).build(),
         ];
         for (i, f) in upload_fields.into_iter().enumerate() {
             fields.insert(i, f);

@@ -232,11 +232,7 @@ mod tests {
     use crate::core::field::{FieldDefinition, SelectOption, LocalizedString};
 
     fn make_field(name: &str, ft: FieldType) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: ft,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, ft).build()
     }
 
     // --- parse_composite_form_data: flat (1-level) ---
@@ -609,15 +605,12 @@ mod tests {
         form.insert("items[1][body]".to_string(), "Content".to_string());
 
         let sub_defs = vec![
-            FieldDefinition {
-                name: "layout".to_string(),
-                field_type: FieldType::Tabs,
-                tabs: vec![
+            FieldDefinition::builder("layout", FieldType::Tabs)
+                .tabs(vec![
                     crate::core::field::FieldTab::new("General", vec![make_field("title", FieldType::Text)]),
                     crate::core::field::FieldTab::new("Content", vec![make_field("body", FieldType::Text)]),
-                ],
-                ..Default::default()
-            },
+                ])
+                .build(),
         ];
 
         let result = parse_composite_form_data(&form, "items", &sub_defs);
@@ -635,15 +628,12 @@ mod tests {
         form.insert("items[0][y]".to_string(), "20".to_string());
 
         let sub_defs = vec![
-            FieldDefinition {
-                name: "row_wrap".to_string(),
-                field_type: FieldType::Row,
-                fields: vec![
+            FieldDefinition::builder("row_wrap", FieldType::Row)
+                .fields(vec![
                     make_field("x", FieldType::Text),
                     make_field("y", FieldType::Text),
-                ],
-                ..Default::default()
-            },
+                ])
+                .build(),
         ];
 
         let result = parse_composite_form_data(&form, "items", &sub_defs);

@@ -43,15 +43,12 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, color TEXT)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "color".to_string(),
-            field_type: FieldType::Select,
-            options: vec![
+        let fields = vec![FieldDefinition::builder("color", FieldType::Select)
+            .options(vec![
                 SelectOption::new(LocalizedString::Plain("Red".to_string()), "red"),
                 SelectOption::new(LocalizedString::Plain("Blue".to_string()), "blue"),
-            ],
-            ..Default::default()
-        }];
+            ])
+            .build()];
         let mut data = HashMap::new();
         data.insert("color".to_string(), json!("red"));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -63,14 +60,11 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, color TEXT)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "color".to_string(),
-            field_type: FieldType::Select,
-            options: vec![
+        let fields = vec![FieldDefinition::builder("color", FieldType::Select)
+            .options(vec![
                 SelectOption::new(LocalizedString::Plain("Red".to_string()), "red"),
-            ],
-            ..Default::default()
-        }];
+            ])
+            .build()];
         let mut data = HashMap::new();
         data.insert("color".to_string(), json!("green"));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -83,14 +77,11 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, color TEXT)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "color".to_string(),
-            field_type: FieldType::Select,
-            options: vec![
+        let fields = vec![FieldDefinition::builder("color", FieldType::Select)
+            .options(vec![
                 SelectOption::new(LocalizedString::Plain("Red".to_string()), "red"),
-            ],
-            ..Default::default()
-        }];
+            ])
+            .build()];
         let mut data = HashMap::new();
         data.insert("color".to_string(), json!(""));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -102,15 +93,12 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, size TEXT)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "size".to_string(),
-            field_type: FieldType::Radio,
-            options: vec![
+        let fields = vec![FieldDefinition::builder("size", FieldType::Radio)
+            .options(vec![
                 SelectOption::new(LocalizedString::Plain("Small".to_string()), "sm"),
                 SelectOption::new(LocalizedString::Plain("Large".to_string()), "lg"),
-            ],
-            ..Default::default()
-        }];
+            ])
+            .build()];
         let mut data = HashMap::new();
         data.insert("size".to_string(), json!("sm"));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -122,14 +110,11 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, size TEXT)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "size".to_string(),
-            field_type: FieldType::Radio,
-            options: vec![
+        let fields = vec![FieldDefinition::builder("size", FieldType::Radio)
+            .options(vec![
                 SelectOption::new(LocalizedString::Plain("Small".to_string()), "sm"),
-            ],
-            ..Default::default()
-        }];
+            ])
+            .build()];
         let mut data = HashMap::new();
         data.insert("size".to_string(), json!("xl"));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -142,14 +127,11 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, size TEXT)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "size".to_string(),
-            field_type: FieldType::Radio,
-            options: vec![
+        let fields = vec![FieldDefinition::builder("size", FieldType::Radio)
+            .options(vec![
                 SelectOption::new(LocalizedString::Plain("Small".to_string()), "sm"),
-            ],
-            ..Default::default()
-        }];
+            ])
+            .build()];
         let mut data = HashMap::new();
         data.insert("size".to_string(), json!(""));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -161,12 +143,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, status TEXT)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "status".to_string(),
-            field_type: FieldType::Select,
-            options: vec![],
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("status", FieldType::Select).build()];
         let mut data = HashMap::new();
         data.insert("status".to_string(), json!("anything"));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);

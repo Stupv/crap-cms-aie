@@ -95,8 +95,8 @@ mod tests {
     fn test_def() -> CollectionDefinition {
         let mut def = CollectionDefinition::new("posts");
         def.fields = vec![
-            FieldDefinition { name: "title".to_string(), ..Default::default() },
-            FieldDefinition { name: "status".to_string(), ..Default::default() },
+            FieldDefinition::builder("title", FieldType::Text).build(),
+            FieldDefinition::builder("status", FieldType::Text).build(),
         ];
         def
     }
@@ -105,16 +105,13 @@ mod tests {
     fn apply_select_filter_with_group() {
         let mut def = CollectionDefinition::new("posts");
         def.fields = vec![
-            FieldDefinition { name: "title".to_string(), ..Default::default() },
-            FieldDefinition {
-                name: "seo".to_string(),
-                field_type: FieldType::Group,
-                fields: vec![
-                    FieldDefinition { name: "meta_title".to_string(), ..Default::default() },
-                    FieldDefinition { name: "meta_desc".to_string(), ..Default::default() },
-                ],
-                ..Default::default()
-            },
+            FieldDefinition::builder("title", FieldType::Text).build(),
+            FieldDefinition::builder("seo", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("meta_title", FieldType::Text).build(),
+                    FieldDefinition::builder("meta_desc", FieldType::Text).build(),
+                ])
+                .build(),
         ];
         let def = def;
 

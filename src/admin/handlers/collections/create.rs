@@ -359,11 +359,11 @@ mod tests {
     #[test]
     fn collect_upload_hidden_fields_basic() {
         let fields = vec![
-            FieldDefinition { name: "filename".to_string(), ..Default::default() },
-            FieldDefinition { name: "mime_type".to_string(), admin: FieldAdmin { hidden: true, ..Default::default() }, ..Default::default() },
-            FieldDefinition { name: "url".to_string(), admin: FieldAdmin { hidden: true, ..Default::default() }, ..Default::default() },
-            FieldDefinition { name: "width".to_string(), field_type: FieldType::Number, admin: FieldAdmin { hidden: true, ..Default::default() }, ..Default::default() },
-            FieldDefinition { name: "alt".to_string(), ..Default::default() },
+            FieldDefinition::builder("filename", FieldType::Text).build(),
+            FieldDefinition::builder("mime_type", FieldType::Text).admin(FieldAdmin::builder().hidden(true).build()).build(),
+            FieldDefinition::builder("url", FieldType::Text).admin(FieldAdmin::builder().hidden(true).build()).build(),
+            FieldDefinition::builder("width", FieldType::Number).admin(FieldAdmin::builder().hidden(true).build()).build(),
+            FieldDefinition::builder("alt", FieldType::Text).build(),
         ];
         let mut form_data = HashMap::new();
         form_data.insert("filename".to_string(), "test.jpg".to_string());
@@ -385,8 +385,8 @@ mod tests {
     #[test]
     fn collect_upload_hidden_fields_missing_values() {
         let fields = vec![
-            FieldDefinition { name: "url".to_string(), admin: FieldAdmin { hidden: true, ..Default::default() }, ..Default::default() },
-            FieldDefinition { name: "mime_type".to_string(), admin: FieldAdmin { hidden: true, ..Default::default() }, ..Default::default() },
+            FieldDefinition::builder("url", FieldType::Text).admin(FieldAdmin::builder().hidden(true).build()).build(),
+            FieldDefinition::builder("mime_type", FieldType::Text).admin(FieldAdmin::builder().hidden(true).build()).build(),
         ];
         // Only url is in form_data, not mime_type
         let mut form_data = HashMap::new();
@@ -401,7 +401,7 @@ mod tests {
     #[test]
     fn collect_upload_hidden_fields_no_hidden() {
         let fields = vec![
-            FieldDefinition { name: "alt".to_string(), ..Default::default() },
+            FieldDefinition::builder("alt", FieldType::Text).build(),
         ];
         let form_data = HashMap::new();
         let result = collect_upload_hidden_fields(&fields, &form_data);

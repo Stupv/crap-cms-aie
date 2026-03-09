@@ -89,11 +89,7 @@ pub(crate) mod test_helpers {
     use crate::core::field::*;
 
     pub fn make_field(name: &str, ft: FieldType) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: ft,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, ft).build()
     }
 
     pub fn make_collection_def(slug: &str, fields: Vec<FieldDefinition>) -> CollectionDefinition {

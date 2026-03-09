@@ -697,7 +697,7 @@ fn context_starts_empty() {
 
 #[test]
 fn after_hook_has_crud_access() {
-    use crap_cms::core::collection::CollectionHooks;
+    use crap_cms::core::collection::Hooks;
     use crap_cms::hooks::lifecycle::{HookContext, HookEvent};
 
     let (_tmp, pool, registry, runner) = setup_with_db();
@@ -706,7 +706,7 @@ fn after_hook_has_crud_access() {
     drop(reg);
 
     // Build hooks with an after_change hook that creates a side-effect document
-    let hooks = CollectionHooks {
+    let hooks = Hooks {
         after_change: vec!["hooks.after_crud.create_side_effect".to_string()],
         ..Default::default()
     };
@@ -752,7 +752,7 @@ fn after_hook_has_crud_access() {
 
 #[test]
 fn after_hook_error_rolls_back() {
-    use crap_cms::core::collection::CollectionHooks;
+    use crap_cms::core::collection::Hooks;
     use crap_cms::hooks::lifecycle::{HookContext, HookEvent};
 
     let (_tmp, pool, registry, runner) = setup_with_db();
@@ -761,7 +761,7 @@ fn after_hook_error_rolls_back() {
     drop(reg);
 
     // Build hooks with an after_change hook that errors
-    let hooks = CollectionHooks {
+    let hooks = Hooks {
         after_change: vec!["hooks.after_crud.error_hook".to_string()],
         ..Default::default()
     };
@@ -803,13 +803,13 @@ fn after_hook_error_rolls_back() {
 
 #[test]
 fn context_flows_to_after_hooks() {
-    use crap_cms::core::collection::CollectionHooks;
+    use crap_cms::core::collection::Hooks;
     use crap_cms::hooks::lifecycle::{HookContext, HookEvent};
 
     let (_tmp, pool, _registry, runner) = setup_with_db();
 
     // Build hooks with an after_change hook that reads ctx.context
-    let hooks = CollectionHooks {
+    let hooks = Hooks {
         after_change: vec!["hooks.after_crud.check_context".to_string()],
         ..Default::default()
     };

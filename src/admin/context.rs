@@ -436,16 +436,12 @@ mod tests {
     #[test]
     fn build_collection_context_includes_all_fields() {
         let mut def = CollectionDefinition::new("posts");
-        def.labels = crate::core::collection::CollectionLabels {
+        def.labels = crate::core::collection::Labels {
             singular: Some(crate::core::field::LocalizedString::Plain("Post".to_string())),
             plural: Some(crate::core::field::LocalizedString::Plain("Posts".to_string())),
         };
         def.timestamps = true;
-        def.fields = vec![FieldDefinition {
-            name: "title".to_string(),
-            required: true,
-            ..Default::default()
-        }];
+        def.fields = vec![FieldDefinition::builder("title", crate::core::field::FieldType::Text).required(true).build()];
         let ctx = build_collection_context(&def);
         assert_eq!(ctx["slug"], "posts");
         assert_eq!(ctx["display_name"], "Posts");
@@ -465,14 +461,11 @@ mod tests {
     #[test]
     fn build_global_context_includes_all_fields() {
         let mut def = crate::core::collection::GlobalDefinition::new("settings");
-        def.labels = crate::core::collection::CollectionLabels {
+        def.labels = crate::core::collection::Labels {
             singular: Some(crate::core::field::LocalizedString::Plain("Settings".to_string())),
             plural: None,
         };
-        def.fields = vec![FieldDefinition {
-            name: "site_name".to_string(),
-            ..Default::default()
-        }];
+        def.fields = vec![FieldDefinition::builder("site_name", crate::core::field::FieldType::Text).build()];
         let ctx = build_global_context(&def);
         assert_eq!(ctx["slug"], "settings");
         assert_eq!(ctx["display_name"], "Settings");
@@ -487,22 +480,21 @@ mod tests {
 
     #[test]
     fn build_fields_meta_includes_admin_info() {
-        let field = FieldDefinition {
-            name: "title".to_string(),
-            required: true,
-            unique: true,
-            localized: true,
-            admin: crate::core::field::FieldAdmin {
-                label: Some(crate::core::field::LocalizedString::Plain("Title".to_string())),
-                hidden: false,
-                readonly: true,
-                width: Some("50%".to_string()),
-                description: Some(crate::core::field::LocalizedString::Plain("The title field".to_string())),
-                placeholder: Some(crate::core::field::LocalizedString::Plain("Enter title".to_string())),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+        let field = FieldDefinition::builder("title", crate::core::field::FieldType::Text)
+            .required(true)
+            .unique(true)
+            .localized(true)
+            .admin(
+                crate::core::field::FieldAdmin::builder()
+                    .label(crate::core::field::LocalizedString::Plain("Title".to_string()))
+                    .hidden(false)
+                    .readonly(true)
+                    .width("50%")
+                    .description(crate::core::field::LocalizedString::Plain("The title field".to_string()))
+                    .placeholder(crate::core::field::LocalizedString::Plain("Enter title".to_string()))
+                    .build(),
+            )
+            .build();
         let meta = build_fields_meta(&[field]);
         let arr = meta.as_array().unwrap();
         assert_eq!(arr.len(), 1);

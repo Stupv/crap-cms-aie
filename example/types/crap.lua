@@ -379,17 +379,17 @@ function crap.fields.join(config) end
 
 -- ── Collection Types ─────────────────────────────────────────
 
---- @class crap.CollectionLabels
+--- @class crap.Labels
 --- @field singular? crap.LocalizedString  Singular display name (e.g., "Post" or `{ en = "Post", de = "Beitrag" }`).
 --- @field plural?   crap.LocalizedString  Plural display name (e.g., "Posts" or `{ en = "Posts", de = "Beiträge" }`).
 
---- @class crap.CollectionAdmin
+--- @class crap.AdminConfig
 --- @field use_as_title?           string    Field name to use as row label in lists.
 --- @field default_sort?           string    Default sort field (prefix with "-" for desc).
 --- @field hidden?                 boolean   Hide from admin sidebar (default: false).
 --- @field list_searchable_fields? string[]  Fields searchable in the list view.
 
---- @class crap.CollectionHooks
+--- @class crap.Hooks
 --- @field before_validate? string[] Hook refs to run before field validation.
 --- @field before_change?   string[] Hook refs to run before create/update write.
 --- @field after_change?    string[] Hook refs to run after create/update write.
@@ -399,7 +399,7 @@ function crap.fields.join(config) end
 --- @field after_delete?    string[] Hook refs to run after delete.
 --- @field before_broadcast? string[] Hook refs to run before broadcasting live update events. Can suppress or transform event data. No CRUD access.
 
---- @class crap.CollectionAccess
+--- @class crap.Access
 --- @field read?   string Hook ref for read access control.
 --- @field create? string Hook ref for create access control.
 --- @field update? string Hook ref for update access control.
@@ -413,7 +413,7 @@ function crap.fields.join(config) end
 --- @field name          string  Strategy name (e.g., "api-key", "ldap").
 --- @field authenticate  string  Lua function ref (module.function format). Receives `crap.AuthStrategyContext`, returns a user document or nil.
 
---- @class crap.CollectionAuth
+--- @class crap.Auth
 --- @field enabled?          boolean             Enable auth for this collection (default: false).
 --- @field token_expiry?     integer             JWT token expiry in seconds (default: 7200).
 --- @field strategies?       crap.AuthStrategy[] Custom auth strategies for request-level authentication.
@@ -449,14 +449,14 @@ function crap.fields.join(config) end
 --- @field max_versions? integer  Maximum version snapshots to keep per document (default: unlimited).
 
 --- @class crap.CollectionConfig
---- @field labels?     crap.CollectionLabels      Display names.
+--- @field labels?     crap.Labels      Display names.
 --- @field timestamps? boolean                    Auto created_at/updated_at (default: true).
---- @field auth?       boolean|crap.CollectionAuth  Enable authentication on this collection. `true` for defaults, or a config table with strategies/token_expiry/disable_local.
+--- @field auth?       boolean|crap.Auth  Enable authentication on this collection. `true` for defaults, or a config table with strategies/token_expiry/disable_local.
 --- @field upload?     boolean|crap.CollectionUpload  Enable file uploads. `true` for defaults, or a config table with mime_types/max_file_size/image_sizes.
 --- @field fields?     crap.FieldDefinition[]     Field definitions.
---- @field admin?      crap.CollectionAdmin       Admin UI options.
---- @field hooks?      crap.CollectionHooks       Hook references.
---- @field access?     crap.CollectionAccess      Access control function refs.
+--- @field admin?      crap.AdminConfig       Admin UI options.
+--- @field hooks?      crap.Hooks       Hook references.
+--- @field access?     crap.Access      Access control function refs.
 --- @field versions?   boolean|crap.VersionsConfig  Enable versioning. `true` for defaults, or a config table with drafts/max_versions.
 --- @field live?       boolean|string              Live event broadcasting. `false` to disable, string for Lua function ref that receives `{ collection, operation, data }` and returns boolean. Absent = enabled (broadcast all).
 --- @field indexes?    crap.IndexDefinition[]      Compound indexes (multi-column). Created on startup, stale indexes dropped.
@@ -470,10 +470,10 @@ function crap.fields.join(config) end
 -- ── Global Types ─────────────────────────────────────────────
 
 --- @class crap.GlobalConfig
---- @field labels?    crap.CollectionLabels    Display names.
+--- @field labels?    crap.Labels    Display names.
 --- @field fields?    crap.FieldDefinition[]   Field definitions.
---- @field hooks?     crap.CollectionHooks     Hook references.
---- @field access?    crap.CollectionAccess    Access control function refs.
+--- @field hooks?     crap.Hooks     Hook references.
+--- @field access?    crap.Access    Access control function refs.
 --- @field versions?  boolean|crap.VersionsConfig  Enable versioning. Same as collection `versions`.
 --- @field live?      boolean|string           Live event broadcasting. Same as collection `live`.
 --- @field mcp?       crap.McpCollectionConfig  MCP tool description and options.

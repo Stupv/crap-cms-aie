@@ -235,12 +235,7 @@ mod tests {
     }
 
     fn make_field(name: &str, access: FieldAccess) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Text,
-            access,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Text).access(access).build()
     }
 
     fn make_user_doc(role: &str) -> Document {

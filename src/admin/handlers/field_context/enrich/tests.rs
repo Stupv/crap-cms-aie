@@ -3,11 +3,7 @@ use super::super::builder::build_field_contexts;
 use crate::core::field::{FieldDefinition, SelectOption, LocalizedString, BlockDefinition};
 
 fn make_field(name: &str, ft: FieldType) -> FieldDefinition {
-    FieldDefinition {
-        name: name.to_string(),
-        field_type: ft,
-        ..Default::default()
-    }
+    FieldDefinition::builder(name, ft).build()
 }
 
 // --- Recursive enrichment tests (build_enriched_sub_field_context) ---
@@ -156,19 +152,11 @@ fn enriched_sub_field_select_preserves_selected() {
 fn max_depth_prevents_infinite_recursion() {
     // Build a deeply nested array structure
     fn make_nested_array(depth: usize) -> FieldDefinition {
-        let mut field = FieldDefinition {
-            name: format!("level{}", depth),
-            field_type: FieldType::Array,
-            ..Default::default()
-        };
+        let mut field = FieldDefinition::builder(format!("level{}", depth), FieldType::Array).build();
         if depth < 10 {
             field.fields = vec![make_nested_array(depth + 1)];
         } else {
-            field.fields = vec![FieldDefinition {
-                name: "leaf".to_string(),
-                field_type: FieldType::Text,
-                ..Default::default()
-            }];
+            field.fields = vec![FieldDefinition::builder("leaf", FieldType::Text).build()];
         }
         field
     }
@@ -588,12 +576,7 @@ fn enrich_nested_fields_recurses_into_layout() {
     // A Row containing a Relationship field
     let mut rel_field = make_field("tag", FieldType::Relationship);
     rel_field.relationship = Some(RelationshipConfig::new("tags", false));
-    let row_field = FieldDefinition {
-        name: "row1".to_string(),
-        field_type: FieldType::Row,
-        fields: vec![rel_field],
-        ..Default::default()
-    };
+    let row_field = FieldDefinition::builder("row1", FieldType::Row).fields(vec![rel_field]).build();
 
     let field_defs = vec![row_field];
     let mut sub_fields = vec![serde_json::json!({
@@ -653,11 +636,7 @@ fn enrich_nested_fields_blocks_template_gets_upload_options() {
     // A Blocks field with an "image" block containing an upload field
     let mut upload_field = make_field("image", FieldType::Upload);
     upload_field.relationship = Some(RelationshipConfig::new("media", false));
-    let mut blocks_field = FieldDefinition {
-        name: "content".to_string(),
-        field_type: FieldType::Blocks,
-        ..Default::default()
-    };
+    let mut blocks_field = FieldDefinition::builder("content", FieldType::Blocks).build();
     blocks_field.blocks = vec![BlockDefinition::new("image", vec![upload_field])];
 
     let field_defs = vec![blocks_field];
@@ -724,12 +703,7 @@ fn enrich_nested_fields_array_template_gets_upload_options() {
 
     let mut upload_field = make_field("file", FieldType::Upload);
     upload_field.relationship = Some(RelationshipConfig::new("media", false));
-    let array_field = FieldDefinition {
-        name: "attachments".to_string(),
-        field_type: FieldType::Array,
-        fields: vec![upload_field],
-        ..Default::default()
-    };
+    let array_field = FieldDefinition::builder("attachments", FieldType::Array).fields(vec![upload_field]).build();
 
     let field_defs = vec![array_field];
     let mut sub_fields = vec![serde_json::json!({
@@ -759,21 +733,13 @@ fn enrich_field_contexts_blocks_inside_tabs_populates_rows() {
     // enrich_field_contexts delegated to enrich_nested_fields instead of recursing.
     use crate::core::field::BlockDefinition;
 
-    let mut blocks_field = FieldDefinition {
-        name: "content".to_string(),
-        field_type: FieldType::Blocks,
-        ..Default::default()
-    };
+    let mut blocks_field = FieldDefinition::builder("content", FieldType::Blocks).build();
     blocks_field.blocks = vec![{
         let mut bd = BlockDefinition::new("hero", vec![make_field("heading", FieldType::Text)]);
         bd.label = Some(LocalizedString::Plain("Hero".to_string()));
         bd
     }];
-    let mut tabs_field = FieldDefinition {
-        name: "page_settings".to_string(),
-        field_type: FieldType::Tabs,
-        ..Default::default()
-    };
+    let mut tabs_field = FieldDefinition::builder("page_settings", FieldType::Tabs).build();
     tabs_field.tabs = vec![crate::core::field::FieldTab::new("Content", vec![blocks_field.clone()])];
     let field_defs = vec![tabs_field];
 
@@ -850,18 +816,12 @@ fn enrich_field_contexts_blocks_inside_tabs_populates_rows() {
 #[test]
 fn enrich_field_contexts_array_inside_row_populates_rows() {
     // Regression: arrays inside Row were not populated from doc_fields
-    let array_field = FieldDefinition {
-        name: "items".to_string(),
-        field_type: FieldType::Array,
-        fields: vec![make_field("label", FieldType::Text)],
-        ..Default::default()
-    };
-    let row_field = FieldDefinition {
-        name: "main_row".to_string(),
-        field_type: FieldType::Row,
-        fields: vec![array_field.clone()],
-        ..Default::default()
-    };
+    let array_field = FieldDefinition::builder("items", FieldType::Array)
+        .fields(vec![make_field("label", FieldType::Text)])
+        .build();
+    let row_field = FieldDefinition::builder("main_row", FieldType::Row)
+        .fields(vec![array_field.clone()])
+        .build();
     let field_defs = vec![row_field];
 
     let values = HashMap::new();
@@ -980,15 +940,12 @@ fn enriched_sub_field_tabs_in_array_transparent_names() {
     // Array "items" with sub-fields inside a Tabs wrapper
     let mut arr_field = make_field("items", FieldType::Array);
     arr_field.fields = vec![
-        FieldDefinition {
-            name: "layout".to_string(),
-            field_type: FieldType::Tabs,
-            tabs: vec![
+        FieldDefinition::builder("layout", FieldType::Tabs)
+            .tabs(vec![
                 FieldTab::new("General", vec![make_field("title", FieldType::Text)]),
                 FieldTab::new("Content", vec![make_field("body", FieldType::Textarea)]),
-            ],
-            ..Default::default()
-        },
+            ])
+            .build(),
     ];
 
     // Simulate hydrated data: flat JSON (as it comes from the join table)
@@ -1041,15 +998,12 @@ fn enriched_sub_field_row_in_array_transparent_names() {
     // Array "items" with sub-fields inside a Row wrapper
     let mut arr_field = make_field("items", FieldType::Array);
     arr_field.fields = vec![
-        FieldDefinition {
-            name: "row_wrap".to_string(),
-            field_type: FieldType::Row,
-            fields: vec![
+        FieldDefinition::builder("row_wrap", FieldType::Row)
+            .fields(vec![
                 make_field("x", FieldType::Text),
                 make_field("y", FieldType::Text),
-            ],
-            ..Default::default()
-        },
+            ])
+            .build(),
     ];
 
     let row_data = serde_json::json!([
@@ -1096,28 +1050,22 @@ fn enriched_sub_field_row_inside_tabs_in_array_transparent_names() {
     // Array "team_members" with Tabs containing Rows (double nesting)
     let mut arr_field = make_field("team_members", FieldType::Array);
     arr_field.fields = vec![
-        FieldDefinition {
-            name: "member_tabs".to_string(),
-            field_type: FieldType::Tabs,
-            tabs: vec![
+        FieldDefinition::builder("member_tabs", FieldType::Tabs)
+            .tabs(vec![
                 FieldTab::new("Personal", vec![
-                    FieldDefinition {
-                        name: "name_row".to_string(),
-                        field_type: FieldType::Row,
-                        fields: vec![
+                    FieldDefinition::builder("name_row", FieldType::Row)
+                        .fields(vec![
                             make_field("first_name", FieldType::Text),
                             make_field("last_name", FieldType::Text),
-                        ],
-                        ..Default::default()
-                    },
+                        ])
+                        .build(),
                     make_field("email", FieldType::Email),
                 ]),
                 FieldTab::new("Professional", vec![
                     make_field("job_title", FieldType::Text),
                 ]),
-            ],
-            ..Default::default()
-        },
+            ])
+            .build(),
     ];
 
     let row_data = serde_json::json!([

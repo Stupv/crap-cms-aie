@@ -110,11 +110,10 @@ mod tests {
     #[test]
     fn test_field_admin_to_lua_with_properties() {
         let lua = mlua::Lua::new();
-        let admin = crate::core::field::FieldAdmin {
-            label: Some(crate::core::field::LocalizedString::Plain("Title".to_string())),
-            hidden: true,
-            ..Default::default()
-        };
+        let admin = crate::core::field::FieldAdmin::builder()
+            .label(crate::core::field::LocalizedString::Plain("Title".to_string()))
+            .hidden(true)
+            .build();
         let result = field_admin_to_lua(&lua, &admin).unwrap();
         assert!(result.is_some());
         let tbl = result.unwrap();

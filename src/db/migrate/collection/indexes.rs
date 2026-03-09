@@ -118,7 +118,7 @@ mod tests {
     use super::super::test_helpers::*;
     use super::super::create::create_collection_table;
     use crate::core::collection::*;
-    use crate::core::field::FieldDefinition;
+    use crate::core::field::{FieldDefinition, FieldType};
 
     fn get_indexes(conn: &rusqlite::Connection, table: &str) -> HashSet<String> {
         let mut stmt = conn.prepare(
@@ -135,11 +135,9 @@ mod tests {
         let pool = in_memory_pool();
         let conn = pool.get().unwrap();
         let def = simple_collection("posts", vec![
-            FieldDefinition {
-                name: "status".to_string(),
-                index: true,
-                ..Default::default()
-            },
+            FieldDefinition::builder("status", FieldType::Text)
+                .index(true)
+                .build(),
         ]);
         create_collection_table(&conn, "posts", &def, &no_locale()).unwrap();
         sync_indexes(&conn, "posts", &def, &no_locale()).unwrap();
@@ -153,12 +151,10 @@ mod tests {
         let pool = in_memory_pool();
         let conn = pool.get().unwrap();
         let def = simple_collection("posts", vec![
-            FieldDefinition {
-                name: "slug".to_string(),
-                unique: true,
-                index: true, // should be skipped because unique=true
-                ..Default::default()
-            },
+            FieldDefinition::builder("slug", FieldType::Text)
+                .unique(true)
+                .index(true) // should be skipped because unique=true
+                .build(),
         ]);
         create_collection_table(&conn, "posts", &def, &no_locale()).unwrap();
         sync_indexes(&conn, "posts", &def, &no_locale()).unwrap();
@@ -238,12 +234,10 @@ mod tests {
         let pool = in_memory_pool();
         let conn = pool.get().unwrap();
         let def = simple_collection("posts", vec![
-            FieldDefinition {
-                name: "title".to_string(),
-                localized: true,
-                index: true,
-                ..Default::default()
-            },
+            FieldDefinition::builder("title", FieldType::Text)
+                .localized(true)
+                .index(true)
+                .build(),
         ]);
         create_collection_table(&conn, "posts", &def, &locale_en_de()).unwrap();
         sync_indexes(&conn, "posts", &def, &locale_en_de()).unwrap();
@@ -258,11 +252,9 @@ mod tests {
         let pool = in_memory_pool();
         let conn = pool.get().unwrap();
         let def = simple_collection("posts", vec![
-            FieldDefinition {
-                name: "status".to_string(),
-                index: true,
-                ..Default::default()
-            },
+            FieldDefinition::builder("status", FieldType::Text)
+                .index(true)
+                .build(),
         ]);
         create_collection_table(&conn, "posts", &def, &no_locale()).unwrap();
 

@@ -197,21 +197,9 @@ mod tests {
             .build();
 
         let fields = vec![
-            FieldDefinition {
-                name: "title".to_string(),
-                field_type: FieldType::Text,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "count".to_string(),
-                field_type: FieldType::Number,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "active".to_string(),
-                field_type: FieldType::Checkbox,
-                ..Default::default()
-            },
+            FieldDefinition::builder("title", FieldType::Text).build(),
+            FieldDefinition::builder("count", FieldType::Number).build(),
+            FieldDefinition::builder("active", FieldType::Checkbox).build(),
         ];
 
         let map = ctx.to_string_map(&fields);
@@ -234,16 +222,8 @@ mod tests {
             .build();
 
         let fields = vec![
-            FieldDefinition {
-                name: "seo".to_string(),
-                field_type: FieldType::Group,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "title".to_string(),
-                field_type: FieldType::Text,
-                ..Default::default()
-            },
+            FieldDefinition::builder("seo", FieldType::Group).build(),
+            FieldDefinition::builder("title", FieldType::Text).build(),
         ];
 
         let map = ctx.to_string_map(&fields);
@@ -262,11 +242,7 @@ mod tests {
             .data(data)
             .build();
 
-        let fields = vec![FieldDefinition {
-            name: "seo".to_string(),
-            field_type: FieldType::Group,
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("seo", FieldType::Group).build()];
 
         let map = ctx.to_string_map(&fields);
         assert_eq!(map.get("seo").unwrap(), "plain-string");
@@ -284,11 +260,7 @@ mod tests {
             .data(data)
             .build();
 
-        let fields = vec![FieldDefinition {
-            name: "metrics".to_string(),
-            field_type: FieldType::Group,
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("metrics", FieldType::Group).build()];
 
         let map = ctx.to_string_map(&fields);
         assert_eq!(map.get("metrics__views").unwrap(), "100");

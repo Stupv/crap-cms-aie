@@ -309,26 +309,17 @@ mod tests {
             fallback: true,
         };
 
-        let blocks_field = FieldDefinition {
-            name: "content".to_string(),
-            field_type: crate::core::field::FieldType::Blocks,
-            localized: true,
-            ..Default::default()
-        };
+        let blocks_field = FieldDefinition::builder("content", crate::core::field::FieldType::Blocks)
+            .localized(true)
+            .build();
         let mut def = crate::core::collection::CollectionDefinition::new("posts");
         def.fields = vec![
-            FieldDefinition {
-                name: "title".to_string(),
-                field_type: crate::core::field::FieldType::Text,
-                localized: true,
-                ..Default::default()
-            },
-            FieldDefinition {
-                name: "page_settings".to_string(),
-                field_type: crate::core::field::FieldType::Tabs,
-                tabs: vec![crate::core::field::FieldTab::new("Content", vec![blocks_field])],
-                ..Default::default()
-            },
+            FieldDefinition::builder("title", crate::core::field::FieldType::Text)
+                .localized(true)
+                .build(),
+            FieldDefinition::builder("page_settings", crate::core::field::FieldType::Tabs)
+                .tabs(vec![crate::core::field::FieldTab::new("Content", vec![blocks_field])])
+                .build(),
         ];
         def.versions = Some(crate::core::collection::VersionsConfig::new(true, 10));
         let def = def;

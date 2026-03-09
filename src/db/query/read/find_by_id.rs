@@ -132,8 +132,8 @@ mod tests {
     fn test_def() -> CollectionDefinition {
         let mut def = CollectionDefinition::new("posts");
         def.fields = vec![
-            FieldDefinition { name: "title".to_string(), ..Default::default() },
-            FieldDefinition { name: "status".to_string(), ..Default::default() },
+            FieldDefinition::builder("title", FieldType::Text).build(),
+            FieldDefinition::builder("status", FieldType::Text).build(),
         ];
         def
     }

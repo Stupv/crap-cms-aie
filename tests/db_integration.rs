@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crap_cms::config::CrapConfig;
 use crap_cms::core::collection::{
-    CollectionAuth, CollectionDefinition, CollectionLabels, GlobalDefinition,
+    Auth, CollectionDefinition, Labels, GlobalDefinition,
 };
 use crap_cms::core::field::{
     FieldDefinition, FieldType,
@@ -13,7 +13,7 @@ use crap_cms::db::{migrate, ops, pool, query};
 
 fn make_posts_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("posts");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Post".to_string())),
         plural: Some(LocalizedString::Plain("Posts".to_string())),
     };
@@ -117,11 +117,7 @@ fn sync_schema_adds_columns() {
     migrate::sync_all(&pool, &registry, &CrapConfig::default().locale).expect("First sync failed");
 
     // Add a field
-    def.fields.push(FieldDefinition {
-        name: "body".to_string(),
-        field_type: FieldType::Textarea,
-        ..Default::default()
-    });
+    def.fields.push(FieldDefinition::builder("body", FieldType::Textarea).build());
     {
         let mut reg = registry.write().unwrap();
         reg.register_collection(def.clone());
@@ -324,7 +320,7 @@ fn seed_posts() -> (tempfile::TempDir, crap_cms::db::DbPool, CollectionDefinitio
 
 fn make_users_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("users");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("User".to_string())),
         plural: Some(LocalizedString::Plain("Users".to_string())),
     };
@@ -337,10 +333,10 @@ fn make_users_def() -> CollectionDefinition {
     let mut name = FieldDefinition::default();
     name.name = "name".to_string();
     def.fields = vec![email, name];
-    def.auth = Some(CollectionAuth {
+    def.auth = Some(Auth {
         enabled: true,
         verify_email: true,
-        ..CollectionAuth::default()
+        ..Auth::default()
     });
     def
 }
@@ -574,7 +570,7 @@ fn count_where_field_eq_with_exclude() {
 
 fn make_global_def() -> GlobalDefinition {
     let mut def = GlobalDefinition::new("site_settings");
-    def.labels = CollectionLabels {
+    def.labels = Labels {
         singular: Some(LocalizedString::Plain("Site Settings".to_string())),
         plural: None,
     };
@@ -680,11 +676,7 @@ fn update_global_preserves_unset_fields() {
 // ── Helper: make_field (used by type coercion, group, and migration tests) ───
 
 fn make_field(name: &str, field_type: FieldType) -> FieldDefinition {
-    FieldDefinition {
-        name: name.to_string(),
-        field_type,
-        ..Default::default()
-    }
+    FieldDefinition::builder(name, field_type).build()
 }
 
 // ── 1E. Type Coercion & Edge Cases ────────────────────────────────────────────

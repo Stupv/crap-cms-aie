@@ -372,39 +372,21 @@ mod tests {
     use crate::db::query::{FilterClause, FilterOp, Filter};
 
     fn make_field(name: &str, ft: FieldType, localized: bool) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: ft,
-            localized,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, ft).localized(localized).build()
     }
 
     fn make_array_field(name: &str, sub_fields: Vec<FieldDefinition>) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Array,
-            fields: sub_fields,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Array).fields(sub_fields).build()
     }
 
     fn make_blocks_field(name: &str, blocks: Vec<BlockDefinition>) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Blocks,
-            blocks,
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Blocks).blocks(blocks).build()
     }
 
     fn make_has_many_field(name: &str, collection: &str) -> FieldDefinition {
-        FieldDefinition {
-            name: name.to_string(),
-            field_type: FieldType::Relationship,
-            relationship: Some(RelationshipConfig::new(collection, true)),
-            ..Default::default()
-        }
+        FieldDefinition::builder(name, FieldType::Relationship)
+            .relationship(RelationshipConfig::new(collection, true))
+            .build()
     }
 
     fn make_block_def(block_type: &str, fields: Vec<FieldDefinition>) -> BlockDefinition {
@@ -607,12 +589,9 @@ mod tests {
 
     #[test]
     fn resolve_filter_has_one_relationship_rejects_dot() {
-        let fields = vec![FieldDefinition {
-            name: "author".to_string(),
-            field_type: FieldType::Relationship,
-            relationship: Some(RelationshipConfig::new("users", false)),
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("author", FieldType::Relationship)
+            .relationship(RelationshipConfig::new("users", false))
+            .build()];
         let result = resolve_filter("author.name", "posts", &fields);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Has-one"));
@@ -628,12 +607,7 @@ mod tests {
 
     #[test]
     fn resolve_filter_relationship_missing_config() {
-        let fields = vec![FieldDefinition {
-            name: "tags".to_string(),
-            field_type: FieldType::Relationship,
-            relationship: None,
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("tags", FieldType::Relationship).build()];
         let result = resolve_filter("tags.id", "posts", &fields);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("missing relationship config"));

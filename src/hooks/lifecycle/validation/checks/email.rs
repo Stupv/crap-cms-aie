@@ -47,11 +47,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, email TEXT)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "email".to_string(),
-            field_type: FieldType::Email,
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("email", FieldType::Email).build()];
         let mut data = HashMap::new();
         data.insert("email".to_string(), json!("user@example.com"));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -63,11 +59,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, email TEXT)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "email".to_string(),
-            field_type: FieldType::Email,
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("email", FieldType::Email).build()];
         let mut data = HashMap::new();
         data.insert("email".to_string(), json!("not-an-email"));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -80,11 +72,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, email TEXT)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "email".to_string(),
-            field_type: FieldType::Email,
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("email", FieldType::Email).build()];
         let mut data = HashMap::new();
         data.insert("email".to_string(), json!("user@"));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
@@ -96,11 +84,7 @@ mod tests {
         let lua = mlua::Lua::new();
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE test (id TEXT PRIMARY KEY, email TEXT)").unwrap();
-        let fields = vec![FieldDefinition {
-            name: "email".to_string(),
-            field_type: FieldType::Email,
-            ..Default::default()
-        }];
+        let fields = vec![FieldDefinition::builder("email", FieldType::Email).build()];
         let mut data = HashMap::new();
         data.insert("email".to_string(), json!(""));
         let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);

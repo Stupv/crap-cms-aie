@@ -102,33 +102,26 @@ pub(super) fn parse_format_options(tbl: &Table) -> FormatOptions {
 
 /// Helper to create a hidden text field definition.
 fn hidden_text_field(name: &str) -> FieldDefinition {
-    FieldDefinition {
-        name: name.to_string(),
-        admin: FieldAdmin { hidden: true, ..Default::default() },
-        ..Default::default()
-    }
+    FieldDefinition::builder(name, FieldType::Text)
+        .admin(FieldAdmin::builder().hidden(true).build())
+        .build()
 }
 
 /// Helper to create a hidden number field definition.
 fn hidden_number_field(name: &str) -> FieldDefinition {
-    FieldDefinition {
-        name: name.to_string(),
-        field_type: FieldType::Number,
-        admin: FieldAdmin { hidden: true, ..Default::default() },
-        ..Default::default()
-    }
+    FieldDefinition::builder(name, FieldType::Number)
+        .admin(FieldAdmin::builder().hidden(true).build())
+        .build()
 }
 
 /// Auto-inject upload metadata fields at position 0 (before user fields).
 /// Generates typed columns for each image size instead of a JSON blob.
 pub(super) fn inject_upload_fields(fields: &mut Vec<FieldDefinition>, upload: &CollectionUpload) {
     let mut upload_fields = vec![
-        FieldDefinition {
-            name: "filename".to_string(),
-            required: true,
-            admin: FieldAdmin { readonly: true, ..Default::default() },
-            ..Default::default()
-        },
+        FieldDefinition::builder("filename", FieldType::Text)
+            .required(true)
+            .admin(FieldAdmin::builder().readonly(true).build())
+            .build(),
         hidden_text_field("mime_type"),
         hidden_number_field("filesize"),
         hidden_number_field("width"),
@@ -270,10 +263,7 @@ mod tests {
 
     #[test]
     fn test_inject_upload_fields_basic() {
-        let mut fields = vec![FieldDefinition {
-            name: "alt_text".to_string(),
-            ..Default::default()
-        }];
+        let mut fields = vec![FieldDefinition::builder("alt_text", crate::core::field::FieldType::Text).build()];
         let mut upload = CollectionUpload::default();
         upload.enabled = true;
         inject_upload_fields(&mut fields, &upload);
