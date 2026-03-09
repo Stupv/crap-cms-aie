@@ -194,7 +194,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("items".to_string(), json!([{"label": ""}]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.errors[0].field.contains("items[0][label]"));
@@ -212,7 +212,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("content".to_string(), json!([{"_block_type": "text", "body": ""}]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].field.contains("content[0][body]"));
     }
@@ -235,7 +235,7 @@ mod tests {
         data.insert("outer".to_string(), json!([
             {"inner": [{"value": ""}]}
         ]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.errors[0].field.contains("outer[0][inner][0][value]"));
@@ -259,7 +259,7 @@ mod tests {
         data.insert("items".to_string(), json!([
             {"meta__title": ""}
         ]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.errors[0].field.contains("items[0][meta__title]"));
@@ -279,7 +279,7 @@ mod tests {
         data.insert("events".to_string(), json!([
             {"date": "not-a-date"}
         ]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("valid date"));
     }
@@ -309,7 +309,7 @@ mod tests {
         data.insert("items".to_string(), json!([
             {"val": "invalid"}
         ]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("sub-field invalid"));
     }
@@ -332,7 +332,7 @@ mod tests {
         data.insert("items".to_string(), json!([
             {"meta__publish_date": "bad-date"}
         ]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("valid date"));
     }
@@ -363,7 +363,7 @@ mod tests {
         data.insert("items".to_string(), json!([
             {"meta__slug": "test-slug"}
         ]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("group validation error"));
     }
@@ -380,7 +380,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("items".to_string(), json!([{"label": ""}]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, true);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, true, None);
         assert!(result.is_ok(), "Array sub-field required check should be skipped for drafts");
     }
 
@@ -396,7 +396,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("content".to_string(), json!([{"_block_type": "image", "url": ""}]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "Unknown block type rows should be silently skipped");
     }
 
@@ -412,7 +412,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("items".to_string(), json!(["plain-string", 42, null]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "Non-object array rows should be silently skipped");
     }
 
@@ -432,7 +432,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("items".to_string(), json!([{"note": ""}]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Collapsible sub-field inside array should be validated");
         assert!(result.unwrap_err().errors[0].field.contains("items[0][note]"));
     }
@@ -453,7 +453,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("events".to_string(), json!([{"start": "not-a-date"}]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Invalid date inside collapsible in array should fail");
         assert!(result.unwrap_err().errors[0].message.contains("valid date"));
     }
@@ -474,7 +474,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("items".to_string(), json!([{"title": ""}]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Required field inside tabs inside array should be validated");
         assert!(result.unwrap_err().errors[0].field.contains("items[0][title]"));
     }
@@ -495,7 +495,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("items".to_string(), json!([{"pub_date": "bad-date"}]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Invalid date inside tabs inside array should fail");
         assert!(result.unwrap_err().errors[0].message.contains("valid date"));
     }
@@ -526,7 +526,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("items".to_string(), json!([{"slug": "bad"}]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Custom validator inside tabs inside array should fire");
         assert!(result.unwrap_err().errors[0].message.contains("tab field error"));
     }
@@ -547,7 +547,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("items".to_string(), json!([{"label": ""}]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Required field inside row inside array should be validated");
         assert!(result.unwrap_err().errors[0].field.contains("items[0][label]"));
     }
@@ -568,7 +568,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("items".to_string(), json!([{"event_date": "not-a-date"}]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Invalid date inside row inside array should fail");
         assert!(result.unwrap_err().errors[0].message.contains("valid date"));
     }
@@ -599,7 +599,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("items".to_string(), json!([{"code": "forbidden"}]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Custom validator inside row inside array should fire");
         assert!(result.unwrap_err().errors[0].message.contains("row field forbidden"));
     }
@@ -622,7 +622,7 @@ mod tests {
         data.insert("outer".to_string(), json!([
             {"sections": [{"_block_type": "heading", "text": ""}]}
         ]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Required field inside blocks inside array should be validated");
         assert!(result.unwrap_err().errors[0].field.contains("outer[0][sections][0][text]"));
     }
@@ -653,7 +653,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("items".to_string(), json!([{"val": "nope"}]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Custom validator inside collapsible inside array should fire");
         assert!(result.unwrap_err().errors[0].message.contains("collapsible field rejected"));
     }
@@ -670,7 +670,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("items".to_string(), json!([{}]));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "Checkbox inside array should not be required even when required=true");
     }
 }

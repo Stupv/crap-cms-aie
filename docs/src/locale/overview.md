@@ -53,7 +53,29 @@ Localized fields use **suffixed columns** in SQLite:
 - A field `title` with locales `["en", "de"]` becomes columns `title__en` and `title__de`
 - Non-localized fields keep their single column
 - `required` is only enforced on the default locale column (`title__en`)
+- `unique` checks the locale-specific column being written to (e.g., writing locale `"de"` checks `title__de`)
 - Junction tables (arrays, blocks, has-many) get a `_locale` column
+
+### Unique + Localized
+
+When a field has both `unique = true` and `localized = true`, uniqueness is enforced **per locale**. Two documents can have the same value in different locales, but not in the same locale:
+
+```lua
+{
+    name = "slug",
+    type = "text",
+    unique = true,
+    localized = true,
+}
+```
+
+| Scenario | Result |
+|----------|--------|
+| Doc A has `slug__en = "hello"`, Doc B creates with `slug__en = "hello"` | **Rejected** — duplicate in same locale |
+| Doc A has `slug__en = "hello"`, Doc B creates with `slug__de = "hello"` | **Allowed** — different locales |
+| Writing with no locale parameter | Checks the default locale column |
+
+This also applies to fields inside a localized Group — uniqueness is checked against the fully suffixed column (e.g., `seo__slug__en`).
 
 ## API Behavior
 

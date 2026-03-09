@@ -4,12 +4,15 @@ use mlua::Lua;
 
 use crate::core::field::{FieldDefinition, FieldType};
 use crate::core::validate::FieldError;
+use crate::db::query::{LocaleContext, LocaleMode};
 
 use super::checks;
 use super::sub_fields::validate_sub_fields_inner;
 
 /// Recursive validation with prefix support for arbitrary nesting.
 /// Group accumulates prefix (`group__`), Row/Collapsible/Tabs pass through.
+/// `locale_ctx` and `inherited_localized` track locale state for unique checks.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn validate_fields_recursive(
     lua: &Lua,
     fields: &[FieldDefinition],
@@ -19,6 +22,8 @@ pub(super) fn validate_fields_recursive(
     exclude_id: Option<&str>,
     is_draft: bool,
     prefix: &str,
+    locale_ctx: Option<&LocaleContext>,
+    inherited_localized: bool,
     errors: &mut Vec<FieldError>,
 ) {
     for field in fields {
@@ -30,18 +35,21 @@ pub(super) fn validate_fields_recursive(
                     format!("{}__{}", prefix, field.name)
                 };
                 validate_fields_recursive(
-                    lua, &field.fields, data, conn, table, exclude_id, is_draft, &new_prefix, errors,
+                    lua, &field.fields, data, conn, table, exclude_id, is_draft, &new_prefix,
+                    locale_ctx, inherited_localized || field.localized, errors,
                 );
             }
             FieldType::Row | FieldType::Collapsible => {
                 validate_fields_recursive(
-                    lua, &field.fields, data, conn, table, exclude_id, is_draft, prefix, errors,
+                    lua, &field.fields, data, conn, table, exclude_id, is_draft, prefix,
+                    locale_ctx, inherited_localized, errors,
                 );
             }
             FieldType::Tabs => {
                 for tab in &field.tabs {
                     validate_fields_recursive(
-                        lua, &tab.fields, data, conn, table, exclude_id, is_draft, prefix, errors,
+                        lua, &tab.fields, data, conn, table, exclude_id, is_draft, prefix,
+                        locale_ctx, inherited_localized, errors,
                     );
                 }
             }
@@ -49,7 +57,10 @@ pub(super) fn validate_fields_recursive(
                 // Virtual field — no data to validate
             }
             _ => {
-                validate_scalar_field(lua, field, data, conn, table, exclude_id, is_draft, prefix, errors);
+                validate_scalar_field(
+                    lua, field, data, conn, table, exclude_id, is_draft, prefix,
+                    locale_ctx, inherited_localized, errors,
+                );
             }
         }
     }
@@ -57,6 +68,7 @@ pub(super) fn validate_fields_recursive(
 
 /// Validate a single scalar field (not Group/Row/Collapsible/Tabs).
 /// Dispatches to individual check functions in `checks` module.
+#[allow(clippy::too_many_arguments)]
 fn validate_scalar_field(
     lua: &Lua,
     field: &FieldDefinition,
@@ -66,6 +78,8 @@ fn validate_scalar_field(
     exclude_id: Option<&str>,
     is_draft: bool,
     prefix: &str,
+    locale_ctx: Option<&LocaleContext>,
+    inherited_localized: bool,
     errors: &mut Vec<FieldError>,
 ) {
     let data_key = if prefix.is_empty() {
@@ -110,7 +124,21 @@ fn validate_scalar_field(
         }
     }
 
-    checks::check_unique(field, &data_key, value, is_empty, conn, table, exclude_id, errors);
+    // Compute the actual DB column name for the unique check.
+    // Localized fields store data in suffixed columns (e.g., slug__en).
+    let is_localized = (inherited_localized || field.localized) && locale_ctx.is_some();
+    let col_name = if is_localized {
+        let ctx = locale_ctx.unwrap();
+        let locale = match &ctx.mode {
+            LocaleMode::Single(l) => l.as_str(),
+            _ => ctx.config.default_locale.as_str(),
+        };
+        format!("{}__{}", data_key, locale)
+    } else {
+        data_key.clone()
+    };
+
+    checks::check_unique(field, &data_key, &col_name, value, is_empty, conn, table, exclude_id, errors);
     checks::check_length_bounds(field, &data_key, value, is_empty, errors);
     checks::check_numeric_bounds(field, &data_key, value, is_empty, errors);
     checks::check_email_format(field, &data_key, value, is_empty, errors);
@@ -139,7 +167,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("seo__title".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.errors[0].field, "seo__title");
@@ -157,7 +185,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("notes".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().errors[0].field, "notes");
     }
@@ -174,7 +202,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("body".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().errors[0].field, "body");
     }
@@ -195,7 +223,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("seo__title".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().errors[0].field, "seo__title");
     }
@@ -216,7 +244,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("seo__title".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().errors[0].field, "seo__title");
     }
@@ -233,7 +261,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("publish_date".to_string(), json!("not-a-date"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("valid date"));
     }
@@ -253,7 +281,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("slug".to_string(), json!("taken"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("unique"));
     }
@@ -279,7 +307,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("body".to_string(), json!("bad"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("tabs validation error"));
     }
@@ -304,7 +332,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("og__title".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Deeply nested Group inside Collapsible inside Tabs should validate");
         assert_eq!(result.unwrap_err().errors[0].field, "og__title");
     }
@@ -321,7 +349,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("body".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, true);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, true, None);
         assert!(result.is_ok(), "Draft saves should skip required checks in layout fields");
     }
 
@@ -343,7 +371,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("meta__title".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Group→Row: required field should fail");
         assert_eq!(result.unwrap_err().errors[0].field, "meta__title");
     }
@@ -364,7 +392,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("seo__robots".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Group→Collapsible: required field should fail");
         assert_eq!(result.unwrap_err().errors[0].field, "seo__robots");
     }
@@ -385,7 +413,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("settings__theme".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Group→Tabs: required field should fail");
         assert_eq!(result.unwrap_err().errors[0].field, "settings__theme");
     }
@@ -410,7 +438,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("outer__inner__deep".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Group→Tabs→Group: required field should fail");
         assert_eq!(result.unwrap_err().errors[0].field, "outer__inner__deep");
     }
@@ -434,7 +462,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("config__slug".to_string(), json!("taken"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Group→Tabs: unique field should fail on duplicate");
         assert_eq!(result.unwrap_err().errors[0].field, "config__slug");
     }
@@ -455,7 +483,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("meta__date".to_string(), json!("not-a-date"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Group→Row: invalid date should fail");
         assert_eq!(result.unwrap_err().errors[0].field, "meta__date");
     }
@@ -476,7 +504,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("meta__title".to_string(), json!("Valid Title"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "Group→Row: valid data should pass");
     }
 
@@ -490,7 +518,7 @@ mod tests {
             .join(JoinConfig::new("posts", "author"))
             .build()];
         let data = HashMap::new();
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "Join field should be skipped entirely during validation");
     }
 
@@ -510,7 +538,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("outer__inner__field".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Nested group prefix should be outer__inner__field");
         assert_eq!(result.unwrap_err().errors[0].field, "outer__inner__field");
     }
@@ -527,7 +555,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("pub_date".to_string(), json!("not-a-date"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Invalid date inside collapsible at top-level should fail");
         assert!(result.unwrap_err().errors[0].message.contains("valid date"));
     }
@@ -544,7 +572,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("event_date".to_string(), json!("not-a-date"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Invalid date inside row at top-level should fail");
         assert!(result.unwrap_err().errors[0].message.contains("valid date"));
     }

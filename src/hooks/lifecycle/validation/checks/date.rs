@@ -165,7 +165,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("d", FieldType::Date).build()];
         let mut data = HashMap::new();
         data.insert("d".to_string(), json!("not-a-date"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("valid date"));
     }
@@ -178,7 +178,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("d", FieldType::Date).build()];
         let mut data = HashMap::new();
         data.insert("d".to_string(), json!("2024-01-15"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok());
     }
 
@@ -192,7 +192,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("start_date".to_string(), json!("2024-06-15T12:00:00.000Z"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "Date after min_date should pass");
     }
 
@@ -206,7 +206,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("start_date".to_string(), json!("2024-01-15T12:00:00.000Z"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("on or after"));
     }
@@ -221,7 +221,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("end_date".to_string(), json!("2026-03-15T12:00:00.000Z"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("on or before"));
     }
@@ -237,7 +237,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("d".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "Empty date with bounds should pass (not required)");
     }
 
@@ -249,7 +249,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("d", FieldType::Date).min_date("2024-06").build()];
         let mut data = HashMap::new();
         data.insert("d".to_string(), json!("2024-01"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Month-only date before min_date should fail");
         assert!(result.unwrap_err().errors[0].message.contains("on or after"));
     }
@@ -262,7 +262,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("d", FieldType::Date).max_date("2024-06").build()];
         let mut data = HashMap::new();
         data.insert("d".to_string(), json!("2024-12"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Month-only date after max_date should fail");
         assert!(result.unwrap_err().errors[0].message.contains("on or before"));
     }

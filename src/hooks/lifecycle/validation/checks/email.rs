@@ -51,7 +51,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("email", FieldType::Email).build()];
         let mut data = HashMap::new();
         data.insert("email".to_string(), json!("user@example.com"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok());
     }
 
@@ -63,7 +63,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("email", FieldType::Email).build()];
         let mut data = HashMap::new();
         data.insert("email".to_string(), json!("not-an-email"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("valid email"));
     }
@@ -76,7 +76,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("email", FieldType::Email).build()];
         let mut data = HashMap::new();
         data.insert("email".to_string(), json!("user@"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
     }
 
@@ -88,7 +88,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("email", FieldType::Email).build()];
         let mut data = HashMap::new();
         data.insert("email".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "Email validation should skip empty values");
     }
 

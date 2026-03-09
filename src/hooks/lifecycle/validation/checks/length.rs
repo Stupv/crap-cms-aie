@@ -44,7 +44,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("name", crate::core::field::FieldType::Text).min_length(5).build()];
         let mut data = HashMap::new();
         data.insert("name".to_string(), json!("ab"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("at least 5 characters"));
     }
@@ -57,7 +57,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("name", crate::core::field::FieldType::Text).min_length(3).build()];
         let mut data = HashMap::new();
         data.insert("name".to_string(), json!("hello"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok());
     }
 
@@ -69,7 +69,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("name", crate::core::field::FieldType::Text).max_length(5).build()];
         let mut data = HashMap::new();
         data.insert("name".to_string(), json!("toolongvalue"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("at most 5 characters"));
     }
@@ -82,7 +82,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("name", crate::core::field::FieldType::Text).max_length(10).build()];
         let mut data = HashMap::new();
         data.insert("name".to_string(), json!("short"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok());
     }
 
@@ -94,7 +94,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("name", crate::core::field::FieldType::Text).min_length(5).build()];
         let mut data = HashMap::new();
         data.insert("name".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "min_length should not trigger on empty values");
     }
 }

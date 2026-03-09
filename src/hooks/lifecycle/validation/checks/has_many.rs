@@ -86,7 +86,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("tags".to_string(), json!(r#"["red","blue"]"#));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "Valid has_many select values should pass");
     }
 
@@ -103,7 +103,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("tags".to_string(), json!(r#"["red","invalid"]"#));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("invalid option"));
     }
@@ -121,7 +121,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("tags".to_string(), json!("[]"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "Empty array for has_many select should pass");
     }
 
@@ -133,7 +133,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("tags", FieldType::Text).has_many(true).build()];
         let mut data = HashMap::new();
         data.insert("tags".to_string(), json!(r#"["rust","lua","python"]"#));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "Valid has_many text values should pass");
     }
 
@@ -145,7 +145,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("tags", FieldType::Text).has_many(true).min_length(3).build()];
         let mut data = HashMap::new();
         data.insert("tags".to_string(), json!(r#"["rust","ab"]"#));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("at least 3 characters"));
     }
@@ -158,7 +158,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("tags", FieldType::Text).has_many(true).max_rows(2).build()];
         let mut data = HashMap::new();
         data.insert("tags".to_string(), json!(r#"["a","b","c"]"#));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("at most 2 values"));
     }
@@ -171,7 +171,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("scores", FieldType::Number).has_many(true).build()];
         let mut data = HashMap::new();
         data.insert("scores".to_string(), json!(r#"["10","20","30"]"#));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "Valid has_many number values should pass");
     }
 
@@ -183,7 +183,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("scores", FieldType::Number).has_many(true).max(50.0).build()];
         let mut data = HashMap::new();
         data.insert("scores".to_string(), json!(r#"["10","75"]"#));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("at most 50"));
     }
@@ -196,7 +196,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("tags", FieldType::Text).has_many(true).required(true).build()];
         let mut data = HashMap::new();
         data.insert("tags".to_string(), json!("[]"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Empty array should fail required check");
         assert!(result.unwrap_err().errors[0].message.contains("required"));
     }
@@ -209,7 +209,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("tags", FieldType::Text).has_many(true).required(true).build()];
         let mut data = HashMap::new();
         data.insert("tags".to_string(), json!(r#"["rust"]"#));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "Non-empty array should pass required check");
     }
 
@@ -221,7 +221,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("tags", FieldType::Text).has_many(true).max_length(10).build()];
         let mut data = HashMap::new();
         data.insert("tags".to_string(), json!(r#"["abcdefgh","abcdefgh"]"#));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "max_length should check per-value, not JSON string length");
     }
 
@@ -233,7 +233,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("tags", FieldType::Text).has_many(true).min_rows(3).build()];
         let mut data = HashMap::new();
         data.insert("tags".to_string(), json!(r#"["a","b"]"#));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "has_many text with fewer items than min_rows should fail");
         assert!(result.unwrap_err().errors[0].message.contains("at least 3"));
     }
@@ -246,7 +246,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("scores", FieldType::Number).has_many(true).min_rows(2).build()];
         let mut data = HashMap::new();
         data.insert("scores".to_string(), json!(r#"["10"]"#));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "has_many number with fewer items than min_rows should fail");
         assert!(result.unwrap_err().errors[0].message.contains("at least 2"));
     }
@@ -259,7 +259,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("scores", FieldType::Number).has_many(true).min(5.0).build()];
         let mut data = HashMap::new();
         data.insert("scores".to_string(), json!(r#"["10","2"]"#));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "has_many number with value below min should fail");
         assert!(result.unwrap_err().errors[0].message.contains("at least 5"));
     }
@@ -272,7 +272,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("tags", FieldType::Text).has_many(true).max_length(3).build()];
         let mut data = HashMap::new();
         data.insert("tags".to_string(), json!(r#"["ab","toolong"]"#));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "has_many text with value exceeding max_length should fail");
         assert!(result.unwrap_err().errors[0].message.contains("at most 3 characters"));
     }

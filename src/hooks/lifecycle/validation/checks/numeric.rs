@@ -48,7 +48,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("score", FieldType::Number).min(0.0).build()];
         let mut data = HashMap::new();
         data.insert("score".to_string(), json!("-5"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("at least 0"));
     }
@@ -61,7 +61,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("score", FieldType::Number).max(100.0).build()];
         let mut data = HashMap::new();
         data.insert("score".to_string(), json!("150"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("at most 100"));
     }
@@ -74,7 +74,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("score", FieldType::Number).min(0.0).max(100.0).build()];
         let mut data = HashMap::new();
         data.insert("score".to_string(), json!("50"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok());
     }
 
@@ -86,7 +86,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("score", FieldType::Number).min(10.0).build()];
         let mut data = HashMap::new();
         data.insert("score".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "min/max should not trigger on empty values");
     }
 
@@ -98,7 +98,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("score", FieldType::Number).min(0.0).max(10.0).build()];
         let mut data = HashMap::new();
         data.insert("score".to_string(), json!(15));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("at most 10"));
     }

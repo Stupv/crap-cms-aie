@@ -52,7 +52,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("color".to_string(), json!("red"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok());
     }
 
@@ -68,7 +68,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("color".to_string(), json!("green"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("invalid option"));
     }
@@ -85,7 +85,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("color".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "Empty select value should pass (not required)");
     }
 
@@ -102,7 +102,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("size".to_string(), json!("sm"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "Valid radio option should pass");
     }
 
@@ -118,7 +118,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("size".to_string(), json!("xl"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err(), "Invalid radio option should fail");
         assert!(result.unwrap_err().errors[0].message.contains("invalid option"));
     }
@@ -135,7 +135,7 @@ mod tests {
             .build()];
         let mut data = HashMap::new();
         data.insert("size".to_string(), json!(""));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "Empty radio value should skip option validation");
     }
 
@@ -147,7 +147,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("status", FieldType::Select).build()];
         let mut data = HashMap::new();
         data.insert("status".to_string(), json!("anything"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok(), "Select with no options should not validate option values");
     }
 }

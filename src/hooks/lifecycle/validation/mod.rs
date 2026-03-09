@@ -13,6 +13,7 @@ use std::collections::HashMap;
 
 use crate::core::field::FieldDefinition;
 use crate::core::validate::ValidationError;
+use crate::db::query::LocaleContext;
 
 /// Inner implementation of `validate_fields` — operates on a locked `&Lua`.
 /// Used by both `HookRunner::validate_fields` and Lua CRUD closures.
@@ -24,9 +25,13 @@ pub(crate) fn validate_fields_inner(
     table: &str,
     exclude_id: Option<&str>,
     is_draft: bool,
+    locale_ctx: Option<&LocaleContext>,
 ) -> Result<(), ValidationError> {
     let mut errors = Vec::new();
-    recursive::validate_fields_recursive(lua, fields, data, conn, table, exclude_id, is_draft, "", &mut errors);
+    recursive::validate_fields_recursive(
+        lua, fields, data, conn, table, exclude_id, is_draft, "",
+        locale_ctx, false, &mut errors,
+    );
     if errors.is_empty() {
         Ok(())
     } else {

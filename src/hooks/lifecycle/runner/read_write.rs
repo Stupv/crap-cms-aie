@@ -8,6 +8,7 @@ use crate::core::collection::Hooks;
 use crate::core::field::FieldDefinition;
 use crate::core::validate::{FieldError, ValidationError};
 use crate::core::Document;
+use crate::db::query::LocaleContext;
 use crate::hooks::lifecycle::context::HookContext;
 use crate::hooks::lifecycle::execution::apply_after_read_inner;
 use crate::hooks::lifecycle::types::{FieldHookEvent, HookEvent};
@@ -110,6 +111,7 @@ impl HookRunner {
         user: Option<&Document>,
         is_draft: bool,
         ui_locale: Option<&str>,
+        locale_ctx: Option<&LocaleContext>,
     ) -> Result<HookContext> {
         // Field-level before_validate (normalize inputs, CRUD available)
         self.run_field_hooks_with_conn(
@@ -125,7 +127,7 @@ impl HookRunner {
         // Collection-level before_validate
         let ctx = self.run_hooks_with_conn(hooks, HookEvent::BeforeValidate, ctx, conn, user, ui_locale)?;
         // Validation (skip required checks for drafts)
-        self.validate_fields(fields, &ctx.data, conn, table, exclude_id, is_draft)?;
+        self.validate_fields(fields, &ctx.data, conn, table, exclude_id, is_draft, locale_ctx)?;
         // Field-level before_change (post-validation transforms, CRUD available)
         let mut ctx = ctx;
         self.run_field_hooks_with_conn(
@@ -189,10 +191,11 @@ impl HookRunner {
         table: &str,
         exclude_id: Option<&str>,
         is_draft: bool,
+        locale_ctx: Option<&LocaleContext>,
     ) -> Result<(), ValidationError> {
         let lua = self.pool.acquire().map_err(|_| ValidationError::new(
             vec![FieldError::new("_system", "VM pool error")]
         ))?;
-        validate_fields_inner(&lua, fields, data, conn, table, exclude_id, is_draft)
+        validate_fields_inner(&lua, fields, data, conn, table, exclude_id, is_draft, locale_ctx)
     }
 }

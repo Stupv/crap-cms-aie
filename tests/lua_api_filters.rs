@@ -571,7 +571,7 @@ fn lua_validate_fields_with_custom_validator() {
     data.insert("title".to_string(), serde_json::json!("Valid Article"));
     data.insert("word_count".to_string(), serde_json::json!("100"));
 
-    let result = runner.validate_fields(&def.fields, &data, &tx, "articles", None, false);
+    let result = runner.validate_fields(&def.fields, &data, &tx, "articles", None, false, None);
     assert!(result.is_ok(), "Valid positive number should pass validation");
 
     // Invalid: negative number should fail
@@ -579,7 +579,7 @@ fn lua_validate_fields_with_custom_validator() {
     bad_data.insert("title".to_string(), serde_json::json!("Invalid Article"));
     bad_data.insert("word_count".to_string(), serde_json::json!("-5"));
 
-    let result = runner.validate_fields(&def.fields, &bad_data, &tx, "articles", None, false);
+    let result = runner.validate_fields(&def.fields, &bad_data, &tx, "articles", None, false, None);
     assert!(result.is_err(), "Negative number should fail validation");
     let err_msg = format!("{}", result.unwrap_err());
     assert!(

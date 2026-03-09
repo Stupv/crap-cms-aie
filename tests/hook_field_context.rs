@@ -250,7 +250,7 @@ fn validate_required_field_errors() {
     // run_before_write runs field hooks, validation, then collection hooks.
     // It should fail because "title" is required.
     let result = runner.run_before_write(
-        &def.hooks, &def.fields, ctx, &tx, "articles", None, None, false, None,
+        &def.hooks, &def.fields, ctx, &tx, "articles", None, None, false, None, None,
     );
     assert!(result.is_err(), "Should fail when required field 'title' is missing");
 
@@ -741,7 +741,7 @@ fn run_before_write_with_user_context() {
     let tx = conn.transaction().unwrap();
 
     let result = runner.run_before_write(
-        &def.hooks, &def.fields, ctx, &tx, "articles", None, Some(&user), false, None,
+        &def.hooks, &def.fields, ctx, &tx, "articles", None, Some(&user), false, None, None,
     ).expect("run_before_write with user failed");
 
     assert!(result.data.contains_key("title"));

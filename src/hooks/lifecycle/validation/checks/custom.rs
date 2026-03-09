@@ -61,7 +61,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("name", crate::core::field::FieldType::Text).validate("validators.validate_test").build()];
         let mut data = HashMap::new();
         data.insert("name".to_string(), json!("bad"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("cannot be bad"));
     }
@@ -80,7 +80,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("name", crate::core::field::FieldType::Text).validate("validators.validate_fail").build()];
         let mut data = HashMap::new();
         data.insert("name".to_string(), json!("anything"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().errors[0].message, "validation failed");
     }
@@ -99,7 +99,7 @@ mod tests {
         let fields = vec![FieldDefinition::builder("name", crate::core::field::FieldType::Text).validate("validators.validate_ok").build()];
         let mut data = HashMap::new();
         data.insert("name".to_string(), json!("good"));
-        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false);
+        let result = validate_fields_inner(&lua, &fields, &data, &conn, "test", None, false, None);
         assert!(result.is_ok());
     }
 }

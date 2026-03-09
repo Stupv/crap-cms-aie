@@ -144,7 +144,7 @@ pub(super) fn register_create(
 
         // Validation (always runs unless hooks=false)
         if run_hooks {
-            validate_fields_inner(lua, &def.fields, &hook_data, conn, &collection, None, is_draft)
+            validate_fields_inner(lua, &def.fields, &hook_data, conn, &collection, None, is_draft, locale_ctx.as_ref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("validation error: {}", e)))?;
         }
 
@@ -392,7 +392,7 @@ pub(super) fn register_update(
         }
 
         if run_hooks {
-            validate_fields_inner(lua, &def.fields, &hook_data, conn, &collection, Some(&id), is_draft)
+            validate_fields_inner(lua, &def.fields, &hook_data, conn, &collection, Some(&id), is_draft, locale_ctx.as_ref())
                 .map_err(|e| mlua::Error::RuntimeError(format!("validation error: {}", e)))?;
         }
 

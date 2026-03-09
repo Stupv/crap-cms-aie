@@ -70,7 +70,7 @@ fn validate_required_present_passes() {
     data.insert("title".to_string(), serde_json::json!("Valid Title"));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", None, false);
+    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", None, false, None);
     assert!(result.is_ok(), "Validation should pass with required field present");
 }
 
@@ -84,7 +84,7 @@ fn validate_required_missing_fails() {
     let data = HashMap::new(); // title is missing
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", None, false);
+    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", None, false, None);
     assert!(result.is_err(), "Validation should fail with missing required field");
     let err = result.unwrap_err();
     assert!(err.errors.iter().any(|e| e.field == "title"), "Should have title error");
@@ -101,7 +101,7 @@ fn validate_required_empty_string_fails() {
     data.insert("title".to_string(), serde_json::json!("")); // empty string
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", None, false);
+    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", None, false, None);
     assert!(result.is_err(), "Validation should fail with empty required field");
 }
 
@@ -123,7 +123,7 @@ fn validate_unique_passes_when_no_conflict() {
     data.insert("title".to_string(), serde_json::json!("Different Title"));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", None, false);
+    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", None, false, None);
     assert!(result.is_ok(), "Unique validation should pass with different title");
 }
 
@@ -145,7 +145,7 @@ fn validate_unique_fails_on_duplicate() {
     data.insert("title".to_string(), serde_json::json!("Duplicate Title"));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", None, false);
+    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", None, false, None);
     assert!(result.is_err(), "Unique validation should fail for duplicate title");
     let err = result.unwrap_err();
     assert!(err.errors.iter().any(|e| e.field == "title" && e.message.contains("unique")));
@@ -169,7 +169,7 @@ fn validate_unique_excludes_self_on_update() {
     data.insert("title".to_string(), serde_json::json!("My Title"));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", Some(&doc.id), false);
+    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", Some(&doc.id), false, None);
     assert!(result.is_ok(), "Unique validation should pass when excluding own ID");
 }
 
@@ -187,7 +187,7 @@ fn custom_validate_function_passes() {
     data.insert("word_count".to_string(), serde_json::json!(42)); // positive
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", None, false);
+    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", None, false, None);
     assert!(result.is_ok(), "Custom validate should pass for positive number");
 }
 
@@ -203,7 +203,7 @@ fn custom_validate_function_fails() {
     data.insert("word_count".to_string(), serde_json::json!(-5)); // negative!
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", None, false);
+    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", None, false, None);
     assert!(result.is_err(), "Custom validate should fail for negative number");
     let err = result.unwrap_err();
     assert!(err.errors.iter().any(|e| e.field == "word_count"), "Should have word_count error");
@@ -221,7 +221,7 @@ fn custom_validate_returns_error_message() {
     data.insert("word_count".to_string(), serde_json::json!(-1));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", None, false);
+    let result = runner.validate_fields(&def.fields, &data, &conn, "articles", None, false, None);
     let err = result.unwrap_err();
     let word_count_err = err.errors.iter().find(|e| e.field == "word_count").unwrap();
     assert!(
@@ -254,7 +254,7 @@ fn validate_blocks_required_subfield_fails_when_empty() {
     ]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "articles", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "articles", None, false, None);
     assert!(result.is_err(), "Validation should fail with empty required block sub-field");
     let err = result.unwrap_err();
     assert!(
@@ -283,7 +283,7 @@ fn validate_blocks_required_subfield_passes_when_present() {
     ]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "articles", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "articles", None, false, None);
     assert!(result.is_ok(), "Validation should pass when required block sub-field is present");
 }
 
@@ -306,7 +306,7 @@ fn validate_blocks_skips_required_for_drafts() {
     ]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "articles", None, true);
+    let result = runner.validate_fields(&fields, &data, &conn, "articles", None, true, None);
     assert!(result.is_ok(), "Validation should skip required sub-fields for drafts");
 }
 
@@ -328,7 +328,7 @@ fn validate_array_required_subfield_fails_when_empty() {
     ]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "articles", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "articles", None, false, None);
     assert!(result.is_err(), "Validation should fail for empty required array sub-field");
     let err = result.unwrap_err();
     assert!(
@@ -361,7 +361,7 @@ fn validate_group_required_subfield_fails() {
     data.insert("seo__meta_title".to_string(), serde_json::json!(""));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "test_table", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "test_table", None, false, None);
     assert!(result.is_err(), "Validation should fail for empty required group sub-field");
     let err = result.unwrap_err();
     assert!(
@@ -386,7 +386,7 @@ fn validate_group_required_subfield_passes() {
     data.insert("seo__meta_title".to_string(), serde_json::json!("My Title"));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "test_table", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "test_table", None, false, None);
     assert!(result.is_ok(), "Validation should pass for non-empty required group sub-field");
 }
 
@@ -405,7 +405,7 @@ fn validate_group_skips_for_drafts() {
     data.insert("seo__meta_title".to_string(), serde_json::json!(""));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "test_table", None, true);
+    let result = runner.validate_fields(&fields, &data, &conn, "test_table", None, true, None);
     assert!(result.is_ok(), "Validation should skip group sub-field required check for drafts");
 }
 
@@ -429,7 +429,7 @@ fn validate_min_rows_fails() {
     ]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "test_table", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "test_table", None, false, None);
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(err.errors.iter().any(|e| e.field == "items" && e.message.contains("at least 2")));
@@ -454,7 +454,7 @@ fn validate_max_rows_fails() {
     ]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "test_table", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "test_table", None, false, None);
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(err.errors.iter().any(|e| e.field == "items" && e.message.contains("at most 1")));
@@ -480,7 +480,7 @@ fn validate_min_max_rows_passes_when_in_range() {
     ]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "test_table", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "test_table", None, false, None);
     assert!(result.is_ok());
 }
 
@@ -500,7 +500,7 @@ fn validate_min_rows_skips_for_drafts() {
     data.insert("items".to_string(), serde_json::json!([]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "test_table", None, true);
+    let result = runner.validate_fields(&fields, &data, &conn, "test_table", None, true, None);
     assert!(result.is_ok(), "min_rows should be skipped for drafts");
 }
 
@@ -518,31 +518,31 @@ fn validate_date_field_valid_formats() {
     // YYYY-MM-DD
     let mut data = HashMap::new();
     data.insert("due_date".to_string(), serde_json::json!("2024-01-15"));
-    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false).is_ok());
+    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false, None).is_ok());
 
     // YYYY-MM-DDTHH:MM
     data.insert("due_date".to_string(), serde_json::json!("2024-01-15T14:30"));
-    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false).is_ok());
+    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false, None).is_ok());
 
     // YYYY-MM-DDTHH:MM:SS
     data.insert("due_date".to_string(), serde_json::json!("2024-01-15T14:30:00"));
-    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false).is_ok());
+    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false, None).is_ok());
 
     // Full ISO 8601
     data.insert("due_date".to_string(), serde_json::json!("2024-01-15T14:30:00+00:00"));
-    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false).is_ok());
+    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false, None).is_ok());
 
     // Time only: HH:MM
     data.insert("due_date".to_string(), serde_json::json!("14:30"));
-    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false).is_ok());
+    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false, None).is_ok());
 
     // Time only: HH:MM:SS
     data.insert("due_date".to_string(), serde_json::json!("14:30:00"));
-    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false).is_ok());
+    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false, None).is_ok());
 
     // Month only: YYYY-MM
     data.insert("due_date".to_string(), serde_json::json!("2024-01"));
-    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false).is_ok());
+    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false, None).is_ok());
 }
 
 #[test]
@@ -556,7 +556,7 @@ fn validate_date_field_invalid_format() {
 
     let mut data = HashMap::new();
     data.insert("due_date".to_string(), serde_json::json!("not-a-date"));
-    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false, None);
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(err.errors.iter().any(|e| e.field == "due_date" && e.message.contains("valid date")));
@@ -574,11 +574,11 @@ fn validate_date_empty_is_ok() {
     // Empty string should not trigger date format validation (is_empty = true)
     let mut data = HashMap::new();
     data.insert("due_date".to_string(), serde_json::json!(""));
-    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false).is_ok());
+    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false, None).is_ok());
 
     // Null should not trigger date format validation
     data.insert("due_date".to_string(), serde_json::Value::Null);
-    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false).is_ok());
+    assert!(runner.validate_fields(&fields, &data, &conn, "t", None, false, None).is_ok());
 }
 
 // ── 6G. Validate: Sub-field Date and Validate in Array Rows ──────────────────
@@ -601,7 +601,7 @@ fn validate_date_subfield_in_array_rows() {
     ]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false, None);
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -631,7 +631,7 @@ fn validate_custom_function_in_array_subfield() {
     ]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false, None);
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -669,7 +669,7 @@ fn validate_nested_array_in_array_rows() {
     ]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false, None);
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -706,7 +706,7 @@ fn validate_nested_blocks_in_array_rows() {
     ]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false, None);
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -740,7 +740,7 @@ fn validate_group_in_array_row_required_subfield() {
     ]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false, None);
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -771,7 +771,7 @@ fn validate_group_date_subfield_in_array_row() {
     ]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false, None);
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -804,7 +804,7 @@ fn validate_group_custom_validate_in_array_row() {
     ]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false, None);
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -832,7 +832,7 @@ fn validate_required_field_on_update_skips_when_absent() {
     // title is NOT in data
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "t", Some("existing-id"), false);
+    let result = runner.validate_fields(&fields, &data, &conn, "t", Some("existing-id"), false, None);
     assert!(result.is_ok(), "Required field should be skipped on update when absent from data");
 }
 
@@ -847,7 +847,7 @@ fn validate_required_field_checkbox_always_passes() {
     // Checkbox with required=true should pass even with no data
     let data = HashMap::new();
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false, None);
     assert!(result.is_ok(), "Checkbox field should never fail required check");
 }
 
@@ -866,7 +866,7 @@ fn custom_validate_returns_false_generic_message() {
     data.insert("title".to_string(), serde_json::json!("any value"));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false, None);
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -892,12 +892,12 @@ fn validate_required_array_must_have_items() {
     // Empty array should fail
     let mut data = HashMap::new();
     data.insert("tags".to_string(), serde_json::json!([]));
-    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false, None);
     assert!(result.is_err(), "Empty required array should fail");
 
     // Non-empty array should pass
     data.insert("tags".to_string(), serde_json::json!([{"label": "rust"}]));
-    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false, None);
     assert!(result.is_ok(), "Non-empty required array should pass");
 }
 
@@ -923,7 +923,7 @@ fn validate_blocks_unknown_block_type_skips() {
     ]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false, None);
     assert!(result.is_ok(), "Unknown block type should be skipped, not error");
 }
 
@@ -945,7 +945,7 @@ fn validate_checkbox_subfield_in_array_never_fails_required() {
     data.insert("items".to_string(), serde_json::json!([{}]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false, None);
     assert!(result.is_ok(), "Checkbox subfield should never fail required check");
 }
 
@@ -970,7 +970,7 @@ fn validate_checkbox_group_subfield_in_array_never_fails_required() {
     data.insert("items".to_string(), serde_json::json!([{}]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false, None);
     assert!(result.is_ok(), "Checkbox in group in array should never fail required");
 }
 
@@ -994,6 +994,6 @@ fn validate_blocks_non_object_row_skips() {
     data.insert("content".to_string(), serde_json::json!(["not-an-object"]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false);
+    let result = runner.validate_fields(&fields, &data, &conn, "t", None, false, None);
     assert!(result.is_ok(), "Non-object block rows should be skipped");
 }

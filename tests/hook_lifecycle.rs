@@ -256,7 +256,7 @@ fn run_before_write_full_lifecycle() {
     let tx = conn.transaction().expect("Start transaction");
 
     let result = runner.run_before_write(
-        &def.hooks, &def.fields, ctx, &tx, "articles", None, None, false, None,
+        &def.hooks, &def.fields, ctx, &tx, "articles", None, None, false, None, None,
     ).expect("run_before_write failed");
 
     // Title should be trimmed (before_validate hook)
@@ -295,7 +295,7 @@ fn run_before_write_fails_on_validation_error() {
     let tx = conn.transaction().expect("Start transaction");
 
     let result = runner.run_before_write(
-        &def.hooks, &def.fields, ctx, &tx, "articles", None, None, false, None,
+        &def.hooks, &def.fields, ctx, &tx, "articles", None, None, false, None, None,
     );
     assert!(result.is_err(), "run_before_write should fail when validation fails");
 }

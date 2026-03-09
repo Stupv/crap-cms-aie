@@ -36,6 +36,7 @@ pub fn update_global_document(
     let hook_ctx = build_before_ctx(slug, "update", hook_data, input.locale.clone(), is_draft, user, ui_locale);
     let final_ctx = runner.run_before_write(
         &def.hooks, &def.fields, hook_ctx, &tx, &global_table, Some("default"), user, is_draft, ui_locale,
+        input.locale_ctx,
     )?;
     let final_data = final_ctx.to_string_map(&def.fields);
 
