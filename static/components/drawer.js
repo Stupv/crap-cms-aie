@@ -50,7 +50,7 @@ class CrapDrawer extends HTMLElement {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 1rem 1.25rem;
+          padding: var(--space-lg, 1rem) 1.25rem;
           border-bottom: 1px solid var(--border-color, #e5e7eb);
           flex-shrink: 0;
         }
@@ -80,7 +80,7 @@ class CrapDrawer extends HTMLElement {
         .body {
           flex: 1;
           overflow-y: auto;
-          padding: 1rem 1.25rem;
+          padding: var(--space-lg, 1rem) 1.25rem;
         }
 
         /* ── Form elements inside drawer (shadow DOM blocks global rules) ── */
@@ -97,7 +97,7 @@ class CrapDrawer extends HTMLElement {
           border: 1px solid var(--input-border, rgba(0, 0, 0, 0.15));
           box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.04));
           border-radius: var(--radius-md, 6px);
-          padding: var(--space-sm, 0.5rem) 12px;
+          padding: var(--space-sm, 0.5rem) var(--space-md, 0.75rem);
           font-size: var(--text-base, 0.875rem);
           font-weight: 400;
           line-height: 1.5;
@@ -189,7 +189,7 @@ class CrapDrawer extends HTMLElement {
         .body .column-picker__list {
           display: flex;
           flex-direction: column;
-          gap: 2px;
+          gap: var(--space-2xs, 2px);
         }
         .body .column-picker__item {
           display: flex;

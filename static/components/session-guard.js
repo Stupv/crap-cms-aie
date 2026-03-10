@@ -46,7 +46,7 @@ class CrapSessionDialog extends HTMLElement {
         }
         dialog {
           border: none;
-          border-radius: 12px;
+          border-radius: var(--radius-xl, 12px);
           padding: 0;
           max-width: 400px;
           width: 90vw;
@@ -59,11 +59,11 @@ class CrapSessionDialog extends HTMLElement {
           background: rgba(0, 0, 0, 0.4);
         }
         .body {
-          padding: 1.5rem;
+          padding: var(--space-xl, 1.5rem);
         }
         .body p {
           margin: 0;
-          font-size: var(--text-sm, 0.875rem);
+          font-size: var(--text-sm, 0.8125rem);
           color: var(--text-primary, rgba(0, 0, 0, 0.88));
           line-height: 1.5;
         }
@@ -71,13 +71,13 @@ class CrapSessionDialog extends HTMLElement {
           display: flex;
           justify-content: flex-end;
           gap: var(--space-sm, 0.5rem);
-          padding: 0 1.5rem 1.5rem;
+          padding: 0 var(--space-xl, 1.5rem) var(--space-xl, 1.5rem);
         }
         button {
           font-family: inherit;
-          font-size: var(--text-sm, 0.875rem);
+          font-size: var(--text-sm, 0.8125rem);
           font-weight: 500;
-          padding: 0.5rem 1rem;
+          padding: var(--space-sm, 0.5rem) var(--space-lg, 1rem);
           border-radius: var(--radius-md, 6px);
           border: none;
           cursor: pointer;

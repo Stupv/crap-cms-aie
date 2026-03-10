@@ -629,20 +629,20 @@ class CrapRichtext extends HTMLElement {
       .richtext__toolbar {
         display: flex;
         flex-wrap: wrap;
-        gap: 2px;
-        padding: 6px 8px;
+        gap: var(--space-2xs, 2px);
+        padding: 6px var(--space-sm, 8px);
         border-bottom: 1px solid var(--border-color, #e0e0e0);
       }
 
       .richtext__toolbar-group {
         display: flex;
-        gap: 2px;
+        gap: var(--space-2xs, 2px);
       }
 
       .richtext__toolbar-group:not(:last-child)::after {
         content: '';
         width: 1px;
-        margin: 2px 4px;
+        margin: var(--space-2xs, 2px) var(--space-xs, 4px);
         background: var(--border-color, #e0e0e0);
       }
 
@@ -656,7 +656,7 @@ class CrapRichtext extends HTMLElement {
         padding: 0 6px;
         border-radius: var(--radius-sm, 4px);
         font-family: inherit;
-        font-size: 12px;
+        font-size: var(--text-xs, 0.75rem);
         font-weight: 500;
         color: var(--text-secondary, rgba(0, 0, 0, 0.65));
         cursor: pointer;
@@ -675,7 +675,7 @@ class CrapRichtext extends HTMLElement {
 
       .richtext__toolbar button code {
         font-family: monospace;
-        font-size: 12px;
+        font-size: var(--text-xs, 0.75rem);
       }
 
       /* -- Editor area -- */
@@ -687,11 +687,11 @@ class CrapRichtext extends HTMLElement {
       }
 
       .richtext__editor .ProseMirror {
-        padding: 12px 16px;
+        padding: var(--space-md, 0.75rem) var(--space-lg, 1rem);
         min-height: 200px;
         outline: none;
         font-family: inherit;
-        font-size: var(--text-base, 1rem);
+        font-size: var(--text-base, 0.875rem);
         line-height: 1.6;
         color: var(--text-primary, rgba(0, 0, 0, 0.88));
       }
@@ -737,7 +737,7 @@ class CrapRichtext extends HTMLElement {
       .richtext__editor .ProseMirror pre {
         background: var(--bg-hover, rgba(0, 0, 0, 0.04));
         border-radius: var(--radius-sm, 4px);
-        padding: 12px 16px;
+        padding: var(--space-md, 0.75rem) var(--space-lg, 1rem);
         margin: 0.75em 0;
         overflow-x: auto;
       }
@@ -819,9 +819,9 @@ class CrapRichtext extends HTMLElement {
       .crap-custom-node {
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 8px 12px;
-        margin: 4px 0;
+        gap: var(--space-sm, 0.5rem);
+        padding: var(--space-sm, 0.5rem) var(--space-md, 0.75rem);
+        margin: var(--space-xs, 0.25rem) 0;
         border: 1px solid var(--border-color, #e0e0e0);
         border-radius: var(--radius-sm, 4px);
         background: var(--bg-hover, rgba(0, 0, 0, 0.02));
@@ -831,10 +831,10 @@ class CrapRichtext extends HTMLElement {
 
       .crap-custom-node--inline {
         display: inline-flex;
-        margin: 0 2px;
-        padding: 2px 8px;
+        margin: 0 var(--space-2xs, 2px);
+        padding: var(--space-2xs, 2px) var(--space-sm, 0.5rem);
         vertical-align: middle;
-        border-radius: 12px;
+        border-radius: var(--radius-xl, 12px);
         font-size: 0.9em;
       }
 
@@ -884,23 +884,23 @@ class CrapRichtext extends HTMLElement {
       }
 
       .crap-node-modal__header {
-        padding: 16px 20px;
+        padding: var(--space-lg, 1rem) 20px;
         font-weight: 600;
         font-size: 1.05em;
         border-bottom: 1px solid var(--border-color, #e0e0e0);
       }
 
       .crap-node-modal__body {
-        padding: 16px 20px;
+        padding: var(--space-lg, 1rem) 20px;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: var(--space-md, 0.75rem);
       }
 
       .crap-node-modal__field {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: var(--space-xs, 0.25rem);
       }
 
       .crap-node-modal__label {
@@ -932,7 +932,7 @@ class CrapRichtext extends HTMLElement {
       .crap-node-modal__checkbox {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm, 0.5rem);
         font-size: 0.9em;
         cursor: pointer;
       }
@@ -940,8 +940,8 @@ class CrapRichtext extends HTMLElement {
       .crap-node-modal__footer {
         display: flex;
         justify-content: flex-end;
-        gap: 8px;
-        padding: 12px 20px;
+        gap: var(--space-sm, 0.5rem);
+        padding: var(--space-md, 0.75rem) 20px;
         border-top: 1px solid var(--border-color, #e0e0e0);
       }
 

@@ -40,7 +40,7 @@ class CrapConfirm extends HTMLElement {
         :host { display: contents; }
         dialog {
           border: none;
-          border-radius: 12px;
+          border-radius: var(--radius-xl, 12px);
           padding: 0;
           max-width: 400px;
           width: 90vw;
@@ -53,29 +53,29 @@ class CrapConfirm extends HTMLElement {
           background: rgba(0, 0, 0, 0.4);
         }
         .dialog__body {
-          padding: 1.5rem;
+          padding: var(--space-xl, 1.5rem);
         }
         .dialog__body p {
           margin: 0;
-          font-size: 0.95rem;
+          font-size: var(--text-base, 0.875rem);
           color: var(--text-primary, rgba(0, 0, 0, 0.8));
           line-height: 1.5;
         }
         .dialog__actions {
           display: flex;
           justify-content: flex-end;
-          gap: 0.5rem;
-          padding: 0 1.5rem 1.5rem;
+          gap: var(--space-sm, 0.5rem);
+          padding: 0 var(--space-xl, 1.5rem) var(--space-xl, 1.5rem);
         }
         button {
           font-family: inherit;
-          font-size: 0.875rem;
+          font-size: var(--text-base, 0.875rem);
           font-weight: 500;
-          padding: 0.5rem 1rem;
-          border-radius: 6px;
+          padding: var(--space-sm, 0.5rem) var(--space-lg, 1rem);
+          border-radius: var(--radius-md, 6px);
           border: none;
           cursor: pointer;
-          transition: background 0.15s ease;
+          transition: background var(--transition-fast, 0.15s ease);
         }
         .btn-cancel {
           background: transparent;

@@ -73,8 +73,10 @@ crap-list-settings {
   --radius-md: 6px;
   --radius-lg: 8px;
   --radius-xl: 12px;
+  --radius-full: 9999px;
 
   /* Spacing */
+  --space-2xs: 2px;
   --space-xs: 0.25rem;
   --space-sm: 0.5rem;
   --space-md: 0.75rem;

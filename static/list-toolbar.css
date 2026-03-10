@@ -65,12 +65,12 @@
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  border-radius: 9px;
+  border-radius: var(--radius-full);
   background: var(--color-primary);
   color: #fff;
   font-size: 11px;
   font-weight: 600;
-  margin-left: 4px;
+  margin-left: var(--space-xs);
 }
 
 /* ── Filter pills ─────────────────────────────────────────── */
@@ -85,7 +85,7 @@
 .filter-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-xs);
   padding: 3px 6px 3px 10px;
   background: var(--color-primary-bg);
   border: 1px solid var(--color-primary);
@@ -122,7 +122,7 @@
 .column-picker__list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-2xs);
 }
 
 .column-picker__item {

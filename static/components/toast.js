@@ -20,26 +20,26 @@ class CrapToast extends HTMLElement {
       <style>
         :host {
           position: fixed;
-          bottom: 1.5rem;
-          right: 1.5rem;
+          bottom: var(--space-xl, 1.5rem);
+          right: var(--space-xl, 1.5rem);
           z-index: 10000;
           display: flex;
           flex-direction: column;
-          gap: 0.5rem;
+          gap: var(--space-sm, 0.5rem);
           pointer-events: none;
         }
         .toast {
           display: flex;
           align-items: center;
-          gap: 0.5rem;
-          padding: 0.75rem 1.25rem;
-          border-radius: 8px;
+          gap: var(--space-sm, 0.5rem);
+          padding: var(--space-md, 0.75rem) 1.25rem;
+          border-radius: var(--radius-lg, 8px);
           font-family: inherit;
-          font-size: 0.875rem;
+          font-size: var(--text-base, 0.875rem);
           font-weight: 500;
           color: #fff;
           background: #1f2937;
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+          box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.15));
           pointer-events: auto;
           cursor: pointer;
           animation: toast-in 0.3s ease forwards;
