@@ -210,18 +210,44 @@ function scheduleWarning() {
   }
 }
 
+/** @type {number | null} */
+let countdownId = null;
+
 /**
- * Show the warning dialog.
+ * Show the warning dialog with a live countdown.
+ * When the session expires while the dialog is open, redirect to login.
  * @param {number} secsLeft - Seconds remaining before expiry.
  */
 function showWarning(secsLeft) {
-  const mins = Math.max(1, Math.round(secsLeft / 60));
-  const unit = mins === 1 ? t('minute') : t('minutes');
-  const message = t('session_expiry_warning', { mins, unit });
+  const expStr = readCookie('crap_session_exp');
+  const exp = expStr ? parseInt(expStr, 10) : Math.floor(Date.now() / 1000) + secsLeft;
 
-  getDialog().show(message, {
-    onStay: handleStay,
-    onLogout: handleLogout,
+  const dialog = getDialog();
+
+  function updateMessage() {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const remaining = exp - nowSec;
+    if (remaining <= 0) {
+      if (countdownId !== null) { clearInterval(countdownId); countdownId = null; }
+      window.location.href = '/admin/login';
+      return;
+    }
+    const mins = Math.max(1, Math.round(remaining / 60));
+    const unit = mins === 1 ? t('minute') : t('minutes');
+    const p = dialog.shadowRoot && dialog.shadowRoot.querySelector('p');
+    if (p) p.textContent = t('session_expiry_warning', { mins, unit });
+  }
+
+  updateMessage();
+  if (countdownId !== null) clearInterval(countdownId);
+  countdownId = window.setInterval(updateMessage, 30_000);
+
+  dialog.show(t('session_expiry_warning', {
+    mins: Math.max(1, Math.round(secsLeft / 60)),
+    unit: secsLeft <= 90 ? t('minute') : t('minutes'),
+  }), {
+    onStay: () => { if (countdownId !== null) { clearInterval(countdownId); countdownId = null; } handleStay(); },
+    onLogout: () => { if (countdownId !== null) { clearInterval(countdownId); countdownId = null; } handleLogout(); },
   });
 }
 
