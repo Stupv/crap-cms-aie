@@ -1,8 +1,7 @@
-use crate::admin::AdminState;
-use axum::{
-    extract::{Path, State},
-    response::IntoResponse,
-};
+use crate::{admin::AdminState, hooks::lifecycle::DisplayConditionResult};
+
+use axum::{Json, extract::State, response::IntoResponse};
+use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
 /// POST /admin/collections/{slug}/evaluate-conditions
@@ -10,13 +9,11 @@ use std::collections::HashMap;
 /// Returns JSON: { "field_name": true/false, ... }
 pub async fn evaluate_conditions(
     State(state): State<AdminState>,
-    Path(_slug): Path<String>,
-    axum::Json(req): axum::Json<EvaluateConditionsRequest>,
+    Json(req): Json<EvaluateConditionsRequest>,
 ) -> impl IntoResponse {
-    use crate::hooks::lifecycle::DisplayConditionResult;
+    let form_data = json!(req.form_data);
+    let mut results = Map::new();
 
-    let form_data = serde_json::json!(req.form_data);
-    let mut results = serde_json::Map::new();
     for (field_name, func_ref) in &req.conditions {
         let visible = match state
             .hook_runner
@@ -24,11 +21,13 @@ pub async fn evaluate_conditions(
         {
             Some(DisplayConditionResult::Bool(b)) => b,
             Some(DisplayConditionResult::Table { visible, .. }) => visible,
-            None => true, // error → show
+            None => true, // error -> show
         };
-        results.insert(field_name.clone(), serde_json::json!(visible));
+
+        results.insert(field_name.clone(), json!(visible));
     }
-    axum::Json(serde_json::Value::Object(results))
+
+    Json(Value::Object(results))
 }
 
 /// Request payload for evaluating field display conditions.

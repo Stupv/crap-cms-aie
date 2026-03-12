@@ -1,42 +1,46 @@
-use crate::admin::AdminState;
-use crate::admin::context::{Breadcrumb, ContextBuilder, PageType};
-use crate::core::auth::{AuthUser, Claims};
-use crate::db::query;
-use crate::db::query::AccessResult;
+use crate::{
+    admin::{
+        AdminState,
+        context::{Breadcrumb, ContextBuilder, PageType},
+        handlers::shared::{
+            PaginationParams, check_access_or_forbid, extract_editor_locale, forbidden, not_found,
+            redirect_response, render_or_error, server_error, version_to_json,
+        },
+    },
+    core::auth::{AuthUser, Claims},
+    db::query::{self, AccessResult},
+};
+
 use axum::{
     Extension,
     extract::{Path, Query, State},
-    response::IntoResponse,
+    http::HeaderMap,
+    response::Response,
 };
-
-use crate::admin::handlers::shared::{
-    PaginationParams, check_access_or_forbid, extract_editor_locale, forbidden, not_found,
-    redirect_response, render_or_error, server_error, version_to_json,
-};
+use serde_json::{Value, json};
 
 /// GET /admin/globals/{slug}/versions — dedicated version history page
 pub async fn list_versions_page(
     State(state): State<AdminState>,
     Path(slug): Path<String>,
     Query(params): Query<PaginationParams>,
-    headers: axum::http::HeaderMap,
+    headers: HeaderMap,
     claims: Option<Extension<Claims>>,
     auth_user: Option<Extension<AuthUser>>,
-) -> impl IntoResponse {
+) -> Response {
     let def = match state.registry.get_global(&slug) {
         Some(d) => d.clone(),
-        None => return not_found(&state, &format!("Global '{}' not found", slug)).into_response(),
+        None => return not_found(&state, &format!("Global '{}' not found", slug)),
     };
 
     if !def.has_versions() {
-        return redirect_response(&format!("/admin/globals/{}", slug)).into_response();
+        return redirect_response(&format!("/admin/globals/{}", slug));
     }
 
     // Check read access
     match check_access_or_forbid(&state, def.access.read.as_deref(), &auth_user, None, None) {
         Ok(AccessResult::Denied) => {
-            return forbidden(&state, "You don't have permission to view this global")
-                .into_response();
+            return forbidden(&state, "You don't have permission to view this global");
         }
         Err(resp) => return resp,
         _ => {}
@@ -52,11 +56,11 @@ pub async fn list_versions_page(
 
     let conn = match state.pool.get() {
         Ok(c) => c,
-        Err(_) => return server_error(&state, "Database error").into_response(),
+        Err(_) => return server_error(&state, "Database error"),
     };
 
     let total = query::count_versions(&conn, &global_table, "default").unwrap_or(0);
-    let versions: Vec<serde_json::Value> = query::list_versions(
+    let versions: Vec<Value> = query::list_versions(
         &conn,
         &global_table,
         "default",
@@ -79,13 +83,13 @@ pub async fn list_versions_page(
         )
         .set(
             "page_title",
-            serde_json::json!(format!("Version History — {}", def.display_name())),
+            json!(format!("Version History — {}", def.display_name())),
         )
         .global_def(&def)
-        .set("versions", serde_json::json!(versions))
+        .set("versions", json!(versions))
         .set(
             "restore_url_prefix",
-            serde_json::json!(format!("/admin/globals/{}", slug)),
+            json!(format!("/admin/globals/{}", slug)),
         )
         .pagination(
             page,
@@ -103,5 +107,5 @@ pub async fn list_versions_page(
 
     let data = state.hook_runner.run_before_render(data);
 
-    render_or_error(&state, "globals/versions", &data).into_response()
+    render_or_error(&state, "globals/versions", &data)
 }

@@ -1,23 +1,31 @@
 use axum::{
     Extension,
-    extract::{Form, FromRequest, Path, State},
-    response::IntoResponse,
+    extract::{Form, FromRequest, Path, Request, State},
+    response::Response,
 };
 use std::collections::HashMap;
 
-use crate::admin::AdminState;
-use crate::admin::handlers::collections::forms::parse_multipart_form;
-use crate::admin::handlers::collections::shared::do_update;
-use crate::admin::handlers::shared::redirect_response;
-use crate::core::auth::AuthUser;
+use crate::{
+    admin::{
+        AdminState,
+        handlers::{
+            collections::{
+                forms::parse_multipart_form,
+                shared::{delete_action_impl, do_update},
+            },
+            shared::redirect_response,
+        },
+    },
+    core::auth::AuthUser,
+};
 
 /// POST handler for update/delete (HTML forms use _method override).
 pub async fn update_action(
     State(state): State<AdminState>,
     Path((slug, id)): Path<(String, String)>,
     auth_user: Option<Extension<AuthUser>>,
-    request: axum::extract::Request,
-) -> axum::response::Response {
+    request: Request,
+) -> Response {
     let def = match state.registry.get_collection(&slug) {
         Some(d) => d.clone(),
         None => return redirect_response("/admin/collections"),
@@ -47,11 +55,7 @@ pub async fn update_action(
     let method = form_data.remove("_method").unwrap_or_default();
 
     if method.eq_ignore_ascii_case("DELETE") {
-        return crate::admin::handlers::collections::shared::delete_action_impl(
-            &state, &slug, &id, &auth_user,
-        )
-        .await
-        .into_response();
+        return delete_action_impl(&state, &slug, &id, &auth_user).await;
     }
 
     do_update(&state, &slug, &id, form_data, file, &auth_user).await

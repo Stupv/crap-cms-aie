@@ -2,24 +2,33 @@ use anyhow::Context as _;
 use axum::{
     Extension,
     extract::{Path, Query, State},
-    response::IntoResponse,
+    http::{HeaderMap, Uri},
+    response::Response,
 };
+use serde_json::{Value, from_str, json};
 use std::collections::HashMap;
 
-use crate::admin::AdminState;
-use crate::admin::context::{ContextBuilder, PageType};
-use crate::core::auth::{AuthUser, Claims};
-use crate::core::upload;
-use crate::db::query;
-use crate::db::query::{AccessResult, FilterClause, FindQuery, LocaleContext};
-
-use crate::admin::handlers::collections::shared::{
-    build_column_options, build_filter_fields, build_filter_pills, compute_cells, resolve_columns,
-};
-use crate::admin::handlers::shared::{
-    PaginationParams, build_list_url, check_access_or_forbid, extract_editor_locale,
-    extract_where_params, forbidden, get_user_doc, not_found, parse_where_params, render_or_error,
-    server_error, validate_sort,
+use crate::{
+    admin::{
+        AdminState,
+        context::{ContextBuilder, PageType},
+        handlers::{
+            collections::shared::{
+                build_column_options, build_filter_fields, build_filter_pills, compute_cells,
+                resolve_columns,
+            },
+            shared::{
+                PaginationParams, build_list_url, check_access_or_forbid, extract_editor_locale,
+                extract_where_params, forbidden, get_user_doc, not_found, parse_where_params,
+                render_or_error, server_error, validate_sort,
+            },
+        },
+    },
+    core::{
+        auth::{AuthUser, Claims},
+        upload,
+    },
+    db::query::{self, AccessResult, FilterClause, FindQuery, LocaleContext},
 };
 
 /// GET /admin/collections/{slug} — list items in a collection
@@ -27,15 +36,15 @@ pub async fn list_items(
     State(state): State<AdminState>,
     Path(slug): Path<String>,
     Query(params): Query<PaginationParams>,
-    uri: axum::http::Uri,
-    headers: axum::http::HeaderMap,
+    uri: Uri,
+    headers: HeaderMap,
     claims: Option<Extension<Claims>>,
     auth_user: Option<Extension<AuthUser>>,
-) -> impl IntoResponse {
+) -> Response {
     let def = match state.registry.get_collection(&slug) {
         Some(d) => d.clone(),
         None => {
-            return not_found(&state, &format!("Collection '{}' not found", slug)).into_response();
+            return not_found(&state, &format!("Collection '{}' not found", slug));
         }
     };
 
@@ -46,8 +55,7 @@ pub async fn list_items(
             Err(resp) => return resp,
         };
     if matches!(access_result, AccessResult::Denied) {
-        return forbidden(&state, "You don't have permission to view this collection")
-            .into_response();
+        return forbidden(&state, "You don't have permission to view this collection");
     }
 
     let raw_query = uri.query().unwrap_or("");
@@ -97,6 +105,7 @@ pub async fn list_items(
     let read_result = tokio::task::spawn_blocking(move || {
         runner.fire_before_read(&hooks, &slug_owned, "find", HashMap::new())?;
         let conn = pool.get().context("Failed to get DB connection")?;
+
         let total = query::count_with_search(
             &conn,
             &slug_owned,
@@ -105,6 +114,7 @@ pub async fn list_items(
             locale_ctx.as_ref(),
             find_query.search.as_deref(),
         )?;
+
         let mut docs = query::find(
             &conn,
             &slug_owned,
@@ -112,6 +122,7 @@ pub async fn list_items(
             &find_query,
             locale_ctx.as_ref(),
         )?;
+
         // Assemble sizes for upload collections
         if let Some(ref upload_config) = def_owned.upload {
             if upload_config.enabled {
@@ -120,8 +131,10 @@ pub async fn list_items(
                 }
             }
         }
+
         let docs =
             runner.apply_after_read_many(&hooks, &fields, &slug_owned, "find", docs, None, None);
+
         Ok::<_, anyhow::Error>((docs, total))
     })
     .await;
@@ -130,30 +143,35 @@ pub async fn list_items(
         Ok(Ok(v)) => v,
         Ok(Err(e)) => {
             tracing::error!("Collection list query error: {}", e);
-            return server_error(&state, "An internal error occurred.").into_response();
+            return server_error(&state, "An internal error occurred.");
         }
         Err(e) => {
             tracing::error!("Collection list task error: {}", e);
-            return server_error(&state, "An internal error occurred.").into_response();
+            return server_error(&state, "An internal error occurred.");
         }
     };
 
     // Strip field-level read-denied fields from documents
     let denied_fields = if def.fields.iter().any(|f| f.access.read.is_some()) {
         let user_doc = get_user_doc(&auth_user);
+
         let mut conn = match state.pool.get() {
             Ok(c) => c,
-            Err(_) => return server_error(&state, "Database error").into_response(),
+            Err(_) => return server_error(&state, "Database error"),
         };
+
         let tx = match conn.transaction() {
             Ok(t) => t,
-            Err(_) => return server_error(&state, "Database error").into_response(),
+            Err(_) => return server_error(&state, "Database error"),
         };
+
         let denied = state
             .hook_runner
             .check_field_read_access(&def.fields, user_doc, &tx);
+
         // Read-only access check — commit result is irrelevant, rollback on drop is safe
         let _ = tx.commit();
+
         denied
     } else {
         Vec::new()
@@ -172,8 +190,9 @@ pub async fn list_items(
     let user_columns: Option<Vec<String>> = auth_user.as_ref().and_then(|Extension(au)| {
         let conn = state.pool.get().ok()?;
         let settings_json = query::auth::get_user_settings(&conn, &au.claims.sub).ok()??;
-        let settings: serde_json::Value = serde_json::from_str(&settings_json).ok()?;
+        let settings: Value = from_str(&settings_json).ok()?;
         let cols = settings.get(&slug)?.get("columns")?.as_array()?;
+
         Some(
             cols.iter()
                 .filter_map(|v| v.as_str().map(|s| s.to_string()))
@@ -197,7 +216,6 @@ pub async fn list_items(
         .iter()
         .filter_map(|c| c["key"].as_str().map(|s| s.to_string()))
         .collect();
-
     let column_options = build_column_options(&def, &column_keys);
     let filter_fields = build_filter_fields(&def);
     let filter_pills = build_filter_pills(&url_filters, &def, raw_query);
@@ -212,6 +230,7 @@ pub async fn list_items(
         } else {
             tf.clone()
         };
+
         Some(build_list_url(
             &base_url,
             1,
@@ -241,10 +260,12 @@ pub async fn list_items(
         .unwrap_or(false);
 
     let is_upload = def.is_upload_collection();
+
     let admin_thumbnail = def
         .upload
         .as_ref()
         .and_then(|u| u.admin_thumbnail.as_ref().cloned());
+
     let items: Vec<_> = documents
         .iter()
         .map(|doc| {
@@ -261,7 +282,7 @@ pub async fn list_items(
 
             let cells = compute_cells(doc, &table_columns, &def);
 
-            let mut item = serde_json::json!({
+            let mut item = json!({
                 "id": doc.id,
                 "title_value": title_value,
                 "created_at": doc.created_at,
@@ -284,8 +305,9 @@ pub async fn list_items(
                                 .map(|s| s.to_string())
                         })
                         .or_else(|| doc.get_str("url").map(|s| s.to_string()));
+
                     if let Some(url) = thumb_url {
-                        item["thumbnail_url"] = serde_json::json!(url);
+                        item["thumbnail_url"] = json!(url);
                     }
                 }
             }
@@ -313,28 +335,29 @@ pub async fn list_items(
     );
 
     let claims_ref = claims.as_ref().map(|Extension(c)| c);
+
     let data = ContextBuilder::new(&state, claims_ref)
         .locale_from_auth(&auth_user)
         .editor_locale(editor_locale.as_deref(), &state.config.locale)
         .page(PageType::CollectionItems, def.display_name())
-        .set("page_title", serde_json::json!(def.display_name()))
+        .set("page_title", json!(def.display_name()))
         .collection_def(&def)
         .items(items)
         .pagination(page, per_page, total, prev_url, next_url)
-        .set("has_drafts", serde_json::json!(def.has_drafts()))
-        .set("search", serde_json::json!(search))
-        .set("sort", serde_json::json!(sort))
-        .set("table_columns", serde_json::json!(table_columns))
-        .set("column_options", serde_json::json!(column_options))
-        .set("filter_fields", serde_json::json!(filter_fields))
-        .set("active_filters", serde_json::json!(filter_pills))
-        .set("active_filter_count", serde_json::json!(filter_pills.len()))
-        .set("title_sort_url", serde_json::json!(title_sort_url))
-        .set("title_sorted_asc", serde_json::json!(title_sorted_asc))
-        .set("title_sorted_desc", serde_json::json!(title_sorted_desc))
+        .set("has_drafts", json!(def.has_drafts()))
+        .set("search", json!(search))
+        .set("sort", json!(sort))
+        .set("table_columns", json!(table_columns))
+        .set("column_options", json!(column_options))
+        .set("filter_fields", json!(filter_fields))
+        .set("active_filters", json!(filter_pills))
+        .set("active_filter_count", json!(filter_pills.len()))
+        .set("title_sort_url", json!(title_sort_url))
+        .set("title_sorted_asc", json!(title_sorted_asc))
+        .set("title_sorted_desc", json!(title_sorted_desc))
         .build();
 
     let data = state.hook_runner.run_before_render(data);
 
-    render_or_error(&state, "collections/items", &data).into_response()
+    render_or_error(&state, "collections/items", &data)
 }

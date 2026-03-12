@@ -1,22 +1,26 @@
-use crate::admin::AdminState;
-use crate::core::auth::AuthUser;
-use crate::db::query::{self, AccessResult};
+use crate::{
+    admin::{
+        AdminState,
+        handlers::shared::{check_access_or_forbid, forbidden, htmx_redirect, redirect_response},
+    },
+    core::auth::AuthUser,
+    db::query::{self, AccessResult},
+};
+
+use anyhow::{Error, anyhow};
 use axum::{
     Extension,
     extract::{Path, State},
-    response::IntoResponse,
+    response::Response,
 };
-
-use crate::admin::handlers::shared::{
-    check_access_or_forbid, forbidden, htmx_redirect, redirect_response,
-};
+use tokio::task;
 
 /// POST /admin/collections/{slug}/{id}/versions/{version_id}/restore — restore a version
 pub async fn restore_version(
     State(state): State<AdminState>,
     Path((slug, id, version_id)): Path<(String, String, String)>,
     auth_user: Option<Extension<AuthUser>>,
-) -> impl IntoResponse {
+) -> Response {
     let def = match state.registry.get_collection(&slug) {
         Some(d) => d.clone(),
         None => return redirect_response("/admin/collections"),
@@ -35,8 +39,7 @@ pub async fn restore_version(
         None,
     ) {
         Ok(AccessResult::Denied) => {
-            return forbidden(&state, "You don't have permission to update this item")
-                .into_response();
+            return forbidden(&state, "You don't have permission to update this item");
         }
         Err(resp) => return resp,
         _ => {}
@@ -47,15 +50,15 @@ pub async fn restore_version(
     let id_owned = id.clone();
     let def_owned = def.clone();
     let locale_config = state.config.locale.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let mut conn = pool
-            .get()
-            .map_err(|e| anyhow::anyhow!("DB connection: {}", e))?;
+    let result = task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| anyhow!("DB connection: {}", e))?;
         let tx = conn
             .transaction()
-            .map_err(|e| anyhow::anyhow!("Start transaction: {}", e))?;
+            .map_err(|e| anyhow!("Start transaction: {}", e))?;
+
         let version = query::find_version_by_id(&tx, &slug_owned, &version_id)?
-            .ok_or_else(|| anyhow::anyhow!("Version not found"))?;
+            .ok_or_else(|| anyhow!("Version not found"))?;
+
         let doc = query::restore_version(
             &tx,
             &slug_owned,
@@ -65,8 +68,10 @@ pub async fn restore_version(
             "published",
             &locale_config,
         )?;
-        tx.commit().map_err(|e| anyhow::anyhow!("Commit: {}", e))?;
-        Ok::<_, anyhow::Error>(doc)
+
+        tx.commit().map_err(|e| anyhow!("Commit: {}", e))?;
+
+        Ok::<_, Error>(doc)
     })
     .await;
 

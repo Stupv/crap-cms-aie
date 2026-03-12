@@ -2,22 +2,38 @@
 
 use axum::{
     Extension,
-    http::StatusCode,
-    response::{Html, IntoResponse, Redirect},
+    http::{HeaderMap, StatusCode, header},
+    response::{Html, IntoResponse, Redirect, Response},
 };
+use rusqlite::Transaction;
 use serde::Deserialize;
+use serde_json::{Map, Value, json};
+
 use std::collections::HashMap;
 
-use crate::admin::AdminState;
-use crate::admin::context::{ContextBuilder, PageType};
-use crate::admin::translations::Translations;
-use crate::core::auth::AuthUser;
-use crate::core::collection::{CollectionDefinition, VersionsConfig};
-use crate::core::document::VersionSnapshot;
-use crate::core::field::{FieldDefinition, FieldType};
-use crate::core::validate::ValidationError;
-use crate::db::DbPool;
-use crate::db::query::{self, AccessResult, Filter, FilterClause, FilterOp, LocaleContext};
+use crate::{
+    admin::{
+        AdminState,
+        context::{ContextBuilder, PageType},
+        server::extract_cookie,
+        translations::Translations,
+    },
+    config::LocaleConfig,
+    core::{
+        Document,
+        auth::AuthUser,
+        collection::{CollectionDefinition, VersionsConfig},
+        document::VersionSnapshot,
+        event::EventUser,
+        field::{FieldAdmin, FieldDefinition, FieldType},
+        validate::ValidationError,
+    },
+    db::{
+        DbPool,
+        query::{self, AccessResult, Filter, FilterClause, FilterOp, LocaleContext},
+    },
+    hooks::lifecycle::HookRunner,
+};
 
 // Re-export field context functions from the dedicated module.
 pub(super) use super::field_context::{
@@ -40,19 +56,20 @@ pub struct PaginationParams {
 /// Extract the editor locale from the `crap_editor_locale` cookie.
 /// Falls back to the config's default locale if the cookie is absent or invalid.
 /// Returns `None` if locales are not enabled.
-pub(crate) fn extract_editor_locale(
-    headers: &axum::http::HeaderMap,
-    config: &crate::config::LocaleConfig,
-) -> Option<String> {
+pub(crate) fn extract_editor_locale(headers: &HeaderMap, config: &LocaleConfig) -> Option<String> {
     if !config.is_enabled() {
         return None;
     }
+
     let cookie_str = headers
-        .get(axum::http::header::COOKIE)
+        .get(header::COOKIE)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    let raw = crate::admin::server::extract_cookie(cookie_str, "crap_editor_locale");
+
+    let raw = extract_cookie(cookie_str, "crap_editor_locale");
+
     let locale = raw.unwrap_or(&config.default_locale);
+
     // Validate against configured locales
     if config.locales.contains(&locale.to_string()) {
         Some(locale.to_string())
@@ -62,26 +79,19 @@ pub(crate) fn extract_editor_locale(
 }
 
 /// Extract the user document from AuthUser extension (for access checks).
-pub(crate) fn get_user_doc(
-    auth_user: &Option<Extension<AuthUser>>,
-) -> Option<&crate::core::Document> {
+pub(crate) fn get_user_doc(auth_user: &Option<Extension<AuthUser>>) -> Option<&Document> {
     auth_user.as_ref().map(|Extension(au)| &au.user_doc)
 }
 
 /// Extract an EventUser from the AuthUser extension (for SSE event attribution).
-pub(crate) fn get_event_user(
-    auth_user: &Option<Extension<AuthUser>>,
-) -> Option<crate::core::event::EventUser> {
-    auth_user.as_ref().map(|Extension(au)| {
-        crate::core::event::EventUser::new(au.claims.sub.clone(), au.claims.email.clone())
-    })
+pub(crate) fn get_event_user(auth_user: &Option<Extension<AuthUser>>) -> Option<EventUser> {
+    auth_user
+        .as_ref()
+        .map(|Extension(au)| EventUser::new(au.claims.sub.clone(), au.claims.email.clone()))
 }
 
 /// Strip denied fields from a document's fields map.
-pub(crate) fn strip_denied_fields(
-    fields: &mut HashMap<String, serde_json::Value>,
-    denied: &[String],
-) {
+pub(crate) fn strip_denied_fields(fields: &mut HashMap<String, Value>, denied: &[String]) {
     for name in denied {
         fields.remove(name);
     }
@@ -94,20 +104,24 @@ pub(crate) fn check_access_or_forbid(
     access_ref: Option<&str>,
     auth_user: &Option<Extension<AuthUser>>,
     id: Option<&str>,
-    data: Option<&HashMap<String, serde_json::Value>>,
-) -> Result<AccessResult, axum::response::Response> {
+    data: Option<&HashMap<String, Value>>,
+) -> Result<AccessResult, Response> {
     // No access function configured = always allowed (skip pool.get + VM acquire)
     if access_ref.is_none() {
         return Ok(AccessResult::Allowed);
     }
+
     let user_doc = get_user_doc(auth_user);
+
     let mut conn = state
         .pool
         .get()
         .map_err(|_| forbidden(state, "Database error").into_response())?;
+
     let tx = conn
         .transaction()
         .map_err(|_| forbidden(state, "Database error").into_response())?;
+
     let result = state
         .hook_runner
         .check_access(access_ref, user_doc, id, data, &tx)
@@ -115,8 +129,10 @@ pub(crate) fn check_access_or_forbid(
             tracing::error!("Access check error: {}", e);
             forbidden(state, "Access check failed").into_response()
         })?;
+
     tx.commit()
         .map_err(|_| forbidden(state, "Database error").into_response())?;
+
     Ok(result)
 }
 
@@ -126,29 +142,35 @@ pub(crate) fn check_access_or_forbid(
 pub(crate) fn build_locale_template_data(
     state: &AdminState,
     requested_locale: Option<&str>,
-) -> (Option<LocaleContext>, serde_json::Value) {
+) -> (Option<LocaleContext>, Value) {
     let config = &state.config.locale;
+
     if !config.is_enabled() {
-        return (None, serde_json::json!({}));
+        return (None, json!({}));
     }
+
     let current = requested_locale.unwrap_or(&config.default_locale);
+
     let locale_ctx = LocaleContext::from_locale_string(Some(current), config);
-    let locales: Vec<serde_json::Value> = config
+
+    let locales: Vec<Value> = config
         .locales
         .iter()
         .map(|l| {
-            serde_json::json!({
+            json!({
                 "value": l,
                 "label": l.to_uppercase(),
                 "selected": l == current,
             })
         })
         .collect();
-    let data = serde_json::json!({
+
+    let data = json!({
         "has_locales": true,
         "current_locale": current,
         "locales": locales,
     });
+
     (locale_ctx, data)
 }
 
@@ -167,16 +189,20 @@ pub(crate) fn parse_where_params(raw_query: &str, def: &CollectionDefinition) ->
         let Some((key, value)) = part.split_once('=') else {
             continue;
         };
+
         let value = url_decode(value);
 
         // Match where[field][op]
         let key = url_decode(key);
+
         let Some(rest) = key.strip_prefix("where[") else {
             continue;
         };
+
         let Some((field, rest)) = rest.split_once("][") else {
             continue;
         };
+
         let Some(op_str) = rest.strip_suffix(']') else {
             continue;
         };
@@ -184,6 +210,7 @@ pub(crate) fn parse_where_params(raw_query: &str, def: &CollectionDefinition) ->
         // Validate field exists
         let field_valid =
             system_cols.contains(&field) || def.fields.iter().any(|f| f.name == field);
+
         if !field_valid {
             continue;
         }
@@ -214,7 +241,9 @@ pub(crate) fn parse_where_params(raw_query: &str, def: &CollectionDefinition) ->
 /// Simple percent-decoding for URL query values.
 pub(crate) fn url_decode(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
+
     let mut chars = s.bytes();
+
     while let Some(b) = chars.next() {
         if b == b'+' {
             result.push(' ');
@@ -228,6 +257,7 @@ pub(crate) fn url_decode(s: &str) -> String {
             result.push(b as char);
         }
     }
+
     result
 }
 
@@ -272,15 +302,19 @@ pub(crate) fn build_list_url(
     raw_where: &str,
 ) -> String {
     let mut url = format!("{}?page={}", base, page);
+
     if let Some(pp) = per_page {
         url.push_str(&format!("&per_page={}", pp));
     }
+
     if let Some(s) = search {
         url.push_str(&format!("&search={}", url_encode(s)));
     }
+
     if let Some(s) = sort {
         url.push_str(&format!("&sort={}", url_encode(s)));
     }
+
     // Preserve where params from original query string
     for part in raw_where.split('&') {
         if part.starts_with("where%5B") || part.starts_with("where[") {
@@ -317,15 +351,16 @@ pub(crate) fn extract_where_params(raw_query: &str) -> String {
 ///
 /// Priority: `row_label` Lua function > block-level `label_field` > field-level `label_field` > None.
 pub(crate) fn compute_row_label(
-    admin: &crate::core::field::FieldAdmin,
+    admin: &FieldAdmin,
     block_label_field: Option<&str>,
-    row_data: Option<&serde_json::Map<String, serde_json::Value>>,
-    hook_runner: &crate::hooks::lifecycle::HookRunner,
+    row_data: Option<&Map<String, Value>>,
+    hook_runner: &HookRunner,
 ) -> Option<String> {
     // 1. Try row_label Lua function
     if let Some(ref func_ref) = admin.row_label {
         if let Some(row) = row_data {
-            let json_val = serde_json::Value::Object(row.clone());
+            let json_val = Value::Object(row.clone());
+
             if let Some(label) = hook_runner.call_row_label(func_ref, &json_val) {
                 if !label.is_empty() {
                     return Some(label);
@@ -339,27 +374,31 @@ pub(crate) fn compute_row_label(
     let row = row_data?;
     let val = row.get(lf)?;
     let s = match val {
-        serde_json::Value::String(s) if !s.is_empty() => s.clone(),
-        serde_json::Value::Number(n) => n.to_string(),
-        serde_json::Value::Bool(b) => b.to_string(),
+        Value::String(s) if !s.is_empty() => s.clone(),
+        Value::Number(n) => n.to_string(),
+        Value::Bool(b) => b.to_string(),
         _ => return None,
     };
+
     Some(s)
 }
 
 /// Check if the current locale is a non-default locale (fields should be locked).
 pub(crate) fn is_non_default_locale(state: &AdminState, requested_locale: Option<&str>) -> bool {
     let config = &state.config.locale;
+
     if !config.is_enabled() {
         return false;
     }
+
     let current = requested_locale.unwrap_or(&config.default_locale);
+
     current != config.default_locale
 }
 
 /// Map a `VersionSnapshot` to the JSON object used in templates.
-pub(crate) fn version_to_json(v: VersionSnapshot) -> serde_json::Value {
-    serde_json::json!({
+pub(crate) fn version_to_json(v: VersionSnapshot) -> Value {
+    json!({
         "id": v.id,
         "version": v.version,
         "status": v.status,
@@ -374,14 +413,16 @@ pub(crate) fn fetch_version_sidebar_data(
     pool: &DbPool,
     table_name: &str,
     parent_id: &str,
-) -> (Vec<serde_json::Value>, i64) {
+) -> (Vec<Value>, i64) {
     if let Ok(conn) = pool.get() {
         let total = query::count_versions(&conn, table_name, parent_id).unwrap_or(0);
+
         let vers = query::list_versions(&conn, table_name, parent_id, Some(3), None)
             .unwrap_or_default()
             .into_iter()
             .map(version_to_json)
             .collect();
+
         (vers, total)
     } else {
         (vec![], 0)
@@ -391,21 +432,25 @@ pub(crate) fn fetch_version_sidebar_data(
 /// Execute the unpublish flow on an already-open transaction:
 /// set status to draft, build snapshot, create version, prune.
 pub(crate) fn do_unpublish(
-    tx: &rusqlite::Transaction,
+    tx: &Transaction,
     table_name: &str,
     parent_id: &str,
     fields: &[FieldDefinition],
     versions_config: Option<&VersionsConfig>,
-    doc: &crate::core::Document,
+    doc: &Document,
 ) -> anyhow::Result<()> {
     query::set_document_status(tx, table_name, parent_id, "draft")?;
+
     let snapshot = query::build_snapshot(tx, table_name, fields, doc)?;
+
     query::create_version(tx, table_name, parent_id, "draft", &snapshot)?;
+
     if let Some(vc) = versions_config {
         if vc.max_versions > 0 {
             query::prune_versions(tx, table_name, parent_id, vc.max_versions)?;
         }
     }
+
     Ok(())
 }
 
@@ -431,21 +476,24 @@ pub(crate) fn translate_validation_errors(
 }
 
 /// Render a 403 Forbidden page with the given message.
-pub(crate) fn forbidden(state: &AdminState, message: &str) -> (StatusCode, Html<String>) {
+pub(crate) fn forbidden(state: &AdminState, message: &str) -> Response {
     let data = ContextBuilder::new(state, None)
         .page(PageType::Error403, "Forbidden")
         .set("message", serde_json::Value::String(message.to_string()))
         .build();
+
     let data = state.hook_runner.run_before_render(data);
+
     let html = match state.render("errors/403", &data) {
         Ok(html) => Html(html),
         Err(_) => Html(format!("<h1>403 Forbidden</h1><p>{}</p>", message)),
     };
-    (StatusCode::FORBIDDEN, html)
+
+    (StatusCode::FORBIDDEN, html).into_response()
 }
 
 /// Create a redirect response to the given URL (303 See Other).
-pub(crate) fn redirect_response(url: &str) -> axum::response::Response {
+pub(crate) fn redirect_response(url: &str) -> Response {
     Redirect::to(url).into_response()
 }
 
@@ -453,8 +501,8 @@ pub(crate) fn redirect_response(url: &str) -> axum::response::Response {
 /// page navigation instead of an in-place body swap. This avoids issues with custom
 /// elements (ProseMirror richtext editors in blocks) not re-initializing properly during
 /// HTMX innerHTML swaps after write operations.
-pub(crate) fn htmx_redirect(url: &str) -> axum::response::Response {
-    axum::response::Response::builder()
+pub(crate) fn htmx_redirect(url: &str) -> Response {
+    Response::builder()
         .status(StatusCode::OK)
         .header("HX-Redirect", url)
         .body(axum::body::Body::empty())
@@ -465,16 +513,18 @@ pub(crate) fn htmx_redirect(url: &str) -> axum::response::Response {
 pub(crate) fn html_with_toast(
     state: &AdminState,
     template: &str,
-    data: &serde_json::Value,
+    data: &Value,
     toast: &str,
-) -> axum::response::Response {
+) -> Response {
     match state.render(template, data) {
         Ok(html) => {
             let mut resp = Html(html).into_response();
             let json_toast = serde_json::json!({ "message": toast, "type": "error" }).to_string();
+
             if let Ok(val) = json_toast.parse() {
                 resp.headers_mut().insert("X-Crap-Toast", val);
             }
+
             resp
         }
         Err(e) => {
@@ -486,11 +536,7 @@ pub(crate) fn html_with_toast(
 }
 
 /// Render a template, falling back to a plain error page on failure.
-pub(crate) fn render_or_error(
-    state: &AdminState,
-    template: &str,
-    data: &serde_json::Value,
-) -> Html<String> {
+pub(crate) fn render_or_error(state: &AdminState, template: &str, data: &Value) -> Response {
     match state.render(template, data) {
         Ok(html) => Html(html),
         Err(e) => {
@@ -498,34 +544,41 @@ pub(crate) fn render_or_error(
             Html("<h1>Something went wrong</h1><p>Please try again.</p>".to_string())
         }
     }
+    .into_response()
 }
 
 /// Render a 404 Not Found page with the given message.
-pub(crate) fn not_found(state: &AdminState, message: &str) -> (StatusCode, Html<String>) {
+pub(crate) fn not_found(state: &AdminState, message: &str) -> Response {
     let data = ContextBuilder::new(state, None)
         .page(PageType::Error404, "Not Found")
-        .set("message", serde_json::Value::String(message.to_string()))
+        .set("message", Value::String(message.to_string()))
         .build();
+
     let data = state.hook_runner.run_before_render(data);
+
     let html = match state.render("errors/404", &data) {
         Ok(html) => Html(html),
         Err(_) => Html(format!("<h1>404</h1><p>{}</p>", message)),
     };
-    (StatusCode::NOT_FOUND, html)
+
+    (StatusCode::NOT_FOUND, html).into_response()
 }
 
 /// Render a 500 Internal Server Error page with the given message.
-pub(crate) fn server_error(state: &AdminState, message: &str) -> (StatusCode, Html<String>) {
+pub(crate) fn server_error(state: &AdminState, message: &str) -> Response {
     let data = ContextBuilder::new(state, None)
         .page(PageType::Error500, "Server Error")
-        .set("message", serde_json::Value::String(message.to_string()))
+        .set("message", Value::String(message.to_string()))
         .build();
+
     let data = state.hook_runner.run_before_render(data);
+
     let html = match state.render("errors/500", &data) {
         Ok(html) => Html(html),
         Err(_) => Html(format!("<h1>500</h1><p>{}</p>", message)),
     };
-    (StatusCode::INTERNAL_SERVER_ERROR, html)
+
+    (StatusCode::INTERNAL_SERVER_ERROR, html).into_response()
 }
 
 #[cfg(test)]

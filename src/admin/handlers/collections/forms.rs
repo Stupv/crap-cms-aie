@@ -1,18 +1,23 @@
 //! Form parsing helpers: multipart, array fields, upload metadata.
 
 use axum::extract::{FromRequest, Multipart};
-use std::collections::HashMap;
+use serde_json::{Map, Value, json};
+use std::collections::{BTreeMap, HashMap};
 
-use crate::admin::AdminState;
-use crate::core::field::{FieldDefinition, FieldType, flatten_array_sub_fields};
-use crate::core::upload::{UploadedFile, UploadedFileBuilder};
+use crate::{
+    admin::AdminState,
+    core::{
+        field::{FieldDefinition, FieldType, flatten_array_sub_fields},
+        upload::{UploadedFile, UploadedFileBuilder},
+    },
+};
 
 /// Extract join table data from form submission for has-many relationships and array fields.
 /// Returns a map suitable for `query::save_join_table_data`.
 pub(crate) fn extract_join_data_from_form(
     form: &HashMap<String, String>,
     field_defs: &[FieldDefinition],
-) -> HashMap<String, serde_json::Value> {
+) -> HashMap<String, Value> {
     let mut join_data = HashMap::new();
 
     for field in field_defs {
@@ -22,25 +27,21 @@ pub(crate) fn extract_join_data_from_form(
                     if rc.has_many {
                         // Has-many: comma-separated IDs in form value
                         if let Some(val) = form.get(&field.name) {
-                            join_data
-                                .insert(field.name.clone(), serde_json::Value::String(val.clone()));
+                            join_data.insert(field.name.clone(), Value::String(val.clone()));
                         } else {
                             // Empty selection — clear all
-                            join_data.insert(
-                                field.name.clone(),
-                                serde_json::Value::String(String::new()),
-                            );
+                            join_data.insert(field.name.clone(), Value::String(String::new()));
                         }
                     }
                 }
             }
             FieldType::Array => {
                 let json_rows = parse_composite_form_data(form, &field.name, &field.fields);
-                join_data.insert(field.name.clone(), serde_json::Value::Array(json_rows));
+                join_data.insert(field.name.clone(), Value::Array(json_rows));
             }
             FieldType::Blocks => {
                 let json_rows = parse_composite_form_data(form, &field.name, &[]);
-                join_data.insert(field.name.clone(), serde_json::Value::Array(json_rows));
+                join_data.insert(field.name.clone(), Value::Array(json_rows));
             }
             FieldType::Row | FieldType::Collapsible => {
                 let nested = extract_join_data_from_form(form, &field.fields);
@@ -78,7 +79,7 @@ pub(crate) fn transform_select_has_many(
                             .map(|s| s.trim())
                             .filter(|s| !s.is_empty())
                             .collect();
-                        *val = serde_json::json!(values).to_string();
+                        *val = json!(values).to_string();
                     }
                 } else {
                     form.insert(field.name.clone(), "[]".to_string());
@@ -103,7 +104,7 @@ pub(crate) fn transform_select_has_many(
                                     .map(|s| s.trim())
                                     .filter(|s| !s.is_empty())
                                     .collect();
-                                serde_json::json!(values).to_string()
+                                json!(values).to_string()
                             };
                             has_many_names.push((full_name, json_val));
                         } else {
@@ -141,10 +142,9 @@ fn parse_composite_form_data(
     form: &HashMap<String, String>,
     field_name: &str,
     sub_field_defs: &[FieldDefinition],
-) -> Vec<serde_json::Value> {
+) -> Vec<Value> {
     let prefix = format!("{}[", field_name);
-    let mut rows: std::collections::BTreeMap<usize, Vec<(String, String)>> =
-        std::collections::BTreeMap::new();
+    let mut rows: BTreeMap<usize, Vec<(String, String)>> = BTreeMap::new();
 
     // Collect all form keys that start with this field's prefix
     for (key, value) in form {
@@ -180,7 +180,7 @@ fn parse_composite_form_data(
 
     rows.into_values()
         .map(|entries| {
-            let mut obj = serde_json::Map::new();
+            let mut obj = Map::new();
 
             // Separate leaf entries from nested entries
             let mut nested_keys: HashMap<String, Vec<(String, String)>> = HashMap::new();
@@ -202,6 +202,7 @@ fn parse_composite_form_data(
 
             // Process nested keys recursively
             let flat_defs = flatten_array_sub_fields(sub_field_defs);
+
             for (base_key, nested_entries) in nested_keys {
                 // Look up the field definition for this sub-field to determine type
                 let sf_def = flat_defs.iter().find(|sf| sf.name == base_key).copied();
@@ -245,16 +246,16 @@ fn parse_composite_form_data(
                             obj.insert(base_key, first);
                         }
                     } else {
-                        obj.insert(base_key, serde_json::Value::Array(nested_rows));
+                        obj.insert(base_key, Value::Array(nested_rows));
                     }
                 } else {
                     // Unknown nested field — try to parse as array of string values
                     let nested_rows = parse_composite_form_data(&sub_form, &base_key, &[]);
-                    obj.insert(base_key, serde_json::Value::Array(nested_rows));
+                    obj.insert(base_key, Value::Array(nested_rows));
                 }
             }
 
-            serde_json::Value::Object(obj)
+            Value::Object(obj)
         })
         .collect()
 }

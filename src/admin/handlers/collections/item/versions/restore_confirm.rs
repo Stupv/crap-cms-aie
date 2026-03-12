@@ -1,35 +1,41 @@
-use crate::admin::AdminState;
-use crate::admin::context::{Breadcrumb, ContextBuilder, PageType};
-use crate::core::auth::{AuthUser, Claims};
-use crate::db::query::{self, AccessResult};
+use crate::{
+    admin::{
+        AdminState,
+        context::{Breadcrumb, ContextBuilder, PageType},
+        handlers::shared::{
+            check_access_or_forbid, extract_editor_locale, forbidden, not_found, redirect_response,
+            render_or_error, server_error,
+        },
+    },
+    core::auth::{AuthUser, Claims},
+    db::query::{AccessResult, find_missing_relations, find_version_by_id},
+};
+
 use axum::{
     Extension,
     extract::{Path, State},
-    response::IntoResponse,
+    http::HeaderMap,
+    response::Response,
 };
-
-use crate::admin::handlers::shared::{
-    check_access_or_forbid, extract_editor_locale, forbidden, not_found, redirect_response,
-    render_or_error, server_error,
-};
+use serde_json::json;
 
 /// GET /admin/collections/{slug}/{id}/versions/{version_id}/restore — confirmation page
 pub async fn restore_confirm(
     State(state): State<AdminState>,
     Path((slug, id, version_id)): Path<(String, String, String)>,
-    headers: axum::http::HeaderMap,
+    headers: HeaderMap,
     claims: Option<Extension<Claims>>,
     auth_user: Option<Extension<AuthUser>>,
-) -> impl IntoResponse {
+) -> Response {
     let def = match state.registry.get_collection(&slug) {
         Some(d) => d.clone(),
         None => {
-            return not_found(&state, &format!("Collection '{}' not found", slug)).into_response();
+            return not_found(&state, &format!("Collection '{}' not found", slug));
         }
     };
 
     if !def.has_versions() {
-        return redirect_response(&format!("/admin/collections/{}/{}", slug, id)).into_response();
+        return redirect_response(&format!("/admin/collections/{}/{}", slug, id));
     }
 
     match check_access_or_forbid(
@@ -40,8 +46,7 @@ pub async fn restore_confirm(
         None,
     ) {
         Ok(AccessResult::Denied) => {
-            return forbidden(&state, "You don't have permission to update this item")
-                .into_response();
+            return forbidden(&state, "You don't have permission to update this item");
         }
         Err(resp) => return resp,
         _ => {}
@@ -49,20 +54,19 @@ pub async fn restore_confirm(
 
     let conn = match state.pool.get() {
         Ok(c) => c,
-        Err(_) => return server_error(&state, "Database error").into_response(),
+        Err(_) => return server_error(&state, "Database error"),
     };
 
-    let version = match query::find_version_by_id(&conn, &slug, &version_id) {
+    let version = match find_version_by_id(&conn, &slug, &version_id) {
         Ok(Some(v)) => v,
-        Ok(None) => return not_found(&state, "Version not found").into_response(),
+        Ok(None) => return not_found(&state, "Version not found"),
         Err(e) => {
             tracing::error!("Find version error: {}", e);
-            return server_error(&state, "Database error").into_response();
+            return server_error(&state, "Database error");
         }
     };
 
-    let missing =
-        query::find_missing_relations(&conn, &state.registry, &version.snapshot, &def.fields);
+    let missing = find_missing_relations(&conn, &state.registry, &version.snapshot, &def.fields);
 
     let restore_url = format!(
         "/admin/collections/{}/{}/versions/{}/restore",
@@ -78,10 +82,10 @@ pub async fn restore_confirm(
         .page(PageType::CollectionVersions, "Restore Version".to_string())
         .collection_def(&def)
         .document_stub(&id)
-        .set("version_number", serde_json::json!(version.version))
-        .set("missing_relations", serde_json::json!(missing))
-        .set("restore_url", serde_json::json!(restore_url))
-        .set("back_url", serde_json::json!(back_url))
+        .set("version_number", json!(version.version))
+        .set("missing_relations", json!(missing))
+        .set("restore_url", json!(restore_url))
+        .set("back_url", json!(back_url))
         .breadcrumbs(vec![
             Breadcrumb::link("Collections", "/admin/collections"),
             Breadcrumb::link(def.display_name(), format!("/admin/collections/{}", slug)),
@@ -91,5 +95,6 @@ pub async fn restore_confirm(
         .build();
 
     let data = state.hook_runner.run_before_render(data);
-    render_or_error(&state, "collections/restore", &data).into_response()
+
+    render_or_error(&state, "collections/restore", &data)
 }

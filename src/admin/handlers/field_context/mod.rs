@@ -2,6 +2,12 @@
 //! Builds template context objects from field definitions, handling recursive
 //! composite types (Array, Blocks, Group) with nesting depth limits.
 
+use crate::{
+    core::field::FieldDefinition,
+    hooks::lifecycle::{DisplayConditionResult, HookRunner},
+};
+use serde_json::{Value, json};
+
 mod builder;
 mod enrich;
 
@@ -17,16 +23,18 @@ pub(super) fn safe_template_id(name: &str) -> String {
 
 /// Count errors recursively in a list of field context JSON values.
 /// Looks for `"error"` keys on each field, and recurses into `"sub_fields"` and `"tabs"`.
-pub(super) fn count_errors_in_fields(fields: &[serde_json::Value]) -> usize {
+pub(super) fn count_errors_in_fields(fields: &[Value]) -> usize {
     let mut count = 0;
     for f in fields {
         if f.get("error").is_some_and(|v| !v.is_null()) {
             count += 1;
         }
+
         // Recurse into sub_fields (Group, Row, Collapsible)
         if let Some(subs) = f.get("sub_fields").and_then(|v| v.as_array()) {
             count += count_errors_in_fields(subs);
         }
+
         // Recurse into tabs
         if let Some(tabs) = f.get("tabs").and_then(|v| v.as_array()) {
             for tab in tabs {
@@ -35,6 +43,7 @@ pub(super) fn count_errors_in_fields(fields: &[serde_json::Value]) -> usize {
                 }
             }
         }
+
         // Recurse into array rows
         if let Some(rows) = f.get("rows").and_then(|v| v.as_array()) {
             for row in rows {
@@ -56,22 +65,20 @@ pub(super) const MAX_FIELD_DEPTH: usize = 5;
 /// - `condition_json`: condition table for client-side evaluation (if table returned)
 /// - `condition_ref`: Lua function ref for server-side evaluation (if bool returned)
 pub(super) fn apply_display_conditions(
-    fields: &mut [serde_json::Value],
-    field_defs: &[crate::core::field::FieldDefinition],
-    form_data: &serde_json::Value,
-    hook_runner: &crate::hooks::lifecycle::HookRunner,
+    fields: &mut [Value],
+    field_defs: &[FieldDefinition],
+    form_data: &Value,
+    hook_runner: &HookRunner,
     filter_hidden: bool,
 ) {
-    use crate::hooks::lifecycle::DisplayConditionResult;
-
-    let defs: Vec<&crate::core::field::FieldDefinition> = if filter_hidden {
+    let defs: Vec<&FieldDefinition> = if filter_hidden {
         field_defs.iter().filter(|f| !f.admin.hidden).collect()
     } else {
         field_defs.iter().collect()
     };
 
     // Collect all conditions that need evaluation
-    let conditions: Vec<(&str, &serde_json::Value)> = defs
+    let conditions: Vec<(&str, &Value)> = defs
         .iter()
         .filter_map(|fd| fd.admin.condition.as_deref().map(|c| (c, form_data)))
         .collect();
@@ -88,11 +95,11 @@ pub(super) fn apply_display_conditions(
             if let Some(result) = results.get(cond_ref.as_str()) {
                 match result {
                     DisplayConditionResult::Bool(visible) => {
-                        ctx["condition_visible"] = serde_json::json!(visible);
-                        ctx["condition_ref"] = serde_json::json!(cond_ref);
+                        ctx["condition_visible"] = json!(visible);
+                        ctx["condition_ref"] = json!(cond_ref);
                     }
                     DisplayConditionResult::Table { condition, visible } => {
-                        ctx["condition_visible"] = serde_json::json!(visible);
+                        ctx["condition_visible"] = json!(visible);
                         ctx["condition_json"] = condition.clone();
                     }
                 }
@@ -103,9 +110,7 @@ pub(super) fn apply_display_conditions(
 
 /// Split field contexts into main and sidebar based on the `position` property.
 /// Returns `(main_fields, sidebar_fields)`.
-pub(super) fn split_sidebar_fields(
-    fields: Vec<serde_json::Value>,
-) -> (Vec<serde_json::Value>, Vec<serde_json::Value>) {
+pub(super) fn split_sidebar_fields(fields: Vec<Value>) -> (Vec<Value>, Vec<Value>) {
     fields
         .into_iter()
         .partition(|f| f.get("position").and_then(|v| v.as_str()) != Some("sidebar"))

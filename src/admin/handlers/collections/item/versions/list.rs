@@ -1,37 +1,45 @@
-use crate::admin::AdminState;
-use crate::admin::context::{Breadcrumb, ContextBuilder, PageType};
-use crate::core::auth::{AuthUser, Claims};
-use crate::db::query::{AccessResult, LocaleContext};
-use crate::db::{ops, query};
+use crate::{
+    admin::{
+        AdminState,
+        context::{Breadcrumb, ContextBuilder, PageType},
+        handlers::shared::{
+            PaginationParams, check_access_or_forbid, extract_editor_locale, forbidden, not_found,
+            redirect_response, render_or_error, server_error, version_to_json,
+        },
+    },
+    core::auth::{AuthUser, Claims},
+    db::{
+        ops, query,
+        query::{AccessResult, LocaleContext},
+    },
+};
+
 use axum::{
     Extension,
     extract::{Path, Query, State},
-    response::IntoResponse,
+    http::HeaderMap,
+    response::Response,
 };
-
-use crate::admin::handlers::shared::{
-    PaginationParams, check_access_or_forbid, extract_editor_locale, forbidden, not_found,
-    redirect_response, render_or_error, server_error, version_to_json,
-};
+use serde_json::json;
 
 /// GET /admin/collections/{slug}/{id}/versions — dedicated version history page
 pub async fn list_versions_page(
     State(state): State<AdminState>,
     Path((slug, id)): Path<(String, String)>,
     Query(params): Query<PaginationParams>,
-    headers: axum::http::HeaderMap,
+    headers: HeaderMap,
     claims: Option<Extension<Claims>>,
     auth_user: Option<Extension<AuthUser>>,
-) -> impl IntoResponse {
+) -> Response {
     let def = match state.registry.get_collection(&slug) {
         Some(d) => d.clone(),
         None => {
-            return not_found(&state, &format!("Collection '{}' not found", slug)).into_response();
+            return not_found(&state, &format!("Collection '{}' not found", slug));
         }
     };
 
     if !def.has_versions() {
-        return redirect_response(&format!("/admin/collections/{}/{}", slug, id)).into_response();
+        return redirect_response(&format!("/admin/collections/{}/{}", slug, id));
     }
 
     // Check read access
@@ -43,8 +51,7 @@ pub async fn list_versions_page(
         None,
     ) {
         Ok(AccessResult::Denied) => {
-            return forbidden(&state, "You don't have permission to view this item")
-                .into_response();
+            return forbidden(&state, "You don't have permission to view this item");
         }
         Err(resp) => return resp,
         _ => {}
@@ -58,11 +65,11 @@ pub async fn list_versions_page(
         match ops::find_document_by_id(&state.pool, &slug, &def, &id, locale_ctx.as_ref()) {
             Ok(Some(doc)) => doc,
             Ok(None) => {
-                return not_found(&state, &format!("Document '{}' not found", id)).into_response();
+                return not_found(&state, &format!("Document '{}' not found", id));
             }
             Err(e) => {
                 tracing::error!("Document versions query error: {}", e);
-                return server_error(&state, "An internal error occurred.").into_response();
+                return server_error(&state, "An internal error occurred.");
             }
         };
 
@@ -81,7 +88,7 @@ pub async fn list_versions_page(
 
     let conn = match state.pool.get() {
         Ok(c) => c,
-        Err(_) => return server_error(&state, "Database error").into_response(),
+        Err(_) => return server_error(&state, "Database error"),
     };
 
     let total = query::count_versions(&conn, &slug, &id).unwrap_or(0);
@@ -103,15 +110,15 @@ pub async fn list_versions_page(
         )
         .set(
             "page_title",
-            serde_json::json!(format!("Version History — {}", doc_title)),
+            json!(format!("Version History — {}", doc_title)),
         )
         .collection_def(&def)
         .document_stub(&id)
-        .set("doc_title", serde_json::json!(doc_title))
-        .set("versions", serde_json::json!(versions))
+        .set("doc_title", json!(doc_title))
+        .set("versions", json!(versions))
         .set(
             "restore_url_prefix",
-            serde_json::json!(format!("/admin/collections/{}/{}", slug, id)),
+            json!(format!("/admin/collections/{}/{}", slug, id)),
         )
         .pagination(
             page,
@@ -143,5 +150,5 @@ pub async fn list_versions_page(
 
     let data = state.hook_runner.run_before_render(data);
 
-    render_or_error(&state, "collections/versions", &data).into_response()
+    render_or_error(&state, "collections/versions", &data)
 }

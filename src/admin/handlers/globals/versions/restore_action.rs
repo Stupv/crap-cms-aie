@@ -1,23 +1,26 @@
-use crate::admin::AdminState;
-use crate::core::auth::AuthUser;
-use crate::db::query;
-use crate::db::query::AccessResult;
+use crate::{
+    admin::{
+        AdminState,
+        handlers::shared::{check_access_or_forbid, forbidden, htmx_redirect, redirect_response},
+    },
+    core::auth::AuthUser,
+    db::query::{self, AccessResult},
+};
+
+use anyhow::{Error, anyhow};
 use axum::{
     Extension,
     extract::{Path, State},
-    response::IntoResponse,
+    response::Response,
 };
-
-use crate::admin::handlers::shared::{
-    check_access_or_forbid, forbidden, htmx_redirect, redirect_response,
-};
+use tokio::task;
 
 /// POST /admin/globals/{slug}/versions/{version_id}/restore
 pub async fn restore_version(
     State(state): State<AdminState>,
     Path((slug, version_id)): Path<(String, String)>,
     auth_user: Option<Extension<AuthUser>>,
-) -> impl IntoResponse {
+) -> Response {
     let def = match state.registry.get_global(&slug) {
         Some(d) => d.clone(),
         None => return redirect_response("/admin"),
@@ -30,8 +33,7 @@ pub async fn restore_version(
     // Check update access
     match check_access_or_forbid(&state, def.access.update.as_deref(), &auth_user, None, None) {
         Ok(AccessResult::Denied) => {
-            return forbidden(&state, "You don't have permission to update this global")
-                .into_response();
+            return forbidden(&state, "You don't have permission to update this global");
         }
         Err(resp) => return resp,
         _ => {}
@@ -41,16 +43,19 @@ pub async fn restore_version(
     let slug_owned = slug.clone();
     let def_owned = def.clone();
     let locale_config = state.config.locale.clone();
-    let result = tokio::task::spawn_blocking(move || {
+
+    let result = task::spawn_blocking(move || {
         let global_table = format!("_global_{}", slug_owned);
-        let mut conn = pool
-            .get()
-            .map_err(|e| anyhow::anyhow!("DB connection: {}", e))?;
+
+        let mut conn = pool.get().map_err(|e| anyhow!("DB connection: {}", e))?;
+
         let tx = conn
             .transaction()
-            .map_err(|e| anyhow::anyhow!("Start transaction: {}", e))?;
+            .map_err(|e| anyhow!("Start transaction: {}", e))?;
+
         let version = query::find_version_by_id(&tx, &global_table, &version_id)?
-            .ok_or_else(|| anyhow::anyhow!("Version not found"))?;
+            .ok_or_else(|| anyhow!("Version not found"))?;
+
         let doc = query::restore_global_version(
             &tx,
             &slug_owned,
@@ -59,8 +64,10 @@ pub async fn restore_version(
             "published",
             &locale_config,
         )?;
-        tx.commit().map_err(|e| anyhow::anyhow!("Commit: {}", e))?;
-        Ok::<_, anyhow::Error>(doc)
+
+        tx.commit().map_err(|e| anyhow!("Commit: {}", e))?;
+
+        Ok::<_, Error>(doc)
     })
     .await;
 

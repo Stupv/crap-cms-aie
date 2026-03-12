@@ -1,17 +1,25 @@
 //! Serves uploaded files with access-control-aware caching.
 
 use axum::{
+    body::Body,
     extract::{Path, State},
-    http::{StatusCode, header},
+    http::{HeaderValue, Request, StatusCode, header},
     response::{IntoResponse, Response},
 };
+use tokio::task;
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
 
-use crate::admin::AdminState;
-use crate::admin::server::{extract_cookie, load_auth_user};
-use crate::core::auth;
-use crate::db::query::AccessResult;
+use std::path;
+
+use crate::{
+    admin::{
+        AdminState,
+        server::{extract_cookie, load_auth_user},
+    },
+    core::auth::{AuthUser, validate_token},
+    db::query::AccessResult,
+};
 
 /// Serve an uploaded file, checking collection read access if configured.
 ///
@@ -21,7 +29,7 @@ use crate::db::query::AccessResult;
 pub async fn serve_upload(
     State(state): State<AdminState>,
     Path((collection_slug, filename)): Path<(String, String)>,
-    request: axum::http::Request<axum::body::Body>,
+    request: Request<Body>,
 ) -> Response {
     // Reject path traversal
     if collection_slug.contains("..")
@@ -63,7 +71,7 @@ pub async fn serve_upload(
         let pool = state.pool.clone();
         let hook_runner = state.hook_runner.clone();
 
-        let access = tokio::task::spawn_blocking(move || {
+        let access = task::spawn_blocking(move || {
             let conn = pool.get()?;
             hook_runner.check_access(Some(&func_ref), user_doc.as_ref(), None, None, &conn)
         })
@@ -104,10 +112,7 @@ pub async fn serve_upload(
     .await
 }
 
-fn extract_auth_user(
-    request: &axum::http::Request<axum::body::Body>,
-    state: &AdminState,
-) -> Option<auth::AuthUser> {
+fn extract_auth_user(request: &Request<Body>, state: &AdminState) -> Option<AuthUser> {
     // Try cookie first
     let cookie_header = request
         .headers()
@@ -116,7 +121,7 @@ fn extract_auth_user(
         .unwrap_or("");
 
     if let Some(token) = extract_cookie(cookie_header, "crap_session") {
-        if let Ok(claims) = auth::validate_token(token, &state.jwt_secret) {
+        if let Ok(claims) = validate_token(token, &state.jwt_secret) {
             if let Some(auth_user) =
                 load_auth_user(&state.pool, &state.registry, &claims, &state.config.locale)
             {
@@ -133,7 +138,7 @@ fn extract_auth_user(
         .unwrap_or("");
 
     if let Some(token) = auth_header.strip_prefix("Bearer ") {
-        if let Ok(claims) = auth::validate_token(token, &state.jwt_secret) {
+        if let Ok(claims) = validate_token(token, &state.jwt_secret) {
             if let Some(auth_user) =
                 load_auth_user(&state.pool, &state.registry, &claims, &state.config.locale)
             {
@@ -152,7 +157,7 @@ async fn serve_file(
     cache_control: &str,
     accepts_avif: bool,
     accepts_webp: bool,
-    original_request: axum::http::Request<axum::body::Body>,
+    original_request: Request<Body>,
 ) -> Response {
     let upload_dir = state.config_dir.join("uploads").join(collection_slug);
 
@@ -215,12 +220,12 @@ fn negotiate_variants(
 
 /// Conditional headers extracted from the original request, forwarded to ServeFile.
 struct ConditionalHeaders {
-    range: Option<axum::http::HeaderValue>,
-    if_none_match: Option<axum::http::HeaderValue>,
-    if_modified_since: Option<axum::http::HeaderValue>,
+    range: Option<HeaderValue>,
+    if_none_match: Option<HeaderValue>,
+    if_modified_since: Option<HeaderValue>,
 }
 
-fn extract_conditional_headers(req: &axum::http::Request<axum::body::Body>) -> ConditionalHeaders {
+fn extract_conditional_headers(req: &Request<Body>) -> ConditionalHeaders {
     ConditionalHeaders {
         range: req.headers().get(header::RANGE).cloned(),
         if_none_match: req.headers().get(header::IF_NONE_MATCH).cloned(),
@@ -228,27 +233,29 @@ fn extract_conditional_headers(req: &axum::http::Request<axum::body::Body>) -> C
     }
 }
 
-fn build_serve_request(headers: &ConditionalHeaders) -> axum::http::Request<axum::body::Body> {
-    let mut builder = axum::http::Request::builder().uri("/");
+fn build_serve_request(headers: &ConditionalHeaders) -> Request<Body> {
+    let mut builder = Request::builder().uri("/");
+
     if let Some(ref v) = headers.range {
         builder = builder.header(header::RANGE, v);
     }
+
     if let Some(ref v) = headers.if_none_match {
         builder = builder.header(header::IF_NONE_MATCH, v);
     }
+
     if let Some(ref v) = headers.if_modified_since {
         builder = builder.header(header::IF_MODIFIED_SINCE, v);
     }
-    builder
-        .body(axum::body::Body::empty())
-        .expect("static request builder")
+
+    builder.body(Body::empty()).expect("static request builder")
 }
 
 /// Serve a file via `tower_http::services::ServeFile` with custom headers.
 /// Provides Range, ETag, Last-Modified, and conditional GET support for free.
 async fn serve_with_headers(
-    path: &std::path::Path,
-    request: axum::http::Request<axum::body::Body>,
+    path: &path::Path,
+    request: Request<Body>,
     cache_control: &str,
     varied: bool,
     mime: &str,
@@ -258,32 +265,38 @@ async fn serve_with_headers(
         Ok(r) => r.into_response(),
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
+
     // Override Cache-Control for our needs
     response.headers_mut().insert(
         header::CACHE_CONTROL,
         cache_control.parse().expect("valid cache-control"),
     );
+
     // SVGs get attachment + CSP sandbox to prevent stored XSS
     let disposition = if mime.starts_with("image/") && mime != "image/svg+xml" {
         "inline"
     } else {
         "attachment"
     };
+
     response.headers_mut().insert(
         header::CONTENT_DISPOSITION,
         disposition.parse().expect("valid disposition"),
     );
+
     if mime == "image/svg+xml" {
         response.headers_mut().insert(
             header::CONTENT_SECURITY_POLICY,
             "sandbox".parse().expect("valid csp"),
         );
     }
+
     if varied {
         response
             .headers_mut()
             .insert(header::VARY, "Accept".parse().expect("valid vary"));
     }
+
     response
 }
 

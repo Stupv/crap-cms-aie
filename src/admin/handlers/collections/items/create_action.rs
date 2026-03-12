@@ -1,40 +1,50 @@
 use axum::{
     Extension,
-    extract::{Form, FromRequest, Path, State},
-    response::IntoResponse,
+    extract::{Form, FromRequest, Path, Request, State},
+    response::Response,
 };
+use serde_json::{Map, Value, json};
 use std::collections::HashMap;
+use tokio::task;
 
-use crate::admin::AdminState;
-use crate::admin::context::{ContextBuilder, PageType};
-use crate::core::auth::AuthUser;
-use crate::core::event::{EventOperation, EventTarget};
-use crate::core::upload;
-use crate::core::validate::ValidationError;
-use crate::db::query::{AccessResult, LocaleContext, LocaleMode};
-use crate::service;
-
-use crate::admin::handlers::shared::{
-    apply_display_conditions, build_field_contexts, check_access_or_forbid, enrich_field_contexts,
-    forbidden, get_event_user, get_user_doc, html_with_toast, htmx_redirect, redirect_response,
-    server_error, split_sidebar_fields, translate_validation_errors,
+use crate::{
+    admin::{
+        AdminState,
+        context::{ContextBuilder, PageType},
+        handlers::{
+            collections::{
+                forms::{
+                    extract_join_data_from_form, parse_multipart_form, transform_select_has_many,
+                },
+                shared::{
+                    cleanup_created_files, collect_upload_hidden_fields, render_upload_error,
+                },
+            },
+            shared::{
+                apply_display_conditions, build_field_contexts, check_access_or_forbid,
+                enrich_field_contexts, forbidden, get_event_user, get_user_doc, html_with_toast,
+                htmx_redirect, redirect_response, server_error, split_sidebar_fields,
+                translate_validation_errors,
+            },
+        },
+    },
+    core::{
+        auth::AuthUser,
+        event::{EventOperation, EventTarget},
+        upload,
+        validate::ValidationError,
+    },
+    db::query::{AccessResult, LocaleContext, LocaleMode},
+    service,
 };
-
-use crate::admin::handlers::collections::forms::{
-    extract_join_data_from_form, parse_multipart_form, transform_select_has_many,
-};
-use crate::admin::handlers::collections::shared::{
-    cleanup_created_files, collect_upload_hidden_fields, render_upload_error,
-};
-use crate::core::upload::inject_upload_metadata;
 
 /// POST /admin/collections/{slug} — create a new item
 pub async fn create_action(
     State(state): State<AdminState>,
     Path(slug): Path<String>,
     auth_user: Option<Extension<AuthUser>>,
-    request: axum::extract::Request,
-) -> axum::response::Response {
+    request: Request,
+) -> Response {
     let def = match state.registry.get_collection(&slug) {
         Some(d) => d.clone(),
         None => return redirect_response("/admin/collections"),
@@ -46,8 +56,7 @@ pub async fn create_action(
             return forbidden(
                 &state,
                 "You don't have permission to create items in this collection",
-            )
-            .into_response();
+            );
         }
         Err(resp) => return resp,
         _ => {}
@@ -86,11 +95,13 @@ pub async fn create_action(
                 upload::process_upload(f, &upload_config, &config_dir, &slug_for_upload, global_max)
             })
             .await;
+
             match upload_result {
                 Ok(Ok(processed)) => {
                     queued_conversions = processed.queued_conversions.clone();
                     created_files = processed.created_files.clone();
-                    inject_upload_metadata(&mut form_data, &processed);
+
+                    upload::inject_upload_metadata(&mut form_data, &processed);
                 }
                 Ok(Err(e)) => {
                     tracing::error!("Upload processing error: {}", e);
@@ -119,26 +130,31 @@ pub async fn create_action(
     // Strip field-level create-denied fields (fail closed on pool exhaustion)
     if def.fields.iter().any(|f| f.access.create.is_some()) {
         let user_doc = get_user_doc(&auth_user);
+
         let mut conn = match state.pool.get() {
             Ok(c) => c,
             Err(e) => {
                 tracing::error!("Field access check pool error: {}", e);
-                return server_error(&state, "Database error").into_response();
+                return server_error(&state, "Database error");
             }
         };
+
         let tx = match conn.transaction() {
             Ok(t) => t,
             Err(e) => {
                 tracing::error!("Field access check tx error: {}", e);
-                return server_error(&state, "Database error").into_response();
+                return server_error(&state, "Database error");
             }
         };
+
         let denied =
             state
                 .hook_runner
                 .check_field_write_access(&def.fields, user_doc, "create", &tx);
+
         // Read-only access check — commit result is irrelevant, rollback on drop is safe
         let _ = tx.commit();
+
         for name in &denied {
             form_data.remove(name);
         }
@@ -160,8 +176,7 @@ pub async fn create_action(
                     "collections/edit_form",
                     &serde_json::json!({}),
                     &e.to_string(),
-                )
-                .into_response();
+                );
             }
         }
     }
@@ -192,7 +207,8 @@ pub async fn create_action(
         _ => None,
     });
     let ui_locale = auth_user.as_ref().map(|Extension(au)| au.ui_locale.clone());
-    let result = tokio::task::spawn_blocking(move || {
+
+    let result = task::spawn_blocking(move || {
         service::create_document(
             &pool,
             &runner,
@@ -265,6 +281,7 @@ pub async fn create_action(
                 let toast_msg = state.translations.get(locale, "validation.error_summary");
                 let mut fields =
                     build_field_contexts(&def.fields, &form_data_clone, &error_map, true, false);
+
                 enrich_field_contexts(
                     &mut fields,
                     &def.fields,
@@ -275,12 +292,14 @@ pub async fn create_action(
                     &error_map,
                     None,
                 );
-                let form_json = serde_json::json!(
+
+                let form_json = json!(
                     form_data_clone
                         .iter()
-                        .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
-                        .collect::<serde_json::Map<String, serde_json::Value>>()
+                        .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+                        .collect::<Map<String, Value>>()
                 );
+
                 apply_display_conditions(
                     &mut fields,
                     &def.fields,
@@ -288,7 +307,9 @@ pub async fn create_action(
                     &state.hook_runner,
                     true,
                 );
+
                 let (main_fields, sidebar_fields) = split_sidebar_fields(fields);
+
                 let mut data = ContextBuilder::new(&state, None)
                     .locale_from_auth(&auth_user)
                     .page(
@@ -297,19 +318,21 @@ pub async fn create_action(
                     )
                     .set(
                         "page_title",
-                        serde_json::json!(format!("Create {}", def.singular_name())),
+                        json!(format!("Create {}", def.singular_name())),
                     )
                     .collection_def(&def)
                     .fields(main_fields)
-                    .set("sidebar_fields", serde_json::json!(sidebar_fields))
-                    .set("editing", serde_json::json!(false))
-                    .set("has_drafts", serde_json::json!(def.has_drafts()))
+                    .set("sidebar_fields", json!(sidebar_fields))
+                    .set("editing", json!(false))
+                    .set("has_drafts", json!(def.has_drafts()))
                     .build();
+
                 // Preserve upload metadata as hidden inputs so they survive form re-submission
                 if def.is_upload_collection() {
                     data["upload_hidden_fields"] =
                         collect_upload_hidden_fields(&def.fields, &form_data_clone);
                 }
+
                 html_with_toast(&state, "collections/edit", &data, toast_msg)
             } else {
                 tracing::error!("Create error: {}", e);

@@ -1,20 +1,28 @@
 //! SSE endpoint for real-time mutation events in the admin UI.
 
-use std::collections::HashSet;
-use std::convert::Infallible;
-use std::future::Future;
-use std::pin::Pin;
-use std::task::{Context, Poll};
-use std::time::Duration;
+use std::{
+    collections::HashSet,
+    convert::Infallible,
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
+    time::Duration,
+};
 
-use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::{Extension, extract::State};
+use serde_json::json;
 use tokio_stream::{Stream, StreamExt, wrappers::BroadcastStream};
 use tokio_util::sync::WaitForCancellationFutureOwned;
 
-use crate::admin::AdminState;
-use crate::core::auth::AuthUser;
-use crate::db::query::AccessResult;
+use crate::{
+    admin::AdminState,
+    core::{
+        auth::AuthUser,
+        event::{EventOperation, EventTarget},
+    },
+    db::query::AccessResult,
+};
 
 /// Stream wrapper that ends when a CancellationToken fires.
 struct CancellableStream {
@@ -48,7 +56,7 @@ impl Stream for CancellableStream {
 #[cfg(not(tarpaulin_include))]
 pub async fn sse_handler(
     State(state): State<AdminState>,
-    auth_user: Option<axum::Extension<AuthUser>>,
+    auth_user: Option<Extension<AuthUser>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let event_bus = state.event_bus.clone();
     let shutdown = state.shutdown.clone();
@@ -102,32 +110,30 @@ pub async fn sse_handler(
 
     let stream = if let Some(bus) = event_bus {
         let rx = bus.subscribe();
+
         let filtered = BroadcastStream::new(rx).filter_map(move |result| {
             match result {
                 Ok(event) => {
                     let allowed = match event.target {
-                        crate::core::event::EventTarget::Collection => {
-                            allowed_collections.contains(&event.collection)
-                        }
-                        crate::core::event::EventTarget::Global => {
-                            allowed_globals.contains(&event.collection)
-                        }
+                        EventTarget::Collection => allowed_collections.contains(&event.collection),
+                        EventTarget::Global => allowed_globals.contains(&event.collection),
                     };
                     if !allowed {
                         return None;
                     }
 
                     let target_str = match event.target {
-                        crate::core::event::EventTarget::Collection => "collection",
-                        crate::core::event::EventTarget::Global => "global",
-                    };
-                    let op_str = match event.operation {
-                        crate::core::event::EventOperation::Create => "create",
-                        crate::core::event::EventOperation::Update => "update",
-                        crate::core::event::EventOperation::Delete => "delete",
+                        EventTarget::Collection => "collection",
+                        EventTarget::Global => "global",
                     };
 
-                    let payload = serde_json::json!({
+                    let op_str = match event.operation {
+                        EventOperation::Create => "create",
+                        EventOperation::Update => "update",
+                        EventOperation::Delete => "delete",
+                    };
+
+                    let payload = json!({
                         "sequence": event.sequence,
                         "timestamp": event.timestamp,
                         "target": target_str,
@@ -147,10 +153,12 @@ pub async fn sse_handler(
                 Err(_) => None, // lagged — skip
             }
         });
+
         Box::pin(filtered) as Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>>
     } else {
         // No event bus — return an empty stream that never yields
         let empty = tokio_stream::empty();
+
         Box::pin(empty) as Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>>
     };
 

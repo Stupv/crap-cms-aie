@@ -66,40 +66,48 @@ pub(super) fn substitute_env_vars(input: &str) -> Result<String> {
 mod tests {
     use super::*;
 
+    unsafe fn set_env(key: &str, val: &str) {
+        unsafe { std::env::set_var(key, val) };
+    }
+
+    unsafe fn remove_env(key: &str) {
+        unsafe { std::env::remove_var(key) };
+    }
+
     #[test]
     fn env_subst_simple() {
-        std::env::set_var("CRAP_TEST_HOST", "127.0.0.1");
+        unsafe { set_env("CRAP_TEST_HOST", "127.0.0.1") };
         let result = substitute_env_vars("host = \"${CRAP_TEST_HOST}\"").unwrap();
         assert_eq!(result, "host = \"127.0.0.1\"");
-        std::env::remove_var("CRAP_TEST_HOST");
+        unsafe { remove_env("CRAP_TEST_HOST") };
     }
 
     #[test]
     fn env_subst_with_default() {
-        std::env::remove_var("CRAP_TEST_MISSING");
+        unsafe { remove_env("CRAP_TEST_MISSING") };
         let result = substitute_env_vars("port = ${CRAP_TEST_MISSING:-3000}").unwrap();
         assert_eq!(result, "port = 3000");
     }
 
     #[test]
     fn env_subst_default_not_used_when_set() {
-        std::env::set_var("CRAP_TEST_PORT", "8080");
+        unsafe { set_env("CRAP_TEST_PORT", "8080") };
         let result = substitute_env_vars("port = ${CRAP_TEST_PORT:-3000}").unwrap();
         assert_eq!(result, "port = 8080");
-        std::env::remove_var("CRAP_TEST_PORT");
+        unsafe { remove_env("CRAP_TEST_PORT") };
     }
 
     #[test]
     fn env_subst_empty_uses_default() {
-        std::env::set_var("CRAP_TEST_EMPTY", "");
+        unsafe { set_env("CRAP_TEST_EMPTY", "") };
         let result = substitute_env_vars("val = \"${CRAP_TEST_EMPTY:-fallback}\"").unwrap();
         assert_eq!(result, "val = \"fallback\"");
-        std::env::remove_var("CRAP_TEST_EMPTY");
+        unsafe { remove_env("CRAP_TEST_EMPTY") };
     }
 
     #[test]
     fn env_subst_missing_no_default_errors() {
-        std::env::remove_var("CRAP_TEST_NOEXIST_XYZ");
+        unsafe { remove_env("CRAP_TEST_NOEXIST_XYZ") };
         let result = substitute_env_vars("secret = \"${CRAP_TEST_NOEXIST_XYZ}\"");
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
@@ -108,12 +116,12 @@ mod tests {
 
     #[test]
     fn env_subst_multiple() {
-        std::env::set_var("CRAP_TEST_A", "hello");
-        std::env::set_var("CRAP_TEST_B", "world");
+        unsafe { set_env("CRAP_TEST_A", "hello") };
+        unsafe { set_env("CRAP_TEST_B", "world") };
         let result = substitute_env_vars("${CRAP_TEST_A} ${CRAP_TEST_B}").unwrap();
         assert_eq!(result, "hello world");
-        std::env::remove_var("CRAP_TEST_A");
-        std::env::remove_var("CRAP_TEST_B");
+        unsafe { remove_env("CRAP_TEST_A") };
+        unsafe { remove_env("CRAP_TEST_B") };
     }
 
     #[test]
@@ -125,7 +133,7 @@ mod tests {
 
     #[test]
     fn env_subst_in_toml_load() {
-        std::env::set_var("CRAP_TEST_ADMIN_PORT", "9999");
+        unsafe { set_env("CRAP_TEST_ADMIN_PORT", "9999") };
         let tmp = tempfile::tempdir().expect("tempdir");
         std::fs::write(
             tmp.path().join("crap.toml"),
@@ -135,12 +143,12 @@ mod tests {
         let config = crate::config::CrapConfig::load(tmp.path()).unwrap();
         assert_eq!(config.server.admin_port, 9999);
         assert_eq!(config.server.host, "0.0.0.0");
-        std::env::remove_var("CRAP_TEST_ADMIN_PORT");
+        unsafe { remove_env("CRAP_TEST_ADMIN_PORT") };
     }
 
     #[test]
     fn env_subst_ignores_comments() {
-        std::env::remove_var("CRAP_TEST_UNSET_COMMENT_VAR");
+        unsafe { remove_env("CRAP_TEST_UNSET_COMMENT_VAR") };
         let tmp = tempfile::tempdir().expect("tempdir");
         std::fs::write(
             tmp.path().join("crap.toml"),
@@ -154,7 +162,7 @@ mod tests {
 
     #[test]
     fn env_subst_in_string_values_via_load() {
-        std::env::set_var("CRAP_TEST_SMTP_HOST", "mail.example.com");
+        unsafe { set_env("CRAP_TEST_SMTP_HOST", "mail.example.com") };
         let tmp = tempfile::tempdir().expect("tempdir");
         std::fs::write(
             tmp.path().join("crap.toml"),
@@ -163,21 +171,21 @@ mod tests {
         .unwrap();
         let config = crate::config::CrapConfig::load(tmp.path()).unwrap();
         assert_eq!(config.email.smtp_host, "mail.example.com");
-        std::env::remove_var("CRAP_TEST_SMTP_HOST");
+        unsafe { remove_env("CRAP_TEST_SMTP_HOST") };
     }
 
     #[test]
     fn substitute_in_value_string() {
-        std::env::set_var("CRAP_TEST_SIV", "replaced");
+        unsafe { set_env("CRAP_TEST_SIV", "replaced") };
         let mut val = toml::Value::String("${CRAP_TEST_SIV}".to_string());
         substitute_in_value(&mut val).unwrap();
         assert_eq!(val.as_str().unwrap(), "replaced");
-        std::env::remove_var("CRAP_TEST_SIV");
+        unsafe { remove_env("CRAP_TEST_SIV") };
     }
 
     #[test]
     fn substitute_in_value_table() {
-        std::env::set_var("CRAP_TEST_SIV2", "value2");
+        unsafe { set_env("CRAP_TEST_SIV2", "value2") };
         let mut tbl = toml::map::Map::new();
         tbl.insert(
             "key".to_string(),
@@ -188,12 +196,12 @@ mod tests {
         substitute_in_value(&mut val).unwrap();
         assert_eq!(val.get("key").unwrap().as_str().unwrap(), "value2");
         assert_eq!(val.get("num").unwrap().as_integer().unwrap(), 42);
-        std::env::remove_var("CRAP_TEST_SIV2");
+        unsafe { remove_env("CRAP_TEST_SIV2") };
     }
 
     #[test]
     fn substitute_in_value_array() {
-        std::env::set_var("CRAP_TEST_SIV3", "item");
+        unsafe { set_env("CRAP_TEST_SIV3", "item") };
         let mut val = toml::Value::Array(vec![
             toml::Value::String("${CRAP_TEST_SIV3}".to_string()),
             toml::Value::Boolean(true),
@@ -201,7 +209,7 @@ mod tests {
         substitute_in_value(&mut val).unwrap();
         assert_eq!(val.as_array().unwrap()[0].as_str().unwrap(), "item");
         assert!(val.as_array().unwrap()[1].as_bool().unwrap());
-        std::env::remove_var("CRAP_TEST_SIV3");
+        unsafe { remove_env("CRAP_TEST_SIV3") };
     }
 
     #[test]

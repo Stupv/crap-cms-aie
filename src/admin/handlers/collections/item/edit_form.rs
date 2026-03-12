@@ -1,38 +1,46 @@
 use anyhow::Context as _;
+use anyhow::Error;
 use axum::{
     Extension,
     extract::{Path, State},
-    response::IntoResponse,
+    http::HeaderMap,
+    response::Response,
 };
+use serde_json::{Value, json};
 use std::collections::HashMap;
+use tokio::task;
 
-use crate::admin::AdminState;
-use crate::admin::context::{Breadcrumb, ContextBuilder, PageType};
-use crate::core::auth::{AuthUser, Claims};
-use crate::core::upload;
-use crate::db::query::AccessResult;
-use crate::db::{ops, query};
-
-use crate::admin::handlers::shared::{
-    apply_display_conditions, build_field_contexts, build_locale_template_data,
-    check_access_or_forbid, enrich_field_contexts, extract_editor_locale,
-    fetch_version_sidebar_data, forbidden, get_user_doc, is_non_default_locale, not_found,
-    render_or_error, server_error, split_sidebar_fields, strip_denied_fields,
+use crate::{
+    admin::{
+        AdminState,
+        context::{Breadcrumb, ContextBuilder, PageType},
+        handlers::shared::{
+            apply_display_conditions, build_field_contexts, build_locale_template_data,
+            check_access_or_forbid, enrich_field_contexts, extract_editor_locale,
+            fetch_version_sidebar_data, forbidden, get_user_doc, is_non_default_locale, not_found,
+            render_or_error, server_error, split_sidebar_fields, strip_denied_fields,
+        },
+    },
+    core::{
+        auth::{AuthUser, Claims},
+        field::FieldType,
+        upload,
+    },
+    db::{ops, query, query::AccessResult},
 };
-use crate::core::field::FieldType;
 
 /// GET /admin/collections/{slug}/{id} — show edit form
 pub async fn edit_form(
     State(state): State<AdminState>,
     Path((slug, id)): Path<(String, String)>,
-    headers: axum::http::HeaderMap,
+    headers: HeaderMap,
     claims: Option<Extension<Claims>>,
     auth_user: Option<Extension<AuthUser>>,
-) -> impl IntoResponse {
+) -> Response {
     let def = match state.registry.get_collection(&slug) {
         Some(d) => d.clone(),
         None => {
-            return not_found(&state, &format!("Collection '{}' not found", slug)).into_response();
+            return not_found(&state, &format!("Collection '{}' not found", slug));
         }
     };
 
@@ -48,7 +56,7 @@ pub async fn edit_form(
         Err(resp) => return resp,
     };
     if matches!(access_result, AccessResult::Denied) {
-        return forbidden(&state, "You don't have permission to view this item").into_response();
+        return forbidden(&state, "You don't have permission to view this item");
     }
 
     let editor_locale = extract_editor_locale(&headers, &state.config.locale);
@@ -67,8 +75,10 @@ pub async fn edit_form(
         None
     };
     let has_drafts = def.has_drafts();
-    let read_result = tokio::task::spawn_blocking(move || {
+
+    let read_result = task::spawn_blocking(move || {
         runner.fire_before_read(&hooks, &slug_owned, "find_by_id", HashMap::new())?;
+
         let conn = pool.get().context("DB connection")?;
         let mut doc = ops::find_by_id_full(
             &conn,
@@ -79,6 +89,7 @@ pub async fn edit_form(
             access_constraints,
             has_drafts,
         )?;
+
         // Assemble sizes for upload collections
         if let Some(ref mut d) = doc {
             if let Some(ref upload_config) = def_owned.upload {
@@ -87,50 +98,57 @@ pub async fn edit_form(
                 }
             }
         }
+
         let doc = doc.map(|d| {
             runner.apply_after_read(&hooks, &fields, &slug_owned, "find_by_id", d, None, None)
         });
-        Ok::<_, anyhow::Error>(doc)
+
+        Ok::<_, Error>(doc)
     })
     .await;
 
     let mut document = match read_result {
         Ok(Ok(Some(doc))) => doc,
         Ok(Ok(None)) => {
-            return not_found(&state, &format!("Document '{}' not found", id)).into_response();
+            return not_found(&state, &format!("Document '{}' not found", id));
         }
         Ok(Err(e)) => {
             tracing::error!("Document edit query error: {}", e);
-            return server_error(&state, "An internal error occurred.").into_response();
+            return server_error(&state, "An internal error occurred.");
         }
         Err(e) => {
             tracing::error!("Document edit task error: {}", e);
-            return server_error(&state, "An internal error occurred.").into_response();
+            return server_error(&state, "An internal error occurred.");
         }
     };
 
     // Strip field-level read-denied fields (fail closed on pool exhaustion)
     if def.fields.iter().any(|f| f.access.read.is_some()) {
         let user_doc = get_user_doc(&auth_user);
+
         let mut conn = match state.pool.get() {
             Ok(c) => c,
             Err(e) => {
                 tracing::error!("Field access check pool error: {}", e);
-                return server_error(&state, "Database error").into_response();
+                return server_error(&state, "Database error");
             }
         };
+
         let tx = match conn.transaction() {
             Ok(t) => t,
             Err(e) => {
                 tracing::error!("Field access check tx error: {}", e);
-                return server_error(&state, "Database error").into_response();
+                return server_error(&state, "Database error");
             }
         };
+
         let denied = state
             .hook_runner
             .check_field_read_access(&def.fields, user_doc, &tx);
+
         // Read-only access check — commit result is irrelevant, rollback on drop is safe
         let _ = tx.commit();
+
         strip_denied_fields(&mut document.fields, &denied);
     }
 
@@ -141,7 +159,7 @@ pub async fn edit_form(
             // Group fields are hydrated as nested objects — flatten back to
             // prefixed column names (e.g. location → location__venue_name)
             // so that build_field_contexts can find the sub-field values.
-            if let serde_json::Value::Object(obj) = v {
+            if let Value::Object(obj) = v {
                 if def
                     .fields
                     .iter()
@@ -152,10 +170,10 @@ pub async fn edit_form(
                         .map(|(sub_k, sub_v)| {
                             let col = format!("{}__{}", k, sub_k);
                             let s = match sub_v {
-                                serde_json::Value::String(s) => s.clone(),
-                                serde_json::Value::Number(n) => n.to_string(),
-                                serde_json::Value::Bool(b) => b.to_string(),
-                                serde_json::Value::Null => String::new(),
+                                Value::String(s) => s.clone(),
+                                Value::Number(n) => n.to_string(),
+                                Value::Bool(b) => b.to_string(),
+                                Value::Null => String::new(),
                                 other => other.to_string(),
                             };
                             (col, s)
@@ -164,10 +182,10 @@ pub async fn edit_form(
                 }
             }
             let s = match v {
-                serde_json::Value::String(s) => s.clone(),
-                serde_json::Value::Number(n) => n.to_string(),
-                serde_json::Value::Bool(b) => b.to_string(),
-                serde_json::Value::Null => String::new(),
+                Value::String(s) => s.clone(),
+                Value::Number(n) => n.to_string(),
+                Value::Bool(b) => b.to_string(),
+                Value::Null => String::new(),
                 other => other.to_string(),
             };
             vec![(k.clone(), s)]
@@ -196,7 +214,7 @@ pub async fn edit_form(
     );
 
     // Evaluate display conditions with document data
-    let form_data_json = serde_json::json!(document.fields);
+    let form_data_json = json!(document.fields);
     apply_display_conditions(
         &mut fields,
         &def.fields,
@@ -206,7 +224,7 @@ pub async fn edit_form(
     );
 
     if def.is_auth_collection() {
-        fields.push(serde_json::json!({
+        fields.push(json!({
             "name": "password",
             "field_type": "password",
             "label": "Password",
@@ -222,7 +240,7 @@ pub async fn edit_form(
             .ok()
             .and_then(|conn| query::auth::is_locked(&conn, &slug, &id).ok())
             .unwrap_or(false);
-        fields.push(serde_json::json!({
+        fields.push(json!({
             "name": "_locked",
             "field_type": "checkbox",
             "label": "Account locked",
@@ -253,7 +271,7 @@ pub async fn edit_form(
     } else {
         String::new()
     };
-    let (versions, total_versions): (Vec<serde_json::Value>, i64) = if has_versions {
+    let (versions, total_versions): (Vec<Value>, i64) = if has_versions {
         fetch_version_sidebar_data(&state.pool, &slug, &document.id)
     } else {
         (vec![], 0)
@@ -267,26 +285,23 @@ pub async fn edit_form(
             PageType::CollectionEdit,
             format!("Edit {}", def.singular_name()),
         )
-        .set(
-            "page_title",
-            serde_json::json!(format!("Edit {}", def.singular_name())),
-        )
+        .set("page_title", json!(format!("Edit {}", def.singular_name())))
         .collection_def(&def)
         .document_with_status(&document, &doc_status)
         .fields(main_fields)
-        .set("sidebar_fields", serde_json::json!(sidebar_fields))
-        .set("editing", serde_json::json!(true))
-        .set("has_drafts", serde_json::json!(has_drafts))
-        .set("has_versions", serde_json::json!(has_versions))
-        .set("versions", serde_json::json!(versions))
-        .set("has_more_versions", serde_json::json!(total_versions > 3))
+        .set("sidebar_fields", json!(sidebar_fields))
+        .set("editing", json!(true))
+        .set("has_drafts", json!(has_drafts))
+        .set("has_versions", json!(has_versions))
+        .set("versions", json!(versions))
+        .set("has_more_versions", json!(total_versions > 3))
         .set(
             "restore_url_prefix",
-            serde_json::json!(format!("/admin/collections/{}/{}", slug, id)),
+            json!(format!("/admin/collections/{}/{}", slug, id)),
         )
         .set(
             "versions_url",
-            serde_json::json!(format!("/admin/collections/{}/{}/versions", slug, id)),
+            json!(format!("/admin/collections/{}/{}/versions", slug, id)),
         )
         .breadcrumbs(vec![
             Breadcrumb::link("Collections", "/admin/collections"),
@@ -298,10 +313,10 @@ pub async fn edit_form(
 
     // Add upload context for upload collections
     if def.is_upload_collection() {
-        let mut upload_ctx = serde_json::json!({});
+        let mut upload_ctx = json!({});
         if let Some(ref u) = def.upload {
             if !u.mime_types.is_empty() {
-                upload_ctx["accept"] = serde_json::json!(u.mime_types.join(","));
+                upload_ctx["accept"] = json!(u.mime_types.join(","));
             }
         }
 
@@ -329,10 +344,10 @@ pub async fn edit_form(
         let focal_x = document.fields.get("focal_x").and_then(|v| v.as_f64());
         let focal_y = document.fields.get("focal_y").and_then(|v| v.as_f64());
         if let Some(fx) = focal_x {
-            upload_ctx["focal_x"] = serde_json::json!(fx);
+            upload_ctx["focal_x"] = json!(fx);
         }
         if let Some(fy) = focal_y {
-            upload_ctx["focal_y"] = serde_json::json!(fy);
+            upload_ctx["focal_y"] = json!(fy);
         }
 
         // Show preview for images
@@ -353,19 +368,19 @@ pub async fn edit_form(
                             .map(|s| s.to_string())
                     })
                     .unwrap_or_else(|| url.to_string());
-                upload_ctx["preview"] = serde_json::json!(preview_url);
+                upload_ctx["preview"] = json!(preview_url);
             }
         }
 
         if let Some(fname) = filename {
-            let mut info = serde_json::json!({
+            let mut info = json!({
                 "filename": fname,
             });
             if let Some(size) = filesize {
-                info["filesize_display"] = serde_json::json!(upload::format_filesize(size));
+                info["filesize_display"] = json!(upload::format_filesize(size));
             }
             if let (Some(w), Some(h)) = (width, height) {
-                info["dimensions"] = serde_json::json!(format!("{}x{}", w, h));
+                info["dimensions"] = json!(format!("{}x{}", w, h));
             }
             upload_ctx["info"] = info;
         }
@@ -374,5 +389,5 @@ pub async fn edit_form(
 
     let data = state.hook_runner.run_before_render(data);
 
-    render_or_error(&state, "collections/edit", &data).into_response()
+    render_or_error(&state, "collections/edit", &data)
 }

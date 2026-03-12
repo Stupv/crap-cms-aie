@@ -2,10 +2,27 @@
 
 mod field_types;
 
-use crate::admin::handlers::field_context::builder::apply_field_type_extras;
-use crate::admin::handlers::field_context::{MAX_FIELD_DEPTH, count_errors_in_fields};
-use crate::admin::handlers::shared::auto_label_from_name;
-use crate::core::field::FieldType;
+use crate::{
+    admin::{
+        AdminState,
+        handlers::{
+            field_context::{
+                MAX_FIELD_DEPTH, builder::apply_field_type_extras, count_errors_in_fields,
+            },
+            shared::auto_label_from_name,
+        },
+    },
+    core::{
+        Registry,
+        field::{FieldDefinition, FieldType, RelationshipConfig},
+        upload,
+    },
+    db::query::{self, LocaleContext},
+};
+
+use rusqlite::Connection;
+use serde_json::{Value, json};
+
 use std::collections::HashMap;
 
 /// Build a sub-field context for a single field within an array/blocks row,
@@ -20,14 +37,14 @@ use std::collections::HashMap;
 /// - Leaf fields get `parent_name[field_name]` names and their specific value
 /// - Recursion handles arbitrary nesting depth (Row inside Tabs inside Array, etc.)
 pub fn build_enriched_children_from_data(
-    fields: &[crate::core::field::FieldDefinition],
-    data: Option<&serde_json::Value>,
+    fields: &[FieldDefinition],
+    data: Option<&Value>,
     parent_name: &str,
     locale_locked: bool,
     non_default_locale: bool,
     depth: usize,
     errors: &HashMap<String, String>,
-) -> Vec<serde_json::Value> {
+) -> Vec<Value> {
     if depth >= MAX_FIELD_DEPTH {
         return Vec::new();
     }
@@ -56,8 +73,8 @@ pub fn build_enriched_children_from_data(
 
             let child_val = child_raw
                 .map(|v| match v {
-                    serde_json::Value::String(s) => s.clone(),
-                    serde_json::Value::Null => String::new(),
+                    Value::String(s) => s.clone(),
+                    Value::Null => String::new(),
                     other => {
                         if is_wrapper {
                             String::new()
@@ -75,7 +92,7 @@ pub fn build_enriched_children_from_data(
                 .map(|ls| ls.resolve_default().to_string())
                 .unwrap_or_else(|| auto_label_from_name(&child.name));
 
-            let mut child_ctx = serde_json::json!({
+            let mut child_ctx = json!({
                 "name": child_name,
                 "field_type": child.field_type.as_str(),
                 "label": child_label,
@@ -88,7 +105,7 @@ pub fn build_enriched_children_from_data(
             });
 
             if let Some(err) = errors.get(&child_name) {
-                child_ctx["error"] = serde_json::json!(err);
+                child_ctx["error"] = json!(err);
             }
 
             match child.field_type {
@@ -102,9 +119,11 @@ pub fn build_enriched_children_from_data(
                         depth + 1,
                         errors,
                     );
-                    child_ctx["sub_fields"] = serde_json::json!(sub_fields);
+
+                    child_ctx["sub_fields"] = json!(sub_fields);
+
                     if child.field_type == FieldType::Collapsible {
-                        child_ctx["collapsed"] = serde_json::json!(child.admin.collapsed);
+                        child_ctx["collapsed"] = json!(child.admin.collapsed);
                     }
                 }
                 FieldType::Tabs => {
@@ -121,21 +140,27 @@ pub fn build_enriched_children_from_data(
                                 depth + 1,
                                 errors,
                             );
+
                             let error_count = count_errors_in_fields(&tab_sub_fields);
-                            let mut tab_ctx = serde_json::json!({
+
+                            let mut tab_ctx = json!({
                                 "label": &tab.label,
                                 "sub_fields": tab_sub_fields,
                             });
+
                             if error_count > 0 {
-                                tab_ctx["error_count"] = serde_json::json!(error_count);
+                                tab_ctx["error_count"] = json!(error_count);
                             }
+
                             if let Some(ref desc) = tab.description {
-                                tab_ctx["description"] = serde_json::json!(desc);
+                                tab_ctx["description"] = json!(desc);
                             }
+
                             tab_ctx
                         })
                         .collect();
-                    child_ctx["tabs"] = serde_json::json!(tabs_ctx);
+
+                    child_ctx["tabs"] = json!(tabs_ctx);
                 }
                 _ => {
                     apply_field_type_extras(
@@ -165,15 +190,15 @@ pub fn build_enriched_children_from_data(
 /// `non_default_locale`: whether we're on a non-default locale
 /// `depth`: nesting depth
 pub fn build_enriched_sub_field_context(
-    sf: &crate::core::field::FieldDefinition,
-    raw_value: Option<&serde_json::Value>,
+    sf: &FieldDefinition,
+    raw_value: Option<&Value>,
     parent_name: &str,
     idx: usize,
     locale_locked: bool,
     non_default_locale: bool,
     depth: usize,
     errors: &HashMap<String, String>,
-) -> serde_json::Value {
+) -> Value {
     let indexed_name = if matches!(
         sf.field_type,
         FieldType::Tabs | FieldType::Row | FieldType::Collapsible
@@ -186,8 +211,8 @@ pub fn build_enriched_sub_field_context(
     // For scalar types, stringify the value. For composites, keep structured.
     let val = raw_value
         .map(|v| match v {
-            serde_json::Value::String(s) => s.clone(),
-            serde_json::Value::Null => String::new(),
+            Value::String(s) => s.clone(),
+            Value::Null => String::new(),
             other => match sf.field_type {
                 FieldType::Array
                 | FieldType::Blocks
@@ -207,7 +232,7 @@ pub fn build_enriched_sub_field_context(
         .map(|ls| ls.resolve_default().to_string())
         .unwrap_or_else(|| auto_label_from_name(&sf.name));
 
-    let mut sub_ctx = serde_json::json!({
+    let mut sub_ctx = json!({
         "name": indexed_name,
         "field_type": sf.field_type.as_str(),
         "label": sf_label,
@@ -220,7 +245,7 @@ pub fn build_enriched_sub_field_context(
     });
 
     if let Some(err) = errors.get(&indexed_name) {
-        sub_ctx["error"] = serde_json::json!(err);
+        sub_ctx["error"] = json!(err);
     }
 
     if depth >= MAX_FIELD_DEPTH {
@@ -298,17 +323,17 @@ pub fn build_enriched_sub_field_context(
 /// Polymorphic values are stored as "collection/id" composites. Each item is
 /// looked up in its respective collection to get its label.
 pub fn enrich_polymorphic_selected(
-    rc: &crate::core::field::RelationshipConfig,
+    rc: &RelationshipConfig,
     field_name: &str,
-    doc_fields: &HashMap<String, serde_json::Value>,
-    reg: &crate::core::Registry,
-    conn: &rusqlite::Connection,
-    locale_ctx: Option<&crate::db::query::LocaleContext>,
-) -> Vec<serde_json::Value> {
+    doc_fields: &HashMap<String, Value>,
+    reg: &Registry,
+    conn: &Connection,
+    locale_ctx: Option<&LocaleContext>,
+) -> Vec<Value> {
     // Parse "collection/id" refs
     let refs: Vec<(String, String)> = if rc.has_many {
         match doc_fields.get(field_name) {
-            Some(serde_json::Value::Array(arr)) => arr
+            Some(Value::Array(arr)) => arr
                 .iter()
                 .filter_map(|v| {
                     v.as_str().and_then(|s| {
@@ -326,7 +351,7 @@ pub fn enrich_polymorphic_selected(
         }
     } else {
         match doc_fields.get(field_name) {
-            Some(serde_json::Value::String(s)) if !s.is_empty() => {
+            Some(Value::String(s)) if !s.is_empty() => {
                 if let Some(pos) = s.find('/') {
                     let col = &s[..pos];
                     let id = &s[pos + 1..];
@@ -343,10 +368,12 @@ pub fn enrich_polymorphic_selected(
         }
     };
 
-    refs.iter().filter_map(|(col, id)| {
-        let related_def = reg.get_collection(col)?;
-        let title_field = related_def.title_field().map(|s| s.to_string());
-        crate::db::query::find_by_id(conn, col, related_def, id, locale_ctx)
+    refs.iter()
+        .filter_map(|(col, id)| {
+            let related_def = reg.get_collection(col)?;
+            let title_field = related_def.title_field().map(|s| s.to_string());
+
+            query::find_by_id(conn, col, related_def, id, locale_ctx)
             .ok()
             .flatten()
             .map(|doc| {
@@ -355,9 +382,10 @@ pub fn enrich_polymorphic_selected(
                     .unwrap_or(&doc.id)
                     .to_string();
                 // Include collection in the id so JS knows which collection this item belongs to
-                serde_json::json!({ "id": format!("{}/{}", col, doc.id), "label": label, "collection": col })
+                json!({ "id": format!("{}/{}", col, doc.id), "label": label, "collection": col })
             })
-    }).collect()
+        })
+        .collect()
 }
 
 /// Enrich field contexts with data that requires DB access:
@@ -366,17 +394,15 @@ pub fn enrich_polymorphic_selected(
 /// - Upload fields: fetch upload collection options with thumbnails
 /// - Blocks fields: populate block rows from hydrated document data
 pub fn enrich_field_contexts(
-    fields: &mut [serde_json::Value],
-    field_defs: &[crate::core::field::FieldDefinition],
-    doc_fields: &HashMap<String, serde_json::Value>,
-    state: &crate::admin::AdminState,
+    fields: &mut [Value],
+    field_defs: &[FieldDefinition],
+    doc_fields: &HashMap<String, Value>,
+    state: &AdminState,
     filter_hidden: bool,
     non_default_locale: bool,
     errors: &HashMap<String, String>,
     doc_id: Option<&str>,
 ) {
-    use crate::db::query::LocaleContext;
-
     let reg = &state.registry;
     let conn = match state.pool.get() {
         Ok(c) => c,
@@ -385,8 +411,7 @@ pub fn enrich_field_contexts(
 
     let rel_locale_ctx = LocaleContext::from_locale_string(None, &state.config.locale);
 
-    let defs_iter: Box<dyn Iterator<Item = &crate::core::field::FieldDefinition>> = if filter_hidden
-    {
+    let defs_iter: Box<dyn Iterator<Item = &FieldDefinition>> = if filter_hidden {
         Box::new(field_defs.iter().filter(|f| !f.admin.hidden))
     } else {
         Box::new(field_defs.iter())
@@ -507,15 +532,12 @@ pub fn enrich_field_contexts(
 /// Called for sub-fields inside layout containers (Row, Collapsible, Tabs, Group) and
 /// composite fields (Array, Blocks) that can't be enriched during initial context building.
 pub fn enrich_nested_fields(
-    sub_fields: &mut [serde_json::Value],
-    field_defs: &[crate::core::field::FieldDefinition],
+    sub_fields: &mut [Value],
+    field_defs: &[FieldDefinition],
     conn: &rusqlite::Connection,
     reg: &crate::core::Registry,
-    rel_locale_ctx: Option<&crate::db::query::LocaleContext>,
+    rel_locale_ctx: Option<&query::LocaleContext>,
 ) {
-    use crate::core::upload;
-    use crate::db::query;
-
     for (ctx, field_def) in sub_fields.iter_mut().zip(field_defs.iter()) {
         match field_def.field_type {
             FieldType::Relationship => {
@@ -530,6 +552,7 @@ pub fn enrich_nested_fields(
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string();
+
                             if !current_value.is_empty() {
                                 if let Ok(Some(doc)) = query::find_by_id(
                                     conn,
@@ -543,13 +566,14 @@ pub fn enrich_nested_fields(
                                         .and_then(|f| doc.get_str(f))
                                         .unwrap_or(&doc.id)
                                         .to_string();
+
                                     ctx["selected_items"] =
-                                        serde_json::json!([{ "id": doc.id, "label": label }]);
+                                        json!([{ "id": doc.id, "label": label }]);
                                 } else {
-                                    ctx["selected_items"] = serde_json::json!([]);
+                                    ctx["selected_items"] = json!([]);
                                 }
                             } else {
-                                ctx["selected_items"] = serde_json::json!([]);
+                                ctx["selected_items"] = json!([]);
                             }
                         }
                     }
@@ -573,6 +597,7 @@ pub fn enrich_nested_fields(
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string();
+
                             if !current_value.is_empty() {
                                 if let Ok(Some(mut doc)) = query::find_by_id(
                                     conn,
@@ -586,6 +611,7 @@ pub fn enrich_nested_fields(
                                             upload::assemble_sizes_object(&mut doc, uc);
                                         }
                                     }
+
                                     let label = doc
                                         .get_str("filename")
                                         .or_else(|| {
@@ -610,25 +636,29 @@ pub fn enrich_nested_fields(
                                     } else {
                                         None
                                     };
-                                    let mut item =
-                                        serde_json::json!({ "id": doc.id, "label": label });
+                                    let mut item = json!({ "id": doc.id, "label": label });
+
                                     if let Some(ref url) = thumb_url {
-                                        item["thumbnail_url"] = serde_json::json!(url);
+                                        item["thumbnail_url"] = json!(url);
                                     }
+
                                     if is_image {
-                                        item["is_image"] = serde_json::json!(true);
+                                        item["is_image"] = json!(true);
                                     }
-                                    item["filename"] = serde_json::json!(label);
-                                    ctx["selected_items"] = serde_json::json!([item]);
+
+                                    item["filename"] = json!(label);
+                                    ctx["selected_items"] = json!([item]);
+
                                     if let Some(url) = thumb_url {
-                                        ctx["selected_preview_url"] = serde_json::json!(url);
+                                        ctx["selected_preview_url"] = json!(url);
                                     }
-                                    ctx["selected_filename"] = serde_json::json!(label);
+
+                                    ctx["selected_filename"] = json!(label);
                                 } else {
-                                    ctx["selected_items"] = serde_json::json!([]);
+                                    ctx["selected_items"] = json!([]);
                                 }
                             } else {
-                                ctx["selected_items"] = serde_json::json!([]);
+                                ctx["selected_items"] = json!([]);
                             }
                         }
                     }
@@ -673,6 +703,7 @@ pub fn enrich_nested_fields(
                         }
                     }
                 }
+
                 // Enrich the <template> sub-fields so new rows added via JS have upload/relationship options
                 if let Some(sub_arr) = ctx.get_mut("sub_fields").and_then(|v| v.as_array_mut()) {
                     enrich_nested_fields(sub_arr, &field_def.fields, conn, reg, rel_locale_ctx);
@@ -686,6 +717,7 @@ pub fn enrich_nested_fields(
                             .get("_block_type")
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
+
                         if let Some(block_def) = field_def
                             .blocks
                             .iter()
@@ -705,6 +737,7 @@ pub fn enrich_nested_fields(
                         }
                     }
                 }
+
                 // Enrich block definition templates so new block rows have upload/relationship options
                 if let Some(defs_arr) = ctx
                     .get_mut("block_definitions")

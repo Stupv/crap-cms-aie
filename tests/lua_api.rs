@@ -171,7 +171,7 @@ fn config_get_missing_returns_nil() {
 #[test]
 fn env_get_existing_var() {
     // Set a test env var
-    std::env::set_var("CRAP_TEST_VAR", "hello_from_env");
+    unsafe { std::env::set_var("CRAP_TEST_VAR", "hello_from_env") };
     let runner = setup_lua();
     let result = eval_lua(
         &runner,
@@ -181,7 +181,7 @@ fn env_get_existing_var() {
     "#,
     );
     assert_eq!(result, "hello_from_env");
-    std::env::remove_var("CRAP_TEST_VAR");
+    unsafe { std::env::remove_var("CRAP_TEST_VAR") };
 }
 
 #[test]

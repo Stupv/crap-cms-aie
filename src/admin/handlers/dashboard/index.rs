@@ -1,17 +1,22 @@
 //! Dashboard handler showing collection/global cards with document counts.
 
-use axum::{Extension, extract::State, response::Html};
+use axum::{Extension, extract::State, http::HeaderMap, response::Html};
+use serde_json::{Value, json};
 
-use crate::admin::AdminState;
-use crate::admin::context::{ContextBuilder, PageType};
-use crate::admin::handlers::shared::extract_editor_locale;
-use crate::core::auth::{AuthUser, Claims};
-use crate::db::ops::count_documents;
+use crate::{
+    admin::{
+        AdminState,
+        context::{ContextBuilder, PageType},
+        handlers::shared::extract_editor_locale,
+    },
+    core::auth::{AuthUser, Claims},
+    db::ops::count_documents,
+};
 
 /// Render the admin dashboard with collection and global summary cards.
 pub async fn index(
     State(state): State<AdminState>,
-    headers: axum::http::HeaderMap,
+    headers: HeaderMap,
     claims: Option<Extension<Claims>>,
     auth_user: Option<Extension<AuthUser>>,
 ) -> Html<String> {
@@ -19,6 +24,7 @@ pub async fn index(
     let mut global_cards = Vec::new();
     {
         let conn = state.pool.get().ok();
+
         for (slug, def) in &state.registry.collections {
             let count = count_documents(&state.pool, slug, def, &[], None).unwrap_or(0);
             let last_updated = conn.as_ref().and_then(|c| {
@@ -30,7 +36,8 @@ pub async fn index(
                 .ok()
                 .flatten()
             });
-            collection_cards.push(serde_json::json!({
+
+            collection_cards.push(json!({
                 "slug": slug,
                 "display_name": def.display_name(),
                 "singular_name": def.singular_name(),
@@ -41,6 +48,7 @@ pub async fn index(
                 "has_versions": def.has_versions(),
             }));
         }
+
         for (slug, def) in &state.registry.globals {
             let table_name = format!("_global_{}", slug);
             let last_updated = conn.as_ref().and_then(|c| {
@@ -55,7 +63,8 @@ pub async fn index(
                 .ok()
                 .flatten()
             });
-            global_cards.push(serde_json::json!({
+
+            global_cards.push(json!({
                 "slug": slug,
                 "display_name": def.display_name(),
                 "last_updated": last_updated,
@@ -63,20 +72,19 @@ pub async fn index(
             }));
         }
     }
+
     collection_cards.sort_by(|a, b| a["slug"].as_str().cmp(&b["slug"].as_str()));
     global_cards.sort_by(|a, b| a["slug"].as_str().cmp(&b["slug"].as_str()));
 
     let editor_locale = extract_editor_locale(&headers, &state.config.locale);
     let claims_ref = claims.as_ref().map(|Extension(c)| c);
+
     let data = ContextBuilder::new(&state, claims_ref)
         .locale_from_auth(&auth_user)
         .editor_locale(editor_locale.as_deref(), &state.config.locale)
         .page(PageType::Dashboard, "Dashboard")
-        .set(
-            "collection_cards",
-            serde_json::Value::Array(collection_cards),
-        )
-        .set("global_cards", serde_json::Value::Array(global_cards))
+        .set("collection_cards", Value::Array(collection_cards))
+        .set("global_cards", Value::Array(global_cards))
         .build();
 
     let data = state.hook_runner.run_before_render(data);

@@ -29,13 +29,13 @@ pub async fn reset_password_action(
             .build();
 
         return match state.render("auth/reset_password", &data) {
-            Ok(html) => Html(html).into_response(),
+            Ok(html) => Html(html),
             Err(e) => {
                 tracing::error!("Template render error: {}", e);
                 Html("<h1>Something went wrong</h1><p>Please try again.</p>".to_string())
             }
-            .into_response(),
-        };
+        }
+        .into_response();
     }
 
     if let Err(e) = state.config.auth.password_policy.validate(&form.password) {
@@ -46,13 +46,13 @@ pub async fn reset_password_action(
             .build();
 
         return match state.render("auth/reset_password", &data) {
-            Ok(html) => Html(html).into_response(),
+            Ok(html) => Html(html),
             Err(e) => {
                 tracing::error!("Template render error: {}", e);
                 Html("<h1>Something went wrong</h1><p>Please try again.</p>".to_string())
             }
-            .into_response(),
-        };
+        }
+        .into_response();
     }
 
     let pool = state.pool.clone();
@@ -97,17 +97,17 @@ pub async fn reset_password_action(
             };
             let data = ContextBuilder::auth(&state)
                 .page(PageType::AuthReset, "Reset Password")
-                .set("error", serde_json::json!(msg))
+                .set("error", json!(msg))
                 .build();
 
             match state.render("auth/reset_password", &data) {
-                Ok(html) => Html(html).into_response(),
+                Ok(html) => Html(html),
                 Err(e) => {
                     tracing::error!("Template render error: {}", e);
                     Html("<h1>Something went wrong</h1><p>Please try again.</p>".to_string())
                 }
-                .into_response(),
             }
+            .into_response()
         }
         Err(e) => {
             tracing::error!("Reset password task error: {}", e);
@@ -117,13 +117,13 @@ pub async fn reset_password_action(
                 .build();
 
             match state.render("auth/reset_password", &data) {
-                Ok(html) => Html(html).into_response(),
+                Ok(html) => Html(html),
                 Err(e) => {
                     tracing::error!("Template render error: {}", e);
                     Html("<h1>Something went wrong</h1><p>Please try again.</p>".to_string())
                 }
-                .into_response(),
             }
+            .into_response()
         }
     }
 }

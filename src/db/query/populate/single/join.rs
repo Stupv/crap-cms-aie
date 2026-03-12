@@ -262,7 +262,7 @@ mod tests {
 
         // Join field should be skipped because it's not in select
         assert!(
-            !doc.fields.get("posts"),
+            doc.fields.get("posts").is_none(),
             "join field not in select should be skipped"
         );
     }

@@ -1,25 +1,33 @@
+use anyhow::anyhow;
 use axum::{
     Extension,
     extract::{Form, Path, State},
-    response::IntoResponse,
+    response::Response,
 };
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
-use crate::admin::AdminState;
-use crate::admin::context::{ContextBuilder, PageType};
-use crate::admin::handlers::collections::forms::{
-    extract_join_data_from_form, transform_select_has_many,
-};
-use crate::core::auth::AuthUser;
-use crate::core::event::{EventOperation, EventTarget};
-use crate::core::validate::ValidationError;
-use crate::db::query::{self, AccessResult, LocaleContext, LocaleMode};
-use crate::service;
-
-use crate::admin::handlers::shared::{
-    apply_display_conditions, build_field_contexts, check_access_or_forbid, do_unpublish,
-    enrich_field_contexts, forbidden, get_event_user, get_user_doc, html_with_toast, htmx_redirect,
-    redirect_response, server_error, split_sidebar_fields, translate_validation_errors,
+use crate::{
+    admin::{
+        AdminState,
+        context::{ContextBuilder, PageType},
+        handlers::{
+            collections::forms::{extract_join_data_from_form, transform_select_has_many},
+            shared::{
+                apply_display_conditions, build_field_contexts, check_access_or_forbid,
+                do_unpublish, enrich_field_contexts, forbidden, get_event_user, get_user_doc,
+                html_with_toast, htmx_redirect, redirect_response, server_error,
+                split_sidebar_fields, translate_validation_errors,
+            },
+        },
+    },
+    core::{
+        auth::AuthUser,
+        event::{EventOperation, EventTarget},
+        validate::ValidationError,
+    },
+    db::query::{self, AccessResult, LocaleContext, LocaleMode},
+    service,
 };
 
 /// POST /admin/globals/{slug} — update a global
@@ -28,7 +36,7 @@ pub async fn update_action(
     Path(slug): Path<String>,
     auth_user: Option<Extension<AuthUser>>,
     Form(mut form_data): Form<HashMap<String, String>>,
-) -> axum::response::Response {
+) -> Response {
     let def = match state.registry.get_global(&slug) {
         Some(d) => d.clone(),
         None => return redirect_response("/admin"),
@@ -37,8 +45,7 @@ pub async fn update_action(
     // Check update access
     match check_access_or_forbid(&state, def.access.update.as_deref(), &auth_user, None, None) {
         Ok(AccessResult::Denied) => {
-            return forbidden(&state, "You don't have permission to update this global")
-                .into_response();
+            return forbidden(&state, "You don't have permission to update this global");
         }
         Err(resp) => return resp,
         _ => {}
@@ -55,26 +62,31 @@ pub async fn update_action(
     // Strip field-level update-denied fields (fail closed on pool exhaustion)
     if def.fields.iter().any(|f| f.access.update.is_some()) {
         let user_doc = get_user_doc(&auth_user);
+
         let mut conn = match state.pool.get() {
             Ok(c) => c,
             Err(e) => {
                 tracing::error!("Field access check pool error: {}", e);
-                return server_error(&state, "Database error").into_response();
+                return server_error(&state, "Database error");
             }
         };
+
         let tx = match conn.transaction() {
             Ok(t) => t,
             Err(e) => {
                 tracing::error!("Field access check tx error: {}", e);
-                return server_error(&state, "Database error").into_response();
+                return server_error(&state, "Database error");
             }
         };
+
         let denied =
             state
                 .hook_runner
                 .check_field_write_access(&def.fields, user_doc, "update", &tx);
+
         // Read-only access check — commit result is irrelevant, rollback on drop is safe
         let _ = tx.commit();
+
         for name in &denied {
             form_data.remove(name);
         }
@@ -103,13 +115,12 @@ pub async fn update_action(
         // Handle unpublish: set _status to 'draft' and create a version
         if action_owned == "unpublish" && def_owned.has_versions() {
             let global_table = format!("_global_{}", slug_owned);
-            let mut conn = pool
-                .get()
-                .map_err(|e| anyhow::anyhow!("DB connection: {}", e))?;
+            let mut conn = pool.get().map_err(|e| anyhow!("DB connection: {}", e))?;
             let tx = conn
                 .transaction()
-                .map_err(|e| anyhow::anyhow!("Start transaction: {}", e))?;
+                .map_err(|e| anyhow!("Start transaction: {}", e))?;
             let doc = query::get_global(&tx, &slug_owned, &def_owned, locale_ctx.as_ref())?;
+
             do_unpublish(
                 &tx,
                 &global_table,
@@ -118,7 +129,9 @@ pub async fn update_action(
                 def_owned.versions.as_ref(),
                 &doc,
             )?;
-            tx.commit().map_err(|e| anyhow::anyhow!("Commit: {}", e))?;
+
+            tx.commit().map_err(|e| anyhow!("Commit: {}", e))?;
+
             Ok((doc, HashMap::new()))
         } else {
             service::update_global_document(
@@ -168,11 +181,12 @@ pub async fn update_action(
                     build_field_contexts(&def.fields, &form_data_clone, &error_map, false, false);
 
                 // Enrich relationship/array/blocks fields with options and join data
-                let doc_fields: HashMap<String, serde_json::Value> = form_data_clone
+                let doc_fields: HashMap<String, Value> = form_data_clone
                     .iter()
-                    .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
+                    .map(|(k, v)| (k.clone(), Value::String(v.clone())))
                     .chain(join_data_clone.iter().map(|(k, v)| (k.clone(), v.clone())))
                     .collect();
+
                 enrich_field_contexts(
                     &mut fields,
                     &def.fields,
@@ -184,7 +198,8 @@ pub async fn update_action(
                     None,
                 );
 
-                let form_data_json = serde_json::json!(doc_fields);
+                let form_data_json = json!(doc_fields);
+
                 apply_display_conditions(
                     &mut fields,
                     &def.fields,
@@ -200,8 +215,9 @@ pub async fn update_action(
                     .page(PageType::GlobalEdit, def.display_name())
                     .global_def(&def)
                     .fields(main_fields)
-                    .set("sidebar_fields", serde_json::json!(sidebar_fields))
+                    .set("sidebar_fields", json!(sidebar_fields))
                     .build();
+
                 html_with_toast(&state, "globals/edit", &data, toast_msg)
             } else {
                 tracing::error!("Global update error: {}", e);
