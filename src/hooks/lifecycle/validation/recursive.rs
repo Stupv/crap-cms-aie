@@ -3,30 +3,22 @@ use std::collections::HashMap;
 use mlua::Lua;
 use serde_json::Value;
 
-use crate::{
-    core::{
-        field::{FieldDefinition, FieldType},
-        validate::FieldError,
-    },
-    db::query::{LocaleContext, LocaleMode, sanitize_locale},
+use crate::core::{
+    field::{FieldDefinition, FieldType},
+    validate::FieldError,
 };
 
-use super::{checks, sub_fields::validate_sub_fields_inner};
+use super::{ValidationCtx, checks, sub_fields::validate_sub_fields_inner};
 
 /// Recursive validation with prefix support for arbitrary nesting.
 /// Group accumulates prefix (`group__`), Row/Collapsible/Tabs pass through.
-/// `locale_ctx` and `inherited_localized` track locale state for unique checks.
-#[allow(clippy::too_many_arguments)]
+/// `inherited_localized` tracks locale state for unique checks.
 pub(super) fn validate_fields_recursive(
     lua: &Lua,
     fields: &[FieldDefinition],
     data: &HashMap<String, Value>,
-    conn: &rusqlite::Connection,
-    table: &str,
-    exclude_id: Option<&str>,
-    is_draft: bool,
+    ctx: &ValidationCtx,
     prefix: &str,
-    locale_ctx: Option<&LocaleContext>,
     inherited_localized: bool,
     errors: &mut Vec<FieldError>,
 ) {
@@ -42,12 +34,8 @@ pub(super) fn validate_fields_recursive(
                     lua,
                     &field.fields,
                     data,
-                    conn,
-                    table,
-                    exclude_id,
-                    is_draft,
+                    ctx,
                     &new_prefix,
-                    locale_ctx,
                     inherited_localized || field.localized,
                     errors,
                 );
@@ -57,12 +45,8 @@ pub(super) fn validate_fields_recursive(
                     lua,
                     &field.fields,
                     data,
-                    conn,
-                    table,
-                    exclude_id,
-                    is_draft,
+                    ctx,
                     prefix,
-                    locale_ctx,
                     inherited_localized,
                     errors,
                 );
@@ -73,12 +57,8 @@ pub(super) fn validate_fields_recursive(
                         lua,
                         &tab.fields,
                         data,
-                        conn,
-                        table,
-                        exclude_id,
-                        is_draft,
+                        ctx,
                         prefix,
-                        locale_ctx,
                         inherited_localized,
                         errors,
                     );
@@ -88,19 +68,7 @@ pub(super) fn validate_fields_recursive(
                 // Virtual field — no data to validate
             }
             _ => {
-                validate_scalar_field(
-                    lua,
-                    field,
-                    data,
-                    conn,
-                    table,
-                    exclude_id,
-                    is_draft,
-                    prefix,
-                    locale_ctx,
-                    inherited_localized,
-                    errors,
-                );
+                validate_scalar_field(lua, field, data, ctx, prefix, inherited_localized, errors);
             }
         }
     }
@@ -108,17 +76,12 @@ pub(super) fn validate_fields_recursive(
 
 /// Validate a single scalar field (not Group/Row/Collapsible/Tabs).
 /// Dispatches to individual check functions in `checks` module.
-#[allow(clippy::too_many_arguments)]
 fn validate_scalar_field(
     lua: &Lua,
     field: &FieldDefinition,
     data: &HashMap<String, Value>,
-    conn: &rusqlite::Connection,
-    table: &str,
-    exclude_id: Option<&str>,
-    is_draft: bool,
+    ctx: &ValidationCtx,
     prefix: &str,
-    locale_ctx: Option<&LocaleContext>,
     inherited_localized: bool,
     errors: &mut Vec<FieldError>,
 ) {
@@ -135,15 +98,21 @@ fn validate_scalar_field(
         Some(Value::String(s)) => s.is_empty(),
         _ => false,
     };
-    let is_update = exclude_id.is_some();
+    let is_update = ctx.exclude_id.is_some();
 
     checks::check_required(
-        field, &data_key, value, is_empty, is_draft, is_update, errors,
+        field,
+        &data_key,
+        value,
+        is_empty,
+        ctx.is_draft,
+        is_update,
+        errors,
     );
-    checks::check_row_bounds(field, &data_key, value, is_draft, errors);
+    checks::check_row_bounds(field, &data_key, value, ctx.is_draft, errors);
 
     // Validate sub-fields within Array/Blocks rows
-    if !is_draft
+    if !ctx.is_draft
         && matches!(field.field_type, FieldType::Array | FieldType::Blocks)
         && let Some(Value::Array(rows)) = value
     {
@@ -164,47 +133,33 @@ fn validate_scalar_field(
             } else {
                 &field.fields
             };
-            validate_sub_fields_inner(lua, sub_fields, row_obj, &data_key, idx, table, errors);
+            validate_sub_fields_inner(lua, sub_fields, row_obj, &data_key, idx, ctx.table, errors);
         }
     }
 
     // Compute the actual DB column name for the unique check.
     // Localized fields store data in suffixed columns (e.g., slug__en).
-    let is_localized = (inherited_localized || field.localized) && locale_ctx.is_some();
+    let is_localized = (inherited_localized || field.localized) && ctx.locale_ctx.is_some();
     let col_name = if is_localized {
-        let ctx = locale_ctx.unwrap();
-        let locale = match &ctx.mode {
+        use crate::db::query::{LocaleMode, sanitize_locale};
+        let lctx = ctx.locale_ctx.unwrap();
+        let locale = match &lctx.mode {
             LocaleMode::Single(l) => l.as_str(),
-            _ => ctx.config.default_locale.as_str(),
+            _ => lctx.config.default_locale.as_str(),
         };
         format!("{}__{}", data_key, sanitize_locale(locale))
     } else {
         data_key.clone()
     };
 
-    let unique_ctx = super::ValidationCtx {
-        conn,
-        table,
-        exclude_id,
-        is_draft,
-        locale_ctx,
-    };
-    checks::check_unique(
-        field,
-        &data_key,
-        &col_name,
-        value,
-        is_empty,
-        &unique_ctx,
-        errors,
-    );
+    checks::check_unique(field, &data_key, &col_name, value, is_empty, ctx, errors);
     checks::check_length_bounds(field, &data_key, value, is_empty, errors);
     checks::check_numeric_bounds(field, &data_key, value, is_empty, errors);
     checks::check_email_format(field, &data_key, value, is_empty, errors);
     checks::check_option_valid(field, &data_key, value, is_empty, errors);
     checks::check_has_many_elements(field, &data_key, value, is_empty, errors);
     checks::check_date_field(field, &data_key, value, is_empty, errors);
-    checks::check_custom_validate(lua, field, &data_key, value, data, table, errors);
+    checks::check_custom_validate(lua, field, &data_key, value, data, ctx.table, errors);
 }
 
 #[cfg(test)]
@@ -235,13 +190,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -269,13 +218,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().errors[0].field, "notes");
@@ -305,13 +248,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().errors[0].field, "body");
@@ -345,13 +282,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().errors[0].field, "seo__title");
@@ -382,13 +313,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().errors[0].field, "seo__title");
@@ -414,13 +339,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("valid date"));
@@ -453,13 +372,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("unique"));
@@ -502,13 +415,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_err());
         assert!(
@@ -550,13 +457,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(
             result.is_err(),
@@ -589,13 +490,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: true,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").draft(true).build(),
         );
         assert!(
             result.is_ok(),
@@ -630,13 +525,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_err(), "Group→Row: required field should fail");
         assert_eq!(result.unwrap_err().errors[0].field, "meta__title");
@@ -667,13 +556,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(
             result.is_err(),
@@ -710,13 +593,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_err(), "Group→Tabs: required field should fail");
         assert_eq!(result.unwrap_err().errors[0].field, "settings__theme");
@@ -754,13 +631,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(
             result.is_err(),
@@ -800,13 +671,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(
             result.is_err(),
@@ -838,13 +703,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_err(), "Group→Row: invalid date should fail");
         assert_eq!(result.unwrap_err().errors[0].field, "meta__date");
@@ -875,13 +734,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_ok(), "Group→Row: valid data should pass");
     }
@@ -903,13 +756,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(
             result.is_ok(),
@@ -942,13 +789,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(
             result.is_err(),
@@ -976,13 +817,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(
             result.is_err(),
@@ -1010,13 +845,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(
             result.is_err(),

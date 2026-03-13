@@ -23,7 +23,7 @@ use crate::{
         ops,
         query::{self, AccessResult, LocaleContext, jobs},
     },
-    hooks::lifecycle::AfterReadCtx,
+    hooks::lifecycle::{AfterReadCtx, PublishEventInput},
     service::{self, WriteInput},
 };
 
@@ -200,12 +200,12 @@ impl ContentService {
                 &self.event_bus,
                 &hooks,
                 live.as_ref(),
-                EventTarget::Global,
-                EventOperation::Update,
-                req.slug.clone(),
-                doc.id.clone(),
-                doc.fields.clone(),
-                Self::event_user_from(&auth_user),
+                PublishEventInput::builder(EventTarget::Global, EventOperation::Update)
+                    .collection(req.slug.clone())
+                    .document_id(doc.id.clone())
+                    .data(doc.fields.clone())
+                    .edited_by(Self::event_user_from(&auth_user))
+                    .build(),
             );
         }
 

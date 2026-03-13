@@ -35,6 +35,7 @@ use crate::{
         validate::ValidationError,
     },
     db::query::{AccessResult, LocaleContext, LocaleMode},
+    hooks::lifecycle::PublishEventInput,
     service,
 };
 
@@ -58,7 +59,7 @@ pub async fn create_action(
                 "You don't have permission to create items in this collection",
             );
         }
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
         _ => {}
     }
 
@@ -225,12 +226,12 @@ pub async fn create_action(
                 &state.event_bus,
                 &def.hooks,
                 def.live.as_ref(),
-                EventTarget::Collection,
-                EventOperation::Create,
-                slug.clone(),
-                doc.id.clone(),
-                doc.fields.clone(),
-                get_event_user(&auth_user),
+                PublishEventInput::builder(EventTarget::Collection, EventOperation::Create)
+                    .collection(slug.clone())
+                    .document_id(doc.id.clone())
+                    .data(doc.fields.clone())
+                    .edited_by(get_event_user(&auth_user))
+                    .build(),
             );
 
             // Auto-send verification email for auth collections with verify_email enabled

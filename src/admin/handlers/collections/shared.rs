@@ -26,6 +26,7 @@ use crate::{
         validate::ValidationError,
     },
     db::query::{self, AccessResult, FilterClause, FilterOp, LocaleContext, LocaleMode},
+    hooks::lifecycle::PublishEventInput,
     service,
 };
 
@@ -548,7 +549,7 @@ pub(super) async fn do_update(
             return forbidden(state, "You don't have permission to update this item")
                 .into_response();
         }
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
         _ => {}
     }
 
@@ -751,12 +752,12 @@ pub(super) async fn do_update(
                 &state.event_bus,
                 &def.hooks,
                 def.live.as_ref(),
-                EventTarget::Collection,
-                EventOperation::Update,
-                slug.to_string(),
-                id.to_string(),
-                doc.fields.clone(),
-                get_event_user(auth_user),
+                PublishEventInput::builder(EventTarget::Collection, EventOperation::Update)
+                    .collection(slug.to_string())
+                    .document_id(id.to_string())
+                    .data(doc.fields.clone())
+                    .edited_by(get_event_user(auth_user))
+                    .build(),
             );
 
             htmx_redirect(&format!("/admin/collections/{}/{}", slug, id))
@@ -860,7 +861,7 @@ pub(super) async fn delete_action_impl(
             return forbidden(state, "You don't have permission to delete this item")
                 .into_response();
         }
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
         _ => {}
     }
 
@@ -892,12 +893,11 @@ pub(super) async fn delete_action_impl(
                 &state.event_bus,
                 &def.hooks,
                 def.live.as_ref(),
-                EventTarget::Collection,
-                EventOperation::Delete,
-                slug.to_string(),
-                id.to_string(),
-                HashMap::new(),
-                get_event_user(auth_user),
+                PublishEventInput::builder(EventTarget::Collection, EventOperation::Delete)
+                    .collection(slug.to_string())
+                    .document_id(id.to_string())
+                    .edited_by(get_event_user(auth_user))
+                    .build(),
             );
         }
         Ok(Err(e)) => {

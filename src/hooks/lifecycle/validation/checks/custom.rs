@@ -77,13 +77,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_err());
         assert!(
@@ -121,13 +115,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().errors[0].message, "validation failed");
@@ -161,13 +149,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_ok());
     }

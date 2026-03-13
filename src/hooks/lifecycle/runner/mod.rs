@@ -10,7 +10,9 @@ mod read_write;
 mod run;
 mod vm_pool;
 
+pub use broadcast::PublishEventInput;
 pub use builder::HookRunnerBuilder;
+pub use run::FieldWriteCtx;
 
 use vm_pool::VmPool;
 

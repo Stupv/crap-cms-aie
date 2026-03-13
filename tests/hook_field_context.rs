@@ -8,7 +8,7 @@ use crap_cms::core::field::FieldDefinition;
 use crap_cms::db::{migrate, pool, query};
 use crap_cms::hooks;
 use crap_cms::hooks::lifecycle::{
-    AfterReadCtx, FieldHookEvent, HookContext, HookEvent, HookRunner,
+    AfterReadCtx, FieldHookEvent, FieldWriteCtx, HookContext, HookEvent, HookRunner, ValidationCtx,
 };
 
 fn fixture_dir() -> PathBuf {
@@ -271,7 +271,12 @@ fn validate_required_field_errors() {
 
     // run_before_write runs field hooks, validation, then collection hooks.
     // It should fail because "title" is required.
-    let result = runner.run_before_write(&def.hooks, &def.fields, ctx, &tx, "articles", None, None);
+    let result = runner.run_before_write(
+        &def.hooks,
+        &def.fields,
+        ctx,
+        &ValidationCtx::builder(&tx, "articles").build(),
+    );
     assert!(
         result.is_err(),
         "Should fail when required field 'title' is missing"
@@ -649,9 +654,7 @@ fn field_before_validate_hook_trims_title() {
             &mut data,
             "articles",
             "create",
-            &tx,
-            None,
-            None,
+            &FieldWriteCtx::builder(&tx).build(),
         )
         .expect("Field hook failed");
 
@@ -706,9 +709,7 @@ fn multiple_field_hooks_run_in_sequence() {
             &mut data,
             "articles",
             "create",
-            &tx,
-            None,
-            None,
+            &FieldWriteCtx::builder(&tx).build(),
         )
         .expect("before_validate field hook");
 
@@ -765,7 +766,12 @@ fn run_before_write_with_user_context() {
     let tx = conn.transaction().unwrap();
 
     let result = runner
-        .run_before_write(&def.hooks, &def.fields, ctx, &tx, "articles", None, None)
+        .run_before_write(
+            &def.hooks,
+            &def.fields,
+            ctx,
+            &ValidationCtx::builder(&tx, "articles").build(),
+        )
         .expect("run_before_write with user failed");
 
     assert!(result.data.contains_key("title"));

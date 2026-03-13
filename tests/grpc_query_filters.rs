@@ -12,7 +12,7 @@ use tonic::Request;
 
 use crap_cms::api::content;
 use crap_cms::api::content::content_api_server::ContentApi;
-use crap_cms::api::service::ContentService;
+use crap_cms::api::service::{ContentService, ContentServiceDeps};
 use crap_cms::config::*;
 use crap_cms::core::Registry;
 use crap_cms::core::collection::*;
@@ -107,22 +107,21 @@ fn setup_service(
     let email_renderer = Arc::new(EmailRenderer::new(tmp.path()).expect("create email renderer"));
 
     let service = ContentService::new(
-        db_pool.clone(),
-        Registry::snapshot(&registry),
-        hook_runner,
-        config.auth.secret.clone(),
-        &config.depth,
-        &config.pagination,
-        config.email.clone(),
-        email_renderer,
-        config.server.clone(),
-        None, // no event bus
-        config.locale.clone(),
-        tmp.path().to_path_buf(),
-        std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
-        config.auth.reset_token_expiry,
-        config.auth.password_policy.clone(),
-        std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(3, 900)),
+        ContentServiceDeps::builder()
+            .pool(db_pool.clone())
+            .registry(Registry::snapshot(&registry))
+            .hook_runner(hook_runner)
+            .jwt_secret(config.auth.secret.clone())
+            .config(config.clone())
+            .config_dir(tmp.path().to_path_buf())
+            .email_renderer(email_renderer)
+            .login_limiter(std::sync::Arc::new(
+                crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300),
+            ))
+            .forgot_password_limiter(std::sync::Arc::new(
+                crap_cms::core::rate_limit::LoginRateLimiter::new(3, 900),
+            ))
+            .build(),
     );
 
     TestSetup {
@@ -520,22 +519,21 @@ return M
         .expect("create hook runner");
     let email_renderer = Arc::new(EmailRenderer::new(tmp.path()).expect("create email renderer"));
     let service = ContentService::new(
-        db_pool.clone(),
-        Registry::snapshot(&registry),
-        hook_runner,
-        config.auth.secret.clone(),
-        &config.depth,
-        &config.pagination,
-        config.email.clone(),
-        email_renderer,
-        config.server.clone(),
-        None,
-        config.locale.clone(),
-        tmp.path().to_path_buf(),
-        std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
-        config.auth.reset_token_expiry,
-        config.auth.password_policy.clone(),
-        std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(3, 900)),
+        ContentServiceDeps::builder()
+            .pool(db_pool.clone())
+            .registry(Registry::snapshot(&registry))
+            .hook_runner(hook_runner)
+            .jwt_secret(config.auth.secret.clone())
+            .config(config.clone())
+            .config_dir(tmp.path().to_path_buf())
+            .email_renderer(email_renderer)
+            .login_limiter(std::sync::Arc::new(
+                crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300),
+            ))
+            .forgot_password_limiter(std::sync::Arc::new(
+                crap_cms::core::rate_limit::LoginRateLimiter::new(3, 900),
+            ))
+            .build(),
     );
     let ts = TestSetup {
         _tmp: tmp,
@@ -634,22 +632,21 @@ return M
         .expect("create hook runner");
     let email_renderer = Arc::new(EmailRenderer::new(tmp.path()).expect("create email renderer"));
     let service = ContentService::new(
-        db_pool.clone(),
-        Registry::snapshot(&registry),
-        hook_runner,
-        config.auth.secret.clone(),
-        &config.depth,
-        &config.pagination,
-        config.email.clone(),
-        email_renderer,
-        config.server.clone(),
-        None,
-        config.locale.clone(),
-        tmp.path().to_path_buf(),
-        std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
-        config.auth.reset_token_expiry,
-        config.auth.password_policy.clone(),
-        std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(3, 900)),
+        ContentServiceDeps::builder()
+            .pool(db_pool.clone())
+            .registry(Registry::snapshot(&registry))
+            .hook_runner(hook_runner)
+            .jwt_secret(config.auth.secret.clone())
+            .config(config.clone())
+            .config_dir(tmp.path().to_path_buf())
+            .email_renderer(email_renderer)
+            .login_limiter(std::sync::Arc::new(
+                crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300),
+            ))
+            .forgot_password_limiter(std::sync::Arc::new(
+                crap_cms::core::rate_limit::LoginRateLimiter::new(3, 900),
+            ))
+            .build(),
     );
     let ts = TestSetup {
         _tmp: tmp,
@@ -731,22 +728,21 @@ return M
         .expect("create hook runner");
     let email_renderer = Arc::new(EmailRenderer::new(tmp.path()).expect("create email renderer"));
     let service = ContentService::new(
-        db_pool.clone(),
-        Registry::snapshot(&registry),
-        hook_runner,
-        config.auth.secret.clone(),
-        &config.depth,
-        &config.pagination,
-        config.email.clone(),
-        email_renderer,
-        config.server.clone(),
-        None,
-        config.locale.clone(),
-        tmp.path().to_path_buf(),
-        std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
-        config.auth.reset_token_expiry,
-        config.auth.password_policy.clone(),
-        std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(3, 900)),
+        ContentServiceDeps::builder()
+            .pool(db_pool.clone())
+            .registry(Registry::snapshot(&registry))
+            .hook_runner(hook_runner)
+            .jwt_secret(config.auth.secret.clone())
+            .config(config.clone())
+            .config_dir(tmp.path().to_path_buf())
+            .email_renderer(email_renderer)
+            .login_limiter(std::sync::Arc::new(
+                crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300),
+            ))
+            .forgot_password_limiter(std::sync::Arc::new(
+                crap_cms::core::rate_limit::LoginRateLimiter::new(3, 900),
+            ))
+            .build(),
     );
     let ts = TestSetup {
         _tmp: tmp,
@@ -840,22 +836,21 @@ return M
         .expect("create hook runner");
     let email_renderer = Arc::new(EmailRenderer::new(tmp.path()).expect("create email renderer"));
     let service = ContentService::new(
-        db_pool.clone(),
-        Registry::snapshot(&registry),
-        hook_runner,
-        config.auth.secret.clone(),
-        &config.depth,
-        &config.pagination,
-        config.email.clone(),
-        email_renderer,
-        config.server.clone(),
-        None,
-        config.locale.clone(),
-        tmp.path().to_path_buf(),
-        std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
-        config.auth.reset_token_expiry,
-        config.auth.password_policy.clone(),
-        std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(3, 900)),
+        ContentServiceDeps::builder()
+            .pool(db_pool.clone())
+            .registry(Registry::snapshot(&registry))
+            .hook_runner(hook_runner)
+            .jwt_secret(config.auth.secret.clone())
+            .config(config.clone())
+            .config_dir(tmp.path().to_path_buf())
+            .email_renderer(email_renderer)
+            .login_limiter(std::sync::Arc::new(
+                crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300),
+            ))
+            .forgot_password_limiter(std::sync::Arc::new(
+                crap_cms::core::rate_limit::LoginRateLimiter::new(3, 900),
+            ))
+            .build(),
     );
     let ts = TestSetup {
         _tmp: tmp,
@@ -944,22 +939,21 @@ return M
         .expect("create hook runner");
     let email_renderer = Arc::new(EmailRenderer::new(tmp.path()).expect("create email renderer"));
     let service = ContentService::new(
-        db_pool.clone(),
-        Registry::snapshot(&registry),
-        hook_runner,
-        config.auth.secret.clone(),
-        &config.depth,
-        &config.pagination,
-        config.email.clone(),
-        email_renderer,
-        config.server.clone(),
-        None,
-        config.locale.clone(),
-        tmp.path().to_path_buf(),
-        std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
-        config.auth.reset_token_expiry,
-        config.auth.password_policy.clone(),
-        std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(3, 900)),
+        ContentServiceDeps::builder()
+            .pool(db_pool.clone())
+            .registry(Registry::snapshot(&registry))
+            .hook_runner(hook_runner)
+            .jwt_secret(config.auth.secret.clone())
+            .config(config.clone())
+            .config_dir(tmp.path().to_path_buf())
+            .email_renderer(email_renderer)
+            .login_limiter(std::sync::Arc::new(
+                crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300),
+            ))
+            .forgot_password_limiter(std::sync::Arc::new(
+                crap_cms::core::rate_limit::LoginRateLimiter::new(3, 900),
+            ))
+            .build(),
     );
     let ts = TestSetup {
         _tmp: tmp,

@@ -45,7 +45,7 @@ pub async fn edit_form(
         Ok(AccessResult::Denied) => {
             return forbidden(&state, "You don't have permission to view this global");
         }
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
         _ => {}
     }
 

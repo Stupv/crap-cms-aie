@@ -72,13 +72,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("unique"));
@@ -104,13 +98,9 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: Some("self"),
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test")
+                .exclude_id(Some("self"))
+                .build(),
         );
         assert!(result.is_ok());
     }
@@ -135,13 +125,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(
             result.is_ok(),
@@ -169,13 +153,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(
             result.is_err(),
@@ -201,13 +179,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(
             result.is_ok(),
@@ -244,13 +216,9 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: Some(&locale_ctx),
-            },
+            &ValidationCtx::builder(&conn, "test")
+                .locale_ctx(Some(&locale_ctx))
+                .build(),
         );
         assert!(
             result.is_err(),
@@ -265,13 +233,9 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: Some(&locale_ctx),
-            },
+            &ValidationCtx::builder(&conn, "test")
+                .locale_ctx(Some(&locale_ctx))
+                .build(),
         );
         assert!(
             result.is_ok(),
@@ -312,13 +276,9 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: Some(&locale_ctx),
-            },
+            &ValidationCtx::builder(&conn, "test")
+                .locale_ctx(Some(&locale_ctx))
+                .build(),
         );
         assert!(
             result.is_err(),
@@ -332,13 +292,9 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: Some(&locale_ctx),
-            },
+            &ValidationCtx::builder(&conn, "test")
+                .locale_ctx(Some(&locale_ctx))
+                .build(),
         );
         assert_eq!(result.unwrap_err().errors[0].field, "seo__slug");
     }
@@ -366,13 +322,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(
             result.is_err(),

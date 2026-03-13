@@ -7,11 +7,12 @@ use rusqlite::TransactionBehavior;
 use crate::{
     core::{collection::GlobalDefinition, document::Document},
     db::{DbPool, query},
-    hooks::lifecycle::HookRunner,
+    hooks::lifecycle::{HookRunner, ValidationCtx},
 };
 
 use super::{
-    WriteInput, WriteResult, build_before_ctx, build_hook_data, run_after_change_hooks,
+    AfterChangeInput, WriteInput, WriteResult, build_before_ctx, build_hook_data,
+    run_after_change_hooks,
     versions::{self, VersionSnapshotCtx},
 };
 
@@ -48,15 +49,12 @@ pub fn update_global_document(
         user,
         ui_locale,
     );
-    let final_ctx = runner.run_before_write(
-        &def.hooks,
-        &def.fields,
-        hook_ctx,
-        &tx,
-        &global_table,
-        Some("default"),
-        input.locale_ctx,
-    )?;
+    let val_ctx = ValidationCtx::builder(&tx, &global_table)
+        .exclude_id(Some("default"))
+        .draft(is_draft)
+        .locale_ctx(input.locale_ctx)
+        .build();
+    let final_ctx = runner.run_before_write(&def.hooks, &def.fields, hook_ctx, &val_ctx)?;
     let final_data = final_ctx.to_string_map(&def.fields);
 
     let doc = if is_draft && def.has_versions() {
@@ -99,15 +97,15 @@ pub fn update_global_document(
         runner,
         &def.hooks,
         &def.fields,
-        slug,
-        "update",
         &doc,
-        input.locale,
-        is_draft,
-        final_ctx.context,
+        AfterChangeInput::builder(slug, "update")
+            .locale(input.locale)
+            .draft(is_draft)
+            .req_context(final_ctx.context)
+            .user(user)
+            .ui_locale(ui_locale)
+            .build(),
         &tx,
-        user,
-        ui_locale,
     )?;
 
     tx.commit().context("Commit transaction")?;

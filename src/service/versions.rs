@@ -189,10 +189,7 @@ mod tests {
         let mut data = HashMap::new();
         data.insert("title".to_string(), "Draft Post".to_string());
 
-        let opts = PersistOptions {
-            is_draft: true,
-            ..PersistOptions::default()
-        };
+        let opts = PersistOptions::builder().draft(true).build();
         let doc = persist_create(&conn, "posts", &def, &data, &HashMap::new(), &opts).unwrap();
         assert_eq!(doc.get_str("title"), Some("Draft Post"));
 
@@ -227,8 +224,7 @@ mod tests {
             &def,
             &update_data,
             &HashMap::new(),
-            None,
-            None,
+            &PersistOptions::default(),
         )
         .unwrap();
 
@@ -334,8 +330,7 @@ mod tests {
                 &def,
                 &update_data,
                 &HashMap::new(),
-                None,
-                None,
+                &PersistOptions::default(),
             )
             .unwrap();
         }

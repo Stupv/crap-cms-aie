@@ -17,10 +17,13 @@ use crate::{
         DbPool,
         query::{self, LocaleContext},
     },
-    hooks::lifecycle::{HookContext, HookEvent, HookRunner},
+    hooks::lifecycle::{HookContext, HookEvent, HookRunner, ValidationCtx},
 };
 
-use super::{WriteInput, WriteResult, build_before_ctx, build_hook_data, run_after_change_hooks};
+use super::{
+    AfterChangeInput, WriteInput, WriteResult, build_before_ctx, build_hook_data,
+    run_after_change_hooks,
+};
 
 /// Create a document within a single transaction: before-hooks → insert → after-hooks → commit.
 /// When `draft` is true and the collection has drafts enabled, the document is created with
@@ -54,36 +57,32 @@ pub fn create_document(
         user,
         ui_locale,
     );
-    let final_ctx = runner.run_before_write(
-        &def.hooks,
-        &def.fields,
-        hook_ctx,
-        &tx,
-        slug,
-        None,
-        input.locale_ctx,
-    )?;
+    let val_ctx = ValidationCtx::builder(&tx, slug)
+        .draft(is_draft)
+        .locale_ctx(input.locale_ctx)
+        .build();
+    let final_ctx = runner.run_before_write(&def.hooks, &def.fields, hook_ctx, &val_ctx)?;
     let final_data = final_ctx.to_string_map(&def.fields);
-    let persist_opts = super::PersistOptions {
-        password: input.password,
-        locale_ctx: input.locale_ctx,
-        is_draft,
-    };
+    let persist_opts = super::PersistOptions::builder()
+        .password(input.password)
+        .locale_ctx(input.locale_ctx)
+        .draft(is_draft)
+        .build();
     let doc = super::persist_create(&tx, slug, def, &final_data, &final_ctx.data, &persist_opts)?;
 
     let ctx = run_after_change_hooks(
         runner,
         &def.hooks,
         &def.fields,
-        slug,
-        "create",
         &doc,
-        input.locale,
-        is_draft,
-        final_ctx.context,
+        AfterChangeInput::builder(slug, "create")
+            .locale(input.locale)
+            .draft(is_draft)
+            .req_context(final_ctx.context)
+            .user(user)
+            .ui_locale(ui_locale)
+            .build(),
         &tx,
-        user,
-        ui_locale,
     )?;
 
     tx.commit().context("Commit transaction")?;
@@ -123,15 +122,12 @@ pub fn update_document(
         user,
         ui_locale,
     );
-    let final_ctx = runner.run_before_write(
-        &def.hooks,
-        &def.fields,
-        hook_ctx,
-        &tx,
-        slug,
-        Some(id),
-        input.locale_ctx,
-    )?;
+    let val_ctx = ValidationCtx::builder(&tx, slug)
+        .exclude_id(Some(id))
+        .draft(is_draft)
+        .locale_ctx(input.locale_ctx)
+        .build();
+    let final_ctx = runner.run_before_write(&def.hooks, &def.fields, hook_ctx, &val_ctx)?;
     let final_data = final_ctx.to_string_map(&def.fields);
 
     let doc = if is_draft && def.has_versions() {
@@ -144,8 +140,10 @@ pub fn update_document(
             def,
             &final_data,
             &final_ctx.data,
-            input.password,
-            input.locale_ctx,
+            &super::PersistOptions::builder()
+                .password(input.password)
+                .locale_ctx(input.locale_ctx)
+                .build(),
         )?
     };
 
@@ -153,15 +151,15 @@ pub fn update_document(
         runner,
         &def.hooks,
         &def.fields,
-        slug,
-        "update",
         &doc,
-        input.locale,
-        is_draft,
-        final_ctx.context,
+        AfterChangeInput::builder(slug, "update")
+            .locale(input.locale)
+            .draft(is_draft)
+            .req_context(final_ctx.context)
+            .user(user)
+            .ui_locale(ui_locale)
+            .build(),
         &tx,
-        user,
-        ui_locale,
     )?;
 
     tx.commit().context("Commit transaction")?;
@@ -198,15 +196,12 @@ pub fn unpublish_document(
         runner,
         &def.hooks,
         &def.fields,
-        slug,
-        "update",
         &doc,
-        None,
-        false,
-        final_ctx.context,
+        AfterChangeInput::builder(slug, "update")
+            .req_context(final_ctx.context)
+            .user(user)
+            .build(),
         &tx,
-        user,
-        None,
     )?;
 
     tx.commit().context("Commit transaction")?;

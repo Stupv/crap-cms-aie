@@ -48,7 +48,7 @@ pub async fn delete_confirm(
         Ok(AccessResult::Denied) => {
             return forbidden(&state, "You don't have permission to delete this item");
         }
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
         _ => {}
     }
 

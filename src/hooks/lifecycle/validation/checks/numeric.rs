@@ -75,13 +75,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("at least 0"));
@@ -104,13 +98,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_err());
         assert!(
@@ -138,13 +126,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_ok());
     }
@@ -166,13 +148,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_ok(), "min/max should not trigger on empty values");
     }
@@ -195,13 +171,7 @@ mod tests {
             &lua,
             &fields,
             &data,
-            &ValidationCtx {
-                conn: &conn,
-                table: "test",
-                exclude_id: None,
-                is_draft: false,
-                locale_ctx: None,
-            },
+            &ValidationCtx::builder(&conn, "test").build(),
         );
         assert!(result.is_err());
         assert!(result.unwrap_err().errors[0].message.contains("at most 10"));

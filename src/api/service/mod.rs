@@ -13,9 +13,7 @@ use tonic::{Request, Response, Status, metadata::MetadataMap};
 
 use crate::{
     api::content::{self, content_api_server::ContentApi},
-    config::{
-        DepthConfig, EmailConfig, LocaleConfig, PaginationConfig, PasswordPolicy, ServerConfig,
-    },
+    config::{CrapConfig, EmailConfig, LocaleConfig, PasswordPolicy, ServerConfig},
     core::{
         CollectionDefinition, Registry,
         auth::{AuthUser, validate_token},
@@ -31,6 +29,128 @@ use crate::{
     },
     hooks::lifecycle::HookRunner,
 };
+
+/// Dependencies for constructing a `ContentService`.
+pub struct ContentServiceDeps {
+    pub pool: DbPool,
+    pub registry: Arc<Registry>,
+    pub hook_runner: HookRunner,
+    pub jwt_secret: String,
+    pub config: CrapConfig,
+    pub config_dir: PathBuf,
+    pub email_renderer: Arc<EmailRenderer>,
+    pub event_bus: Option<EventBus>,
+    pub login_limiter: Arc<LoginRateLimiter>,
+    pub forgot_password_limiter: Arc<LoginRateLimiter>,
+}
+
+impl ContentServiceDeps {
+    /// Create a builder for `ContentServiceDeps`.
+    pub fn builder() -> ContentServiceDepsBuilder {
+        ContentServiceDepsBuilder::new()
+    }
+}
+
+/// Builder for [`ContentServiceDeps`]. Created via [`ContentServiceDeps::builder`].
+pub struct ContentServiceDepsBuilder {
+    pool: Option<DbPool>,
+    registry: Option<Arc<Registry>>,
+    hook_runner: Option<HookRunner>,
+    jwt_secret: Option<String>,
+    config: Option<CrapConfig>,
+    config_dir: Option<PathBuf>,
+    email_renderer: Option<Arc<EmailRenderer>>,
+    event_bus: Option<EventBus>,
+    login_limiter: Option<Arc<LoginRateLimiter>>,
+    forgot_password_limiter: Option<Arc<LoginRateLimiter>>,
+}
+
+impl ContentServiceDepsBuilder {
+    fn new() -> Self {
+        Self {
+            pool: None,
+            registry: None,
+            hook_runner: None,
+            jwt_secret: None,
+            config: None,
+            config_dir: None,
+            email_renderer: None,
+            event_bus: None,
+            login_limiter: None,
+            forgot_password_limiter: None,
+        }
+    }
+
+    pub fn pool(mut self, pool: DbPool) -> Self {
+        self.pool = Some(pool);
+        self
+    }
+
+    pub fn registry(mut self, registry: Arc<Registry>) -> Self {
+        self.registry = Some(registry);
+        self
+    }
+
+    pub fn hook_runner(mut self, hook_runner: HookRunner) -> Self {
+        self.hook_runner = Some(hook_runner);
+        self
+    }
+
+    pub fn jwt_secret(mut self, jwt_secret: impl Into<String>) -> Self {
+        self.jwt_secret = Some(jwt_secret.into());
+        self
+    }
+
+    pub fn config(mut self, config: CrapConfig) -> Self {
+        self.config = Some(config);
+        self
+    }
+
+    pub fn config_dir(mut self, config_dir: PathBuf) -> Self {
+        self.config_dir = Some(config_dir);
+        self
+    }
+
+    pub fn email_renderer(mut self, email_renderer: Arc<EmailRenderer>) -> Self {
+        self.email_renderer = Some(email_renderer);
+        self
+    }
+
+    pub fn event_bus(mut self, event_bus: Option<EventBus>) -> Self {
+        self.event_bus = event_bus;
+        self
+    }
+
+    pub fn login_limiter(mut self, login_limiter: Arc<LoginRateLimiter>) -> Self {
+        self.login_limiter = Some(login_limiter);
+        self
+    }
+
+    pub fn forgot_password_limiter(
+        mut self,
+        forgot_password_limiter: Arc<LoginRateLimiter>,
+    ) -> Self {
+        self.forgot_password_limiter = Some(forgot_password_limiter);
+        self
+    }
+
+    pub fn build(self) -> ContentServiceDeps {
+        ContentServiceDeps {
+            pool: self.pool.expect("pool is required"),
+            registry: self.registry.expect("registry is required"),
+            hook_runner: self.hook_runner.expect("hook_runner is required"),
+            jwt_secret: self.jwt_secret.expect("jwt_secret is required"),
+            config: self.config.expect("config is required"),
+            config_dir: self.config_dir.expect("config_dir is required"),
+            email_renderer: self.email_renderer.expect("email_renderer is required"),
+            event_bus: self.event_bus,
+            login_limiter: self.login_limiter.expect("login_limiter is required"),
+            forgot_password_limiter: self
+                .forgot_password_limiter
+                .expect("forgot_password_limiter is required"),
+        }
+    }
+}
 
 /// Implements the gRPC ContentAPI service (Find, Create, Update, Delete, Login, etc.).
 pub struct ContentService {
@@ -63,50 +183,40 @@ pub struct ContentService {
 #[cfg(not(tarpaulin_include))]
 impl ContentService {
     /// Create a new gRPC content service with all dependencies.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        pool: DbPool,
-        registry: Arc<Registry>,
-        hook_runner: HookRunner,
-        jwt_secret: String,
-        depth_config: &DepthConfig,
-        pagination_config: &PaginationConfig,
-        email_config: EmailConfig,
-        email_renderer: Arc<EmailRenderer>,
-        server_config: ServerConfig,
-        event_bus: Option<EventBus>,
-        locale_config: LocaleConfig,
-        config_dir: PathBuf,
-        login_limiter: Arc<LoginRateLimiter>,
-        reset_token_expiry: u64,
-        password_policy: PasswordPolicy,
-        forgot_password_limiter: Arc<LoginRateLimiter>,
-    ) -> Self {
+    pub fn new(deps: ContentServiceDeps) -> Self {
+        let populate_cache = if deps.config.depth.populate_cache {
+            Some(Arc::new(query::PopulateCache::new()))
+        } else {
+            None
+        };
+        let default_depth = deps.config.depth.default_depth;
+        let max_depth = deps.config.depth.max_depth;
+        let default_limit = deps.config.pagination.default_limit;
+        let max_limit = deps.config.pagination.max_limit;
+        let cursor_enabled = deps.config.pagination.is_cursor();
+        let reset_token_expiry = deps.config.auth.reset_token_expiry;
+
         Self {
-            pool,
-            registry,
-            hook_runner,
-            jwt_secret,
-            default_depth: depth_config.default_depth,
-            max_depth: depth_config.max_depth,
-            email_config,
-            email_renderer,
-            server_config,
-            event_bus,
-            locale_config,
-            config_dir,
-            login_limiter,
+            pool: deps.pool,
+            registry: deps.registry,
+            hook_runner: deps.hook_runner,
+            jwt_secret: deps.jwt_secret,
+            default_depth,
+            max_depth,
+            email_config: deps.config.email,
+            email_renderer: deps.email_renderer,
+            server_config: deps.config.server,
+            event_bus: deps.event_bus,
+            locale_config: deps.config.locale,
+            config_dir: deps.config_dir,
+            login_limiter: deps.login_limiter,
             reset_token_expiry,
-            password_policy,
-            forgot_password_limiter,
-            populate_cache: if depth_config.populate_cache {
-                Some(Arc::new(query::PopulateCache::new()))
-            } else {
-                None
-            },
-            default_limit: pagination_config.default_limit,
-            max_limit: pagination_config.max_limit,
-            cursor_enabled: pagination_config.is_cursor(),
+            password_policy: deps.config.auth.password_policy,
+            forgot_password_limiter: deps.forgot_password_limiter,
+            populate_cache,
+            default_limit,
+            max_limit,
+            cursor_enabled,
         }
     }
 
@@ -115,7 +225,6 @@ impl ContentService {
         self.populate_cache.clone()
     }
 
-    #[allow(clippy::result_large_err)]
     fn get_collection_def(&self, slug: &str) -> Result<CollectionDefinition, Status> {
         self.registry
             .get_collection(slug)
@@ -123,7 +232,6 @@ impl ContentService {
             .ok_or_else(|| Status::not_found(format!("Collection '{}' not found", slug)))
     }
 
-    #[allow(clippy::result_large_err)]
     fn get_global_def(&self, slug: &str) -> Result<GlobalDefinition, Status> {
         self.registry
             .get_global(slug)
@@ -145,7 +253,6 @@ impl ContentService {
     }
 
     /// Check collection-level access, returning the AccessResult or a Status error.
-    #[allow(clippy::result_large_err)]
     fn require_access(
         &self,
         access_ref: Option<&str>,

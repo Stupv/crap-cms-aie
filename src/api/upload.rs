@@ -28,6 +28,7 @@ use crate::{
         upload::{self, inject_upload_metadata},
     },
     db::query::{self, AccessResult},
+    hooks::lifecycle::PublishEventInput,
     service::{self, WriteInput},
 };
 
@@ -262,12 +263,12 @@ async fn create_upload(
                 &state.event_bus,
                 &def.hooks,
                 def.live.as_ref(),
-                EventTarget::Collection,
-                EventOperation::Create,
-                slug,
-                doc.id.clone(),
-                doc.fields.clone(),
-                edited_by,
+                PublishEventInput::builder(EventTarget::Collection, EventOperation::Create)
+                    .collection(slug)
+                    .document_id(doc.id.clone())
+                    .data(doc.fields.clone())
+                    .edited_by(edited_by)
+                    .build(),
             );
 
             let body = json!({ "document": doc });
@@ -479,12 +480,12 @@ async fn update_upload(
                 &state.event_bus,
                 &def.hooks,
                 def.live.as_ref(),
-                EventTarget::Collection,
-                EventOperation::Update,
-                slug,
-                id,
-                doc.fields.clone(),
-                edited_by,
+                PublishEventInput::builder(EventTarget::Collection, EventOperation::Update)
+                    .collection(slug)
+                    .document_id(id)
+                    .data(doc.fields.clone())
+                    .edited_by(edited_by)
+                    .build(),
             );
 
             let body = json!({ "document": doc });
@@ -621,12 +622,11 @@ async fn delete_upload(
                 &state.event_bus,
                 &def.hooks,
                 def.live.as_ref(),
-                EventTarget::Collection,
-                EventOperation::Delete,
-                slug,
-                id,
-                HashMap::new(),
-                edited_by,
+                PublishEventInput::builder(EventTarget::Collection, EventOperation::Delete)
+                    .collection(slug)
+                    .document_id(id)
+                    .edited_by(edited_by)
+                    .build(),
             );
 
             json_ok(StatusCode::OK, &json!({ "success": true }))

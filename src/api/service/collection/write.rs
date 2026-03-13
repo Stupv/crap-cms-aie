@@ -1,7 +1,6 @@
 //! Write-oriented collection RPC handlers: Create, Update, Delete.
 
 use anyhow::Context as _;
-use std::collections::HashMap;
 use tonic::{Request, Response, Status};
 
 use crate::{
@@ -14,6 +13,7 @@ use crate::{
     },
     core::event::{EventOperation, EventTarget},
     db::query::{AccessResult, LocaleContext},
+    hooks::lifecycle::PublishEventInput,
     service::{self, WriteInput},
 };
 
@@ -137,12 +137,12 @@ impl ContentService {
                 &self.event_bus,
                 &hooks,
                 live.as_ref(),
-                EventTarget::Collection,
-                EventOperation::Create,
-                req.collection.clone(),
-                doc.id.clone(),
-                doc.fields.clone(),
-                Self::event_user_from(&auth_user),
+                PublishEventInput::builder(EventTarget::Collection, EventOperation::Create)
+                    .collection(req.collection.clone())
+                    .document_id(doc.id.clone())
+                    .data(doc.fields.clone())
+                    .edited_by(Self::event_user_from(&auth_user))
+                    .build(),
             );
 
             // Auto-send verification email for auth collections with verify_email
@@ -260,12 +260,12 @@ impl ContentService {
                     .ok()
                     .and_then(|d| d.live.clone())
                     .as_ref(),
-                EventTarget::Collection,
-                EventOperation::Update,
-                req.collection.clone(),
-                req.id.clone(),
-                doc.fields.clone(),
-                Self::event_user_from(&auth_user),
+                PublishEventInput::builder(EventTarget::Collection, EventOperation::Update)
+                    .collection(req.collection.clone())
+                    .document_id(req.id.clone())
+                    .data(doc.fields.clone())
+                    .edited_by(Self::event_user_from(&auth_user))
+                    .build(),
             );
 
             let mut proto_doc = document_to_proto(&doc, &req.collection);
@@ -341,12 +341,12 @@ impl ContentService {
                 &self.event_bus,
                 &hooks,
                 live.as_ref(),
-                EventTarget::Collection,
-                EventOperation::Update,
-                req.collection.clone(),
-                req.id.clone(),
-                doc.fields.clone(),
-                Self::event_user_from(&auth_user),
+                PublishEventInput::builder(EventTarget::Collection, EventOperation::Update)
+                    .collection(req.collection.clone())
+                    .document_id(req.id.clone())
+                    .data(doc.fields.clone())
+                    .edited_by(Self::event_user_from(&auth_user))
+                    .build(),
             );
         }
 
@@ -413,12 +413,11 @@ impl ContentService {
             &self.event_bus,
             &def.hooks,
             def.live.as_ref(),
-            EventTarget::Collection,
-            EventOperation::Delete,
-            req.collection.clone(),
-            req.id.clone(),
-            HashMap::new(),
-            Self::event_user_from(&auth_user),
+            PublishEventInput::builder(EventTarget::Collection, EventOperation::Delete)
+                .collection(req.collection.clone())
+                .document_id(req.id.clone())
+                .edited_by(Self::event_user_from(&auth_user))
+                .build(),
         );
 
         Ok(Response::new(content::DeleteResponse { success: true }))

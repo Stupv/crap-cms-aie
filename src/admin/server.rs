@@ -47,21 +47,41 @@ use crate::{
     },
 };
 
+/// Parameters for starting the admin HTTP server.
+pub struct AdminStartParams {
+    pub config: CrapConfig,
+    pub config_dir: PathBuf,
+    pub pool: DbPool,
+    pub registry: Arc<Registry>,
+    pub hook_runner: HookRunner,
+    pub jwt_secret: String,
+    pub event_bus: Option<EventBus>,
+}
+
+impl AdminStartParams {
+    /// Create a builder for `AdminStartParams`.
+    pub fn builder() -> super::server_builder::AdminStartParamsBuilder {
+        super::server_builder::AdminStartParamsBuilder::new()
+    }
+}
+
 /// Start the admin HTTP server (Axum) with all routes, middleware, and static file serving.
 // Excluded from coverage: async server startup orchestration (binds TCP listener, runs Axum server).
 #[cfg(not(tarpaulin_include))]
-#[allow(clippy::too_many_arguments)]
 pub async fn start(
     addr: &str,
-    config: CrapConfig,
-    config_dir: PathBuf,
-    pool: DbPool,
-    registry: Arc<Registry>,
-    hook_runner: HookRunner,
-    jwt_secret: String,
-    event_bus: Option<EventBus>,
+    params: AdminStartParams,
     shutdown: CancellationToken,
 ) -> Result<()> {
+    let AdminStartParams {
+        config,
+        config_dir,
+        pool,
+        registry,
+        hook_runner,
+        jwt_secret,
+        event_bus,
+    } = params;
     let translations = Arc::new(Translations::load(&config_dir));
     let handlebars =
         templates::create_handlebars(&config_dir, config.admin.dev_mode, translations.clone())?;

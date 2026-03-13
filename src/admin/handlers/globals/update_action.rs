@@ -27,6 +27,7 @@ use crate::{
         validate::ValidationError,
     },
     db::query::{self, AccessResult, LocaleContext, LocaleMode},
+    hooks::lifecycle::PublishEventInput,
     service,
 };
 
@@ -47,7 +48,7 @@ pub async fn update_action(
         Ok(AccessResult::Denied) => {
             return forbidden(&state, "You don't have permission to update this global");
         }
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
         _ => {}
     }
 
@@ -161,12 +162,12 @@ pub async fn update_action(
                 &state.event_bus,
                 &def.hooks,
                 def.live.as_ref(),
-                EventTarget::Global,
-                EventOperation::Update,
-                slug.clone(),
-                doc.id.clone(),
-                doc.fields.clone(),
-                get_event_user(&auth_user),
+                PublishEventInput::builder(EventTarget::Global, EventOperation::Update)
+                    .collection(slug.clone())
+                    .document_id(doc.id.clone())
+                    .data(doc.fields.clone())
+                    .edited_by(get_event_user(&auth_user))
+                    .build(),
             );
             htmx_redirect(&format!("/admin/globals/{}", slug))
         }

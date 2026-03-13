@@ -664,13 +664,7 @@ fn lua_validate_fields_with_custom_validator() {
     let result = runner.validate_fields(
         &def.fields,
         &data,
-        &ValidationCtx {
-            conn: &tx,
-            table: "articles",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&tx, "articles").build(),
     );
     assert!(
         result.is_ok(),
@@ -685,13 +679,7 @@ fn lua_validate_fields_with_custom_validator() {
     let result = runner.validate_fields(
         &def.fields,
         &bad_data,
-        &ValidationCtx {
-            conn: &tx,
-            table: "articles",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&tx, "articles").build(),
     );
     assert!(result.is_err(), "Negative number should fail validation");
     let err_msg = format!("{}", result.unwrap_err());

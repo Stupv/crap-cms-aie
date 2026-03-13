@@ -36,7 +36,7 @@ pub(crate) fn parse_fields(fields_tbl: &Table) -> Result<Vec<FieldDefinition>> {
 
         let type_str: String =
             get_string_val(&field_tbl, "type").unwrap_or_else(|_| "text".to_string());
-        let field_type = FieldType::from_str(&type_str);
+        let field_type = FieldType::parse_lossy(&type_str);
 
         let required = get_bool(&field_tbl, "required", false);
         let unique = get_bool(&field_tbl, "unique", false);

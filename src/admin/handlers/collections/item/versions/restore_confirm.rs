@@ -48,7 +48,7 @@ pub async fn restore_confirm(
         Ok(AccessResult::Denied) => {
             return forbidden(&state, "You don't have permission to update this item");
         }
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
         _ => {}
     }
 

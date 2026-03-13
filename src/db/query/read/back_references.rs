@@ -50,6 +50,17 @@ impl BackReference {
     }
 }
 
+/// Invariant context for a back-reference scan operation.
+struct BackRefScan<'a> {
+    conn: &'a rusqlite::Connection,
+    target_collection: &'a str,
+    target_id: &'a str,
+    locale_config: &'a LocaleConfig,
+    owner_slug: &'a str,
+    owner_label: &'a str,
+    is_global: bool,
+}
+
 /// Scan all collections and globals for back-references to `target_id` in `target_collection`.
 pub fn find_back_references(
     conn: &rusqlite::Connection,
@@ -63,39 +74,31 @@ pub fn find_back_references(
     // Scan collections
     for (slug, def) in &registry.collections {
         let table = slug.as_str();
-        scan_fields(
+        let scan = BackRefScan {
             conn,
-            &def.fields,
-            table,
-            table,
-            def.display_name(),
             target_collection,
             target_id,
             locale_config,
-            slug,
-            false,
-            "",
-            &mut results,
-        );
+            owner_slug: slug,
+            owner_label: def.display_name(),
+            is_global: false,
+        };
+        scan_fields(&scan, &def.fields, table, "", &mut results);
     }
 
     // Scan globals
     for (slug, def) in &registry.globals {
         let table = format!("_global_{}", slug);
-        scan_fields(
+        let scan = BackRefScan {
             conn,
-            &def.fields,
-            &table,
-            &table,
-            def.display_name(),
             target_collection,
             target_id,
             locale_config,
-            slug,
-            true,
-            "",
-            &mut results,
-        );
+            owner_slug: slug,
+            owner_label: def.display_name(),
+            is_global: true,
+        };
+        scan_fields(&scan, &def.fields, &table, "", &mut results);
     }
 
     results
@@ -103,18 +106,10 @@ pub fn find_back_references(
 
 /// Recursively walk a field tree, matching the same recursion pattern as
 /// `collect_column_specs_inner` in `src/db/migrate/helpers.rs`.
-#[allow(clippy::too_many_arguments)]
 fn scan_fields(
-    conn: &rusqlite::Connection,
+    scan: &BackRefScan,
     fields: &[FieldDefinition],
     parent_table: &str,
-    collection_table: &str,
-    owner_label: &str,
-    target_collection: &str,
-    target_id: &str,
-    locale_config: &LocaleConfig,
-    owner_slug: &str,
-    is_global: bool,
     prefix: &str,
     results: &mut Vec<BackReference>,
 ) {
@@ -126,58 +121,19 @@ fn scan_fields(
                 } else {
                     format!("{}__{}", prefix, field.name)
                 };
-                scan_fields(
-                    conn,
-                    &field.fields,
-                    parent_table,
-                    collection_table,
-                    owner_label,
-                    target_collection,
-                    target_id,
-                    locale_config,
-                    owner_slug,
-                    is_global,
-                    &new_prefix,
-                    results,
-                );
+                scan_fields(scan, &field.fields, parent_table, &new_prefix, results);
             }
             FieldType::Row | FieldType::Collapsible => {
-                scan_fields(
-                    conn,
-                    &field.fields,
-                    parent_table,
-                    collection_table,
-                    owner_label,
-                    target_collection,
-                    target_id,
-                    locale_config,
-                    owner_slug,
-                    is_global,
-                    prefix,
-                    results,
-                );
+                scan_fields(scan, &field.fields, parent_table, prefix, results);
             }
             FieldType::Tabs => {
                 for tab in &field.tabs {
-                    scan_fields(
-                        conn,
-                        &tab.fields,
-                        parent_table,
-                        collection_table,
-                        owner_label,
-                        target_collection,
-                        target_id,
-                        locale_config,
-                        owner_slug,
-                        is_global,
-                        prefix,
-                        results,
-                    );
+                    scan_fields(scan, &tab.fields, parent_table, prefix, results);
                 }
             }
             FieldType::Relationship | FieldType::Upload => {
                 let rc = match &field.relationship {
-                    Some(rc) if rc.all_collections().contains(&target_collection) => rc,
+                    Some(rc) if rc.all_collections().contains(&scan.target_collection) => rc,
                     _ => continue,
                 };
                 let field_label = field_display_label(field);
@@ -190,81 +146,53 @@ fn scan_fields(
                         format!("{}__{}", prefix, field.name)
                     };
                     let ids = query_has_one(
-                        conn,
+                        scan,
                         parent_table,
                         &col,
-                        target_collection,
-                        target_id,
                         rc.is_polymorphic(),
-                        field.localized && locale_config.is_enabled(),
-                        locale_config,
-                        owner_slug,
-                        is_global,
+                        field.localized && scan.locale_config.is_enabled(),
                     );
 
                     if !ids.is_empty() {
                         results.push(BackReference::new(
-                            owner_slug.to_string(),
-                            owner_label.to_string(),
+                            scan.owner_slug.to_string(),
+                            scan.owner_label.to_string(),
                             field.name.clone(),
                             field_label,
                             ids,
-                            is_global,
+                            scan.is_global,
                         ));
                     }
                 } else {
                     // Has-many: junction table
-                    let junction = format!("{}_{}", collection_table, field.name);
+                    let junction = format!("{}_{}", parent_table, field.name);
                     let ids = query_has_many(
-                        conn,
+                        scan.conn,
                         &junction,
-                        target_collection,
-                        target_id,
+                        scan.target_collection,
+                        scan.target_id,
                         rc.is_polymorphic(),
                     );
 
                     if !ids.is_empty() {
                         results.push(BackReference::new(
-                            owner_slug.to_string(),
-                            owner_label.to_string(),
+                            scan.owner_slug.to_string(),
+                            scan.owner_label.to_string(),
                             field.name.clone(),
                             field_label,
                             ids,
-                            is_global,
+                            scan.is_global,
                         ));
                     }
                 }
             }
             FieldType::Array => {
-                let array_table = format!("{}_{}", collection_table, field.name);
-                scan_array_sub_fields(
-                    conn,
-                    &field.fields,
-                    &array_table,
-                    parent_table,
-                    owner_label,
-                    target_collection,
-                    target_id,
-                    owner_slug,
-                    is_global,
-                    &field.name,
-                    results,
-                );
+                let array_table = format!("{}_{}", parent_table, field.name);
+                scan_array_sub_fields(scan, &field.fields, &array_table, &field.name, results);
             }
             FieldType::Blocks => {
-                let blocks_table = format!("{}_{}", collection_table, field.name);
-                scan_blocks(
-                    conn,
-                    &field.blocks,
-                    &blocks_table,
-                    owner_label,
-                    target_collection,
-                    target_id,
-                    owner_slug,
-                    is_global,
-                    &field.name,
-                    results,
-                );
+                let blocks_table = format!("{}_{}", parent_table, field.name);
+                scan_blocks(scan, &field.blocks, &blocks_table, &field.name, results);
             }
             _ => {}
         }
@@ -272,22 +200,17 @@ fn scan_fields(
 }
 
 /// Query has-one relationship column for a reference.
-#[allow(clippy::too_many_arguments)]
 fn query_has_one(
-    conn: &rusqlite::Connection,
+    scan: &BackRefScan,
     table: &str,
     col: &str,
-    target_collection: &str,
-    target_id: &str,
     is_polymorphic: bool,
     is_localized: bool,
-    locale_config: &LocaleConfig,
-    owner_slug: &str,
-    is_global: bool,
 ) -> Vec<String> {
     if is_localized {
         // Localized has-one: check all locale columns
-        let locale_cols: Vec<String> = locale_config
+        let locale_cols: Vec<String> = scan
+            .locale_config
             .locales
             .iter()
             .map(|l| format!("{}__{}", col, l))
@@ -298,9 +221,9 @@ fn query_has_one(
         }
 
         let match_value = if is_polymorphic {
-            format!("{}/{}", target_collection, target_id)
+            format!("{}/{}", scan.target_collection, scan.target_id)
         } else {
-            target_id.to_string()
+            scan.target_id.to_string()
         };
 
         let conditions: Vec<String> = locale_cols
@@ -313,33 +236,33 @@ fn query_has_one(
             conditions.join(" OR ")
         );
         query_ids(
-            conn,
+            scan.conn,
             &sql,
             &[&match_value],
-            owner_slug,
-            target_id,
-            is_global,
+            scan.owner_slug,
+            scan.target_id,
+            scan.is_global,
         )
     } else if is_polymorphic {
-        let match_value = format!("{}/{}", target_collection, target_id);
+        let match_value = format!("{}/{}", scan.target_collection, scan.target_id);
         let sql = format!("SELECT id FROM \"{}\" WHERE \"{}\" = ?1", table, col);
         query_ids(
-            conn,
+            scan.conn,
             &sql,
             &[&match_value as &dyn rusqlite::types::ToSql],
-            owner_slug,
-            target_id,
-            is_global,
+            scan.owner_slug,
+            scan.target_id,
+            scan.is_global,
         )
     } else {
         let sql = format!("SELECT id FROM \"{}\" WHERE \"{}\" = ?1", table, col);
         query_ids(
-            conn,
+            scan.conn,
             &sql,
-            &[&target_id as &dyn rusqlite::types::ToSql],
-            owner_slug,
-            target_id,
-            is_global,
+            &[&scan.target_id as &dyn rusqlite::types::ToSql],
+            scan.owner_slug,
+            scan.target_id,
+            scan.is_global,
         )
     }
 }
@@ -389,17 +312,10 @@ fn query_has_many(
 }
 
 /// Scan array sub-fields for relationship/upload fields (uses `flatten_array_sub_fields` logic).
-#[allow(clippy::too_many_arguments)]
 fn scan_array_sub_fields(
-    conn: &rusqlite::Connection,
+    scan: &BackRefScan,
     fields: &[FieldDefinition],
     array_table: &str,
-    _parent_table: &str,
-    owner_label: &str,
-    target_collection: &str,
-    target_id: &str,
-    owner_slug: &str,
-    is_global: bool,
     array_field_name: &str,
     results: &mut Vec<BackReference>,
 ) {
@@ -408,7 +324,7 @@ fn scan_array_sub_fields(
         match sub.field_type {
             FieldType::Relationship | FieldType::Upload => {
                 let rc = match &sub.relationship {
-                    Some(rc) if rc.all_collections().contains(&target_collection) => rc,
+                    Some(rc) if rc.all_collections().contains(&scan.target_collection) => rc,
                     _ => continue,
                 };
 
@@ -419,16 +335,16 @@ fn scan_array_sub_fields(
                 }
 
                 let match_value = if rc.is_polymorphic() {
-                    format!("{}/{}", target_collection, target_id)
+                    format!("{}/{}", scan.target_collection, scan.target_id)
                 } else {
-                    target_id.to_string()
+                    scan.target_id.to_string()
                 };
 
                 let sql = format!(
                     "SELECT DISTINCT parent_id FROM \"{}\" WHERE \"{}\" = ?1",
                     array_table, sub.name
                 );
-                let ids = query_ids_simple(conn, &sql, &match_value);
+                let ids = query_ids_simple(scan.conn, &sql, &match_value);
 
                 if !ids.is_empty() {
                     let label = format!(
@@ -437,12 +353,12 @@ fn scan_array_sub_fields(
                         field_display_label(sub)
                     );
                     results.push(BackReference::new(
-                        owner_slug.to_string(),
-                        owner_label.to_string(),
+                        scan.owner_slug.to_string(),
+                        scan.owner_label.to_string(),
                         format!("{}.{}", array_field_name, sub.name),
                         label,
                         ids,
-                        is_global,
+                        scan.is_global,
                     ));
                 }
             }
@@ -452,16 +368,10 @@ fn scan_array_sub_fields(
 }
 
 /// Scan blocks sub-fields for relationship/upload fields.
-#[allow(clippy::too_many_arguments)]
 fn scan_blocks(
-    conn: &rusqlite::Connection,
+    scan: &BackRefScan,
     blocks: &[BlockDefinition],
     blocks_table: &str,
-    owner_label: &str,
-    target_collection: &str,
-    target_id: &str,
-    owner_slug: &str,
-    is_global: bool,
     blocks_field_name: &str,
     results: &mut Vec<BackReference>,
 ) {
@@ -471,7 +381,7 @@ fn scan_blocks(
             match sub.field_type {
                 FieldType::Relationship | FieldType::Upload => {
                     let rc = match &sub.relationship {
-                        Some(rc) if rc.all_collections().contains(&target_collection) => rc,
+                        Some(rc) if rc.all_collections().contains(&scan.target_collection) => rc,
                         _ => continue,
                     };
 
@@ -480,9 +390,9 @@ fn scan_blocks(
                     }
 
                     let match_value = if rc.is_polymorphic() {
-                        format!("{}/{}", target_collection, target_id)
+                        format!("{}/{}", scan.target_collection, scan.target_id)
                     } else {
-                        target_id.to_string()
+                        scan.target_id.to_string()
                     };
 
                     let json_path = format!("$.{}", sub.name);
@@ -490,8 +400,13 @@ fn scan_blocks(
                         "SELECT DISTINCT parent_id FROM \"{}\" WHERE _block_type = ?1 AND json_extract(data, ?2) = ?3",
                         blocks_table
                     );
-                    let ids =
-                        query_ids_blocks(conn, &sql, &block.block_type, &json_path, &match_value);
+                    let ids = query_ids_blocks(
+                        scan.conn,
+                        &sql,
+                        &block.block_type,
+                        &json_path,
+                        &match_value,
+                    );
 
                     if !ids.is_empty() {
                         let label = format!(
@@ -505,12 +420,12 @@ fn scan_blocks(
                             field_display_label(sub),
                         );
                         results.push(BackReference::new(
-                            owner_slug.to_string(),
-                            owner_label.to_string(),
+                            scan.owner_slug.to_string(),
+                            scan.owner_label.to_string(),
                             format!("{}.{}.{}", blocks_field_name, block.block_type, sub.name),
                             label,
                             ids,
-                            is_global,
+                            scan.is_global,
                         ));
                     }
                 }

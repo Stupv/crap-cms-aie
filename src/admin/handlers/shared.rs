@@ -99,14 +99,13 @@ pub(crate) fn strip_denied_fields(fields: &mut HashMap<String, Value>, denied: &
 }
 
 /// Helper to check collection/global-level access. Returns AccessResult or renders a 403 page.
-#[allow(clippy::result_large_err)]
 pub(crate) fn check_access_or_forbid(
     state: &AdminState,
     access_ref: Option<&str>,
     auth_user: &Option<Extension<AuthUser>>,
     id: Option<&str>,
     data: Option<&HashMap<String, Value>>,
-) -> Result<AccessResult, Response> {
+) -> Result<AccessResult, Box<Response>> {
     // No access function configured = always allowed (skip pool.get + VM acquire)
     if access_ref.is_none() {
         return Ok(AccessResult::Allowed);
@@ -117,22 +116,22 @@ pub(crate) fn check_access_or_forbid(
     let mut conn = state
         .pool
         .get()
-        .map_err(|_| forbidden(state, "Database error").into_response())?;
+        .map_err(|_| Box::new(forbidden(state, "Database error").into_response()))?;
 
     let tx = conn
         .transaction()
-        .map_err(|_| forbidden(state, "Database error").into_response())?;
+        .map_err(|_| Box::new(forbidden(state, "Database error").into_response()))?;
 
     let result = state
         .hook_runner
         .check_access(access_ref, user_doc, id, data, &tx)
         .map_err(|e| {
             tracing::error!("Access check error: {}", e);
-            forbidden(state, "Access check failed").into_response()
+            Box::new(forbidden(state, "Access check failed").into_response())
         })?;
 
     tx.commit()
-        .map_err(|_| forbidden(state, "Database error").into_response())?;
+        .map_err(|_| Box::new(forbidden(state, "Database error").into_response()))?;
 
     Ok(result)
 }

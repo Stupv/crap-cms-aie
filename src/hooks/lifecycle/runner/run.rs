@@ -17,6 +17,55 @@ use crate::{
     },
 };
 
+/// Bundled transaction context for field-level write hooks.
+pub struct FieldWriteCtx<'a> {
+    pub conn: &'a rusqlite::Connection,
+    pub user: Option<&'a Document>,
+    pub ui_locale: Option<&'a str>,
+}
+
+impl<'a> FieldWriteCtx<'a> {
+    /// Create a builder with the required connection reference.
+    pub fn builder(conn: &'a rusqlite::Connection) -> FieldWriteCtxBuilder<'a> {
+        FieldWriteCtxBuilder::new(conn)
+    }
+}
+
+/// Builder for [`FieldWriteCtx`]. Created via [`FieldWriteCtx::builder`].
+pub struct FieldWriteCtxBuilder<'a> {
+    conn: &'a rusqlite::Connection,
+    user: Option<&'a Document>,
+    ui_locale: Option<&'a str>,
+}
+
+impl<'a> FieldWriteCtxBuilder<'a> {
+    fn new(conn: &'a rusqlite::Connection) -> Self {
+        Self {
+            conn,
+            user: None,
+            ui_locale: None,
+        }
+    }
+
+    pub fn user(mut self, user: Option<&'a Document>) -> Self {
+        self.user = user;
+        self
+    }
+
+    pub fn ui_locale(mut self, ui_locale: Option<&'a str>) -> Self {
+        self.ui_locale = ui_locale;
+        self
+    }
+
+    pub fn build(self) -> FieldWriteCtx<'a> {
+        FieldWriteCtx {
+            conn: self.conn,
+            user: self.user,
+            ui_locale: self.ui_locale,
+        }
+    }
+}
+
 use super::HookRunner;
 
 impl HookRunner {
@@ -82,8 +131,10 @@ impl HookRunner {
                 tracing::debug!("Running hook (tx): {} for {}", hook_ref, context.collection);
                 context = call_hook_ref(&lua, hook_ref, context)?;
             }
+
             // Run global registered hooks (with CRUD access via TxContext)
             context = call_registered_hooks(&lua, &event, context)?;
+
             Ok(context)
         })();
 
@@ -152,7 +203,6 @@ impl HookRunner {
     /// Run field-level hooks with an active database connection/transaction injected.
     /// CRUD functions (`crap.collections.find`, `.create`, etc.) become available
     /// to Lua field hooks, sharing the provided connection for transaction atomicity.
-    #[allow(clippy::too_many_arguments)]
     pub fn run_field_hooks_with_conn(
         &self,
         fields: &[FieldDefinition],
@@ -160,9 +210,7 @@ impl HookRunner {
         data: &mut HashMap<String, Value>,
         collection: &str,
         operation: &str,
-        conn: &rusqlite::Connection,
-        user: Option<&Document>,
-        ui_locale: Option<&str>,
+        wctx: &FieldWriteCtx,
     ) -> Result<()> {
         // Skip VM acquisition if no fields have hooks for this event
         if !has_field_hooks_for_event(fields, &event) {
@@ -172,9 +220,9 @@ impl HookRunner {
         let lua = self.pool.acquire()?;
 
         // Inject the connection pointer so CRUD functions can use it.
-        lua.set_app_data(TxContext(conn as *const _));
-        lua.set_app_data(UserContext(user.cloned()));
-        lua.set_app_data(UiLocaleContext(ui_locale.map(|s| s.to_string())));
+        lua.set_app_data(TxContext(wctx.conn as *const _));
+        lua.set_app_data(UserContext(wctx.user.cloned()));
+        lua.set_app_data(UiLocaleContext(wctx.ui_locale.map(|s| s.to_string())));
 
         let result = run_field_hooks_inner(&lua, fields, &event, data, collection, operation);
 

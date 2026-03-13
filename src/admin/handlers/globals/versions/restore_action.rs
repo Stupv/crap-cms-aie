@@ -35,7 +35,7 @@ pub async fn restore_version(
         Ok(AccessResult::Denied) => {
             return forbidden(&state, "You don't have permission to update this global");
         }
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
         _ => {}
     }
 

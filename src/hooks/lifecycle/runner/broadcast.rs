@@ -24,6 +24,77 @@ use crate::{
     },
 };
 
+/// Bundled parameters for a mutation event to publish.
+pub struct PublishEventInput {
+    pub target: EventTarget,
+    pub operation: EventOperation,
+    pub collection: String,
+    pub document_id: String,
+    pub data: HashMap<String, JsonValue>,
+    pub edited_by: Option<EventUser>,
+}
+
+impl PublishEventInput {
+    /// Create a builder with the required target and operation.
+    pub fn builder(target: EventTarget, operation: EventOperation) -> PublishEventInputBuilder {
+        PublishEventInputBuilder::new(target, operation)
+    }
+}
+
+/// Builder for [`PublishEventInput`]. Created via [`PublishEventInput::builder`].
+pub struct PublishEventInputBuilder {
+    target: EventTarget,
+    operation: EventOperation,
+    collection: Option<String>,
+    document_id: Option<String>,
+    data: HashMap<String, JsonValue>,
+    edited_by: Option<EventUser>,
+}
+
+impl PublishEventInputBuilder {
+    fn new(target: EventTarget, operation: EventOperation) -> Self {
+        Self {
+            target,
+            operation,
+            collection: None,
+            document_id: None,
+            data: HashMap::new(),
+            edited_by: None,
+        }
+    }
+
+    pub fn collection(mut self, collection: impl Into<String>) -> Self {
+        self.collection = Some(collection.into());
+        self
+    }
+
+    pub fn document_id(mut self, document_id: impl Into<String>) -> Self {
+        self.document_id = Some(document_id.into());
+        self
+    }
+
+    pub fn data(mut self, data: HashMap<String, JsonValue>) -> Self {
+        self.data = data;
+        self
+    }
+
+    pub fn edited_by(mut self, edited_by: Option<EventUser>) -> Self {
+        self.edited_by = edited_by;
+        self
+    }
+
+    pub fn build(self) -> PublishEventInput {
+        PublishEventInput {
+            target: self.target,
+            operation: self.operation,
+            collection: self.collection.expect("collection is required"),
+            document_id: self.document_id.expect("document_id is required"),
+            data: self.data,
+            edited_by: self.edited_by,
+        }
+    }
+}
+
 use super::HookRunner;
 
 impl HookRunner {
@@ -112,19 +183,13 @@ impl HookRunner {
     /// Publish a mutation event: check live setting → run before_broadcast hooks → EventBus.publish().
     /// Spawns into a background task (non-blocking, like fire_after_event).
     /// Untestable: spawns tokio::task::spawn_blocking for async event dispatch.
-    #[allow(clippy::too_many_arguments)]
     #[cfg(not(tarpaulin_include))]
     pub fn publish_event(
         &self,
         event_bus: &Option<EventBus>,
         hooks: &Hooks,
         live_setting: Option<&LiveSetting>,
-        target: EventTarget,
-        operation: EventOperation,
-        collection: String,
-        document_id: String,
-        data: HashMap<String, JsonValue>,
-        edited_by: Option<EventUser>,
+        input: PublishEventInput,
     ) {
         let bus = match event_bus {
             Some(b) => b.clone(),
@@ -134,12 +199,21 @@ impl HookRunner {
         let runner = self.clone();
         let hooks = hooks.clone();
         let live = live_setting.cloned();
-        let op_str = match &operation {
+        let op_str = match &input.operation {
             EventOperation::Create => "create",
             EventOperation::Update => "update",
             EventOperation::Delete => "delete",
         }
         .to_string();
+
+        let PublishEventInput {
+            target,
+            operation,
+            collection,
+            document_id,
+            data,
+            edited_by,
+        } = input;
 
         tokio::task::spawn_blocking(move || {
             // 1. Check live setting

@@ -54,7 +54,7 @@ pub async fn edit_form(
         None,
     ) {
         Ok(r) => r,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
     if matches!(access_result, AccessResult::Denied) {
         return forbidden(&state, "You don't have permission to view this item");

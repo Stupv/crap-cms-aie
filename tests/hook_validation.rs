@@ -81,13 +81,7 @@ fn validate_required_present_passes() {
     let result = runner.validate_fields(
         &def.fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "articles",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "articles").build(),
     );
     assert!(
         result.is_ok(),
@@ -108,13 +102,7 @@ fn validate_required_missing_fails() {
     let result = runner.validate_fields(
         &def.fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "articles",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "articles").build(),
     );
     assert!(
         result.is_err(),
@@ -141,13 +129,7 @@ fn validate_required_empty_string_fails() {
     let result = runner.validate_fields(
         &def.fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "articles",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "articles").build(),
     );
     assert!(
         result.is_err(),
@@ -176,13 +158,7 @@ fn validate_unique_passes_when_no_conflict() {
     let result = runner.validate_fields(
         &def.fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "articles",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "articles").build(),
     );
     assert!(
         result.is_ok(),
@@ -211,13 +187,7 @@ fn validate_unique_fails_on_duplicate() {
     let result = runner.validate_fields(
         &def.fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "articles",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "articles").build(),
     );
     assert!(
         result.is_err(),
@@ -252,13 +222,9 @@ fn validate_unique_excludes_self_on_update() {
     let result = runner.validate_fields(
         &def.fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "articles",
-            exclude_id: Some(&doc.id),
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "articles")
+            .exclude_id(Some(&doc.id))
+            .build(),
     );
     assert!(
         result.is_ok(),
@@ -283,13 +249,7 @@ fn custom_validate_function_passes() {
     let result = runner.validate_fields(
         &def.fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "articles",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "articles").build(),
     );
     assert!(
         result.is_ok(),
@@ -312,13 +272,7 @@ fn custom_validate_function_fails() {
     let result = runner.validate_fields(
         &def.fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "articles",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "articles").build(),
     );
     assert!(
         result.is_err(),
@@ -346,13 +300,7 @@ fn custom_validate_returns_error_message() {
     let result = runner.validate_fields(
         &def.fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "articles",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "articles").build(),
     );
     let err = result.unwrap_err();
     let word_count_err = err.errors.iter().find(|e| e.field == "word_count").unwrap();
@@ -395,13 +343,7 @@ fn validate_blocks_required_subfield_fails_when_empty() {
     let result = runner.validate_fields(
         &fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "articles",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "articles").build(),
     );
     assert!(
         result.is_err(),
@@ -443,13 +385,7 @@ fn validate_blocks_required_subfield_passes_when_present() {
     let result = runner.validate_fields(
         &fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "articles",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "articles").build(),
     );
     assert!(
         result.is_ok(),
@@ -485,13 +421,9 @@ fn validate_blocks_skips_required_for_drafts() {
     let result = runner.validate_fields(
         &fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "articles",
-            exclude_id: None,
-            is_draft: true,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "articles")
+            .draft(true)
+            .build(),
     );
     assert!(
         result.is_ok(),
@@ -525,13 +457,7 @@ fn validate_array_required_subfield_fails_when_empty() {
     let result = runner.validate_fields(
         &fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "articles",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "articles").build(),
     );
     assert!(
         result.is_err(),
@@ -573,13 +499,7 @@ fn validate_group_required_subfield_fails() {
     let result = runner.validate_fields(
         &fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "test_table",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "test_table").build(),
     );
     assert!(
         result.is_err(),
@@ -613,13 +533,7 @@ fn validate_group_required_subfield_passes() {
     let result = runner.validate_fields(
         &fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "test_table",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "test_table").build(),
     );
     assert!(
         result.is_ok(),
@@ -647,13 +561,9 @@ fn validate_group_skips_for_drafts() {
     let result = runner.validate_fields(
         &fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "test_table",
-            exclude_id: None,
-            is_draft: true,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "test_table")
+            .draft(true)
+            .build(),
     );
     assert!(
         result.is_ok(),
@@ -687,13 +597,7 @@ fn validate_min_rows_fails() {
     let result = runner.validate_fields(
         &fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "test_table",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "test_table").build(),
     );
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -729,13 +633,7 @@ fn validate_max_rows_fails() {
     let result = runner.validate_fields(
         &fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "test_table",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "test_table").build(),
     );
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -772,13 +670,7 @@ fn validate_min_max_rows_passes_when_in_range() {
     let result = runner.validate_fields(
         &fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "test_table",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "test_table").build(),
     );
     assert!(result.is_ok());
 }
@@ -802,13 +694,9 @@ fn validate_min_rows_skips_for_drafts() {
     let result = runner.validate_fields(
         &fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "test_table",
-            exclude_id: None,
-            is_draft: true,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "test_table")
+            .draft(true)
+            .build(),
     );
     assert!(result.is_ok(), "min_rows should be skipped for drafts");
 }
@@ -829,17 +717,7 @@ fn validate_date_field_valid_formats() {
     data.insert("due_date".to_string(), serde_json::json!("2024-01-15"));
     assert!(
         runner
-            .validate_fields(
-                &fields,
-                &data,
-                &ValidationCtx {
-                    conn: &conn,
-                    table: "t",
-                    exclude_id: None,
-                    is_draft: false,
-                    locale_ctx: None
-                }
-            )
+            .validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build())
             .is_ok()
     );
 
@@ -850,17 +728,7 @@ fn validate_date_field_valid_formats() {
     );
     assert!(
         runner
-            .validate_fields(
-                &fields,
-                &data,
-                &ValidationCtx {
-                    conn: &conn,
-                    table: "t",
-                    exclude_id: None,
-                    is_draft: false,
-                    locale_ctx: None
-                }
-            )
+            .validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build())
             .is_ok()
     );
 
@@ -871,17 +739,7 @@ fn validate_date_field_valid_formats() {
     );
     assert!(
         runner
-            .validate_fields(
-                &fields,
-                &data,
-                &ValidationCtx {
-                    conn: &conn,
-                    table: "t",
-                    exclude_id: None,
-                    is_draft: false,
-                    locale_ctx: None
-                }
-            )
+            .validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build())
             .is_ok()
     );
 
@@ -892,17 +750,7 @@ fn validate_date_field_valid_formats() {
     );
     assert!(
         runner
-            .validate_fields(
-                &fields,
-                &data,
-                &ValidationCtx {
-                    conn: &conn,
-                    table: "t",
-                    exclude_id: None,
-                    is_draft: false,
-                    locale_ctx: None
-                }
-            )
+            .validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build())
             .is_ok()
     );
 
@@ -910,17 +758,7 @@ fn validate_date_field_valid_formats() {
     data.insert("due_date".to_string(), serde_json::json!("14:30"));
     assert!(
         runner
-            .validate_fields(
-                &fields,
-                &data,
-                &ValidationCtx {
-                    conn: &conn,
-                    table: "t",
-                    exclude_id: None,
-                    is_draft: false,
-                    locale_ctx: None
-                }
-            )
+            .validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build())
             .is_ok()
     );
 
@@ -928,17 +766,7 @@ fn validate_date_field_valid_formats() {
     data.insert("due_date".to_string(), serde_json::json!("14:30:00"));
     assert!(
         runner
-            .validate_fields(
-                &fields,
-                &data,
-                &ValidationCtx {
-                    conn: &conn,
-                    table: "t",
-                    exclude_id: None,
-                    is_draft: false,
-                    locale_ctx: None
-                }
-            )
+            .validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build())
             .is_ok()
     );
 
@@ -946,17 +774,7 @@ fn validate_date_field_valid_formats() {
     data.insert("due_date".to_string(), serde_json::json!("2024-01"));
     assert!(
         runner
-            .validate_fields(
-                &fields,
-                &data,
-                &ValidationCtx {
-                    conn: &conn,
-                    table: "t",
-                    exclude_id: None,
-                    is_draft: false,
-                    locale_ctx: None
-                }
-            )
+            .validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build())
             .is_ok()
     );
 }
@@ -972,17 +790,8 @@ fn validate_date_field_invalid_format() {
 
     let mut data = HashMap::new();
     data.insert("due_date".to_string(), serde_json::json!("not-a-date"));
-    let result = runner.validate_fields(
-        &fields,
-        &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "t",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
-    );
+    let result =
+        runner.validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build());
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -1006,17 +815,7 @@ fn validate_date_empty_is_ok() {
     data.insert("due_date".to_string(), serde_json::json!(""));
     assert!(
         runner
-            .validate_fields(
-                &fields,
-                &data,
-                &ValidationCtx {
-                    conn: &conn,
-                    table: "t",
-                    exclude_id: None,
-                    is_draft: false,
-                    locale_ctx: None
-                }
-            )
+            .validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build())
             .is_ok()
     );
 
@@ -1024,17 +823,7 @@ fn validate_date_empty_is_ok() {
     data.insert("due_date".to_string(), serde_json::Value::Null);
     assert!(
         runner
-            .validate_fields(
-                &fields,
-                &data,
-                &ValidationCtx {
-                    conn: &conn,
-                    table: "t",
-                    exclude_id: None,
-                    is_draft: false,
-                    locale_ctx: None
-                }
-            )
+            .validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build())
             .is_ok()
     );
 }
@@ -1062,17 +851,8 @@ fn validate_date_subfield_in_array_rows() {
     );
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(
-        &fields,
-        &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "t",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
-    );
+    let result =
+        runner.validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build());
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -1107,17 +887,8 @@ fn validate_custom_function_in_array_subfield() {
     );
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(
-        &fields,
-        &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "t",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
-    );
+    let result =
+        runner.validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build());
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -1160,17 +931,8 @@ fn validate_nested_array_in_array_rows() {
     );
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(
-        &fields,
-        &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "t",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
-    );
+    let result =
+        runner.validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build());
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -1215,17 +977,8 @@ fn validate_nested_blocks_in_array_rows() {
     );
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(
-        &fields,
-        &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "t",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
-    );
+    let result =
+        runner.validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build());
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -1266,17 +1019,8 @@ fn validate_group_in_array_row_required_subfield() {
     );
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(
-        &fields,
-        &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "t",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
-    );
+    let result =
+        runner.validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build());
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -1312,17 +1056,8 @@ fn validate_group_date_subfield_in_array_row() {
     );
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(
-        &fields,
-        &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "t",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
-    );
+    let result =
+        runner.validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build());
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -1361,17 +1096,8 @@ fn validate_group_custom_validate_in_array_row() {
     );
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(
-        &fields,
-        &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "t",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
-    );
+    let result =
+        runner.validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build());
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -1406,13 +1132,9 @@ fn validate_required_field_on_update_skips_when_absent() {
     let result = runner.validate_fields(
         &fields,
         &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "t",
-            exclude_id: Some("existing-id"),
-            is_draft: false,
-            locale_ctx: None,
-        },
+        &ValidationCtx::builder(&conn, "t")
+            .exclude_id(Some("existing-id"))
+            .build(),
     );
     assert!(
         result.is_ok(),
@@ -1433,17 +1155,8 @@ fn validate_required_field_checkbox_always_passes() {
     // Checkbox with required=true should pass even with no data
     let data = HashMap::new();
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(
-        &fields,
-        &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "t",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
-    );
+    let result =
+        runner.validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build());
     assert!(
         result.is_ok(),
         "Checkbox field should never fail required check"
@@ -1467,17 +1180,8 @@ fn custom_validate_returns_false_generic_message() {
     data.insert("title".to_string(), serde_json::json!("any value"));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(
-        &fields,
-        &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "t",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
-    );
+    let result =
+        runner.validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build());
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -1507,32 +1211,14 @@ fn validate_required_array_must_have_items() {
     // Empty array should fail
     let mut data = HashMap::new();
     data.insert("tags".to_string(), serde_json::json!([]));
-    let result = runner.validate_fields(
-        &fields,
-        &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "t",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
-    );
+    let result =
+        runner.validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build());
     assert!(result.is_err(), "Empty required array should fail");
 
     // Non-empty array should pass
     data.insert("tags".to_string(), serde_json::json!([{"label": "rust"}]));
-    let result = runner.validate_fields(
-        &fields,
-        &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "t",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
-    );
+    let result =
+        runner.validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build());
     assert!(result.is_ok(), "Non-empty required array should pass");
 }
 
@@ -1564,17 +1250,8 @@ fn validate_blocks_unknown_block_type_skips() {
     );
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(
-        &fields,
-        &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "t",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
-    );
+    let result =
+        runner.validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build());
     assert!(
         result.is_ok(),
         "Unknown block type should be skipped, not error"
@@ -1601,17 +1278,8 @@ fn validate_checkbox_subfield_in_array_never_fails_required() {
     data.insert("items".to_string(), serde_json::json!([{}]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(
-        &fields,
-        &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "t",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
-    );
+    let result =
+        runner.validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build());
     assert!(
         result.is_ok(),
         "Checkbox subfield should never fail required check"
@@ -1641,17 +1309,8 @@ fn validate_checkbox_group_subfield_in_array_never_fails_required() {
     data.insert("items".to_string(), serde_json::json!([{}]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(
-        &fields,
-        &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "t",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
-    );
+    let result =
+        runner.validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build());
     assert!(
         result.is_ok(),
         "Checkbox in group in array should never fail required"
@@ -1681,16 +1340,7 @@ fn validate_blocks_non_object_row_skips() {
     data.insert("content".to_string(), serde_json::json!(["not-an-object"]));
 
     let conn = pool.get().expect("DB connection");
-    let result = runner.validate_fields(
-        &fields,
-        &data,
-        &ValidationCtx {
-            conn: &conn,
-            table: "t",
-            exclude_id: None,
-            is_draft: false,
-            locale_ctx: None,
-        },
-    );
+    let result =
+        runner.validate_fields(&fields, &data, &ValidationCtx::builder(&conn, "t").build());
     assert!(result.is_ok(), "Non-object block rows should be skipped");
 }

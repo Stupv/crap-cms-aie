@@ -12,7 +12,6 @@ use crate::{
         field::FieldDefinition,
         validate::{FieldError, ValidationError},
     },
-    db::query::LocaleContext,
     hooks::lifecycle::{
         context::HookContext,
         execution::{AfterReadCtx, apply_after_read_inner},
@@ -37,7 +36,9 @@ impl HookRunner {
         let ctx = HookContext::builder(collection, operation)
             .data(data)
             .build();
+
         self.run_hooks(hooks, HookEvent::BeforeRead, ctx)?;
+
         Ok(())
     }
 
@@ -53,6 +54,7 @@ impl HookRunner {
                 return doc;
             }
         };
+
         apply_after_read_inner(&lua, ctx, doc)
     }
 
@@ -90,55 +92,52 @@ impl HookRunner {
     ///
     /// Field hooks in before-write get full CRUD access (same transaction).
     /// The authenticated user, draft flag, and UI locale are extracted from `ctx`.
-    #[allow(clippy::too_many_arguments)]
     pub fn run_before_write(
         &self,
         hooks: &Hooks,
         fields: &[FieldDefinition],
         mut ctx: HookContext,
-        conn: &rusqlite::Connection,
-        table: &str,
-        exclude_id: Option<&str>,
-        locale_ctx: Option<&LocaleContext>,
+        val_ctx: &ValidationCtx,
     ) -> Result<HookContext> {
-        let is_draft = ctx.draft.unwrap_or(false);
-
         // Field-level before_validate (normalize inputs, CRUD available)
+        let wctx = super::run::FieldWriteCtx::builder(val_ctx.conn)
+            .user(ctx.user.as_ref())
+            .ui_locale(ctx.ui_locale.as_deref())
+            .build();
+
         self.run_field_hooks_with_conn(
             fields,
             FieldHookEvent::BeforeValidate,
             &mut ctx.data,
             &ctx.collection,
             &ctx.operation,
-            conn,
-            ctx.user.as_ref(),
-            ctx.ui_locale.as_deref(),
+            &wctx,
         )?;
+
         // Collection-level before_validate
-        let ctx = self.run_hooks_with_conn(hooks, HookEvent::BeforeValidate, ctx, conn)?;
+        let ctx = self.run_hooks_with_conn(hooks, HookEvent::BeforeValidate, ctx, val_ctx.conn)?;
+
         // Validation (skip required checks for drafts)
-        let val_ctx = ValidationCtx {
-            conn,
-            table,
-            exclude_id,
-            is_draft,
-            locale_ctx,
-        };
-        self.validate_fields(fields, &ctx.data, &val_ctx)?;
+        self.validate_fields(fields, &ctx.data, val_ctx)?;
+
         // Field-level before_change (post-validation transforms, CRUD available)
         let mut ctx = ctx;
+        let wctx = super::run::FieldWriteCtx::builder(val_ctx.conn)
+            .user(ctx.user.as_ref())
+            .ui_locale(ctx.ui_locale.as_deref())
+            .build();
+
         self.run_field_hooks_with_conn(
             fields,
             FieldHookEvent::BeforeChange,
             &mut ctx.data,
             &ctx.collection,
             &ctx.operation,
-            conn,
-            ctx.user.as_ref(),
-            ctx.ui_locale.as_deref(),
+            &wctx,
         )?;
+
         // Collection-level before_change
-        self.run_hooks_with_conn(hooks, HookEvent::BeforeChange, ctx, conn)
+        self.run_hooks_with_conn(hooks, HookEvent::BeforeChange, ctx, val_ctx.conn)
     }
 
     /// Run after-write hooks inside the transaction (with CRUD access).
@@ -159,15 +158,18 @@ impl HookRunner {
 
             if has_field_hooks {
                 let mut data = ctx.data.clone();
+                let wctx = super::run::FieldWriteCtx::builder(conn)
+                    .user(ctx.user.as_ref())
+                    .ui_locale(ctx.ui_locale.as_deref())
+                    .build();
+
                 self.run_field_hooks_with_conn(
                     fields,
                     FieldHookEvent::AfterChange,
                     &mut data,
                     &ctx.collection,
                     &ctx.operation,
-                    conn,
-                    ctx.user.as_ref(),
-                    ctx.ui_locale.as_deref(),
+                    &wctx,
                 )?;
             }
         }
@@ -189,6 +191,7 @@ impl HookRunner {
             .pool
             .acquire()
             .map_err(|_| ValidationError::new(vec![FieldError::new("_system", "VM pool error")]))?;
+
         validate_fields_inner(&lua, fields, data, ctx)
     }
 }

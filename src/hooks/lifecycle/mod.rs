@@ -11,7 +11,7 @@ mod validation;
 
 // Re-exports (preserves all existing external import paths)
 pub use context::{HookContext, HookContextBuilder};
-pub use runner::{HookRunner, HookRunnerBuilder};
+pub use runner::{FieldWriteCtx, HookRunner, HookRunnerBuilder, PublishEventInput};
 pub use types::{DisplayConditionResult, FieldHookEvent, HookEvent};
 // Internal types needed by sibling submodules (crud.rs, access.rs, context.rs).
 pub use execution::AfterReadCtx;

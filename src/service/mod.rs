@@ -85,33 +85,106 @@ pub(crate) fn build_before_ctx(
     builder.build()
 }
 
+/// Bundled parameters for after-change hook invocation.
+pub(crate) struct AfterChangeInput<'a> {
+    pub slug: &'a str,
+    pub operation: &'a str,
+    pub locale: Option<String>,
+    pub is_draft: bool,
+    pub req_context: HashMap<String, Value>,
+    pub user: Option<&'a Document>,
+    pub ui_locale: Option<&'a str>,
+}
+
+impl<'a> AfterChangeInput<'a> {
+    /// Create a builder with the required slug and operation.
+    pub fn builder(slug: &'a str, operation: &'a str) -> AfterChangeInputBuilder<'a> {
+        AfterChangeInputBuilder::new(slug, operation)
+    }
+}
+
+/// Builder for [`AfterChangeInput`]. Created via [`AfterChangeInput::builder`].
+pub(crate) struct AfterChangeInputBuilder<'a> {
+    slug: &'a str,
+    operation: &'a str,
+    locale: Option<String>,
+    is_draft: bool,
+    req_context: HashMap<String, Value>,
+    user: Option<&'a Document>,
+    ui_locale: Option<&'a str>,
+}
+
+impl<'a> AfterChangeInputBuilder<'a> {
+    fn new(slug: &'a str, operation: &'a str) -> Self {
+        Self {
+            slug,
+            operation,
+            locale: None,
+            is_draft: false,
+            req_context: HashMap::new(),
+            user: None,
+            ui_locale: None,
+        }
+    }
+
+    pub fn locale(mut self, locale: Option<String>) -> Self {
+        self.locale = locale;
+        self
+    }
+
+    pub fn draft(mut self, is_draft: bool) -> Self {
+        self.is_draft = is_draft;
+        self
+    }
+
+    pub fn req_context(mut self, req_context: HashMap<String, Value>) -> Self {
+        self.req_context = req_context;
+        self
+    }
+
+    pub fn user(mut self, user: Option<&'a Document>) -> Self {
+        self.user = user;
+        self
+    }
+
+    pub fn ui_locale(mut self, ui_locale: Option<&'a str>) -> Self {
+        self.ui_locale = ui_locale;
+        self
+    }
+
+    pub fn build(self) -> AfterChangeInput<'a> {
+        AfterChangeInput {
+            slug: self.slug,
+            operation: self.operation,
+            locale: self.locale,
+            is_draft: self.is_draft,
+            req_context: self.req_context,
+            user: self.user,
+            ui_locale: self.ui_locale,
+        }
+    }
+}
+
 /// Run after-change hooks and return the request-scoped context.
 /// This pattern is repeated across create, update, unpublish, and global update.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn run_after_change_hooks(
     runner: &HookRunner,
     hooks: &Hooks,
     fields: &[FieldDefinition],
-    slug: &str,
-    operation: &str,
     doc: &Document,
-    locale: Option<String>,
-    is_draft: bool,
-    req_context: HashMap<String, Value>,
+    input: AfterChangeInput<'_>,
     tx: &rusqlite::Connection,
-    user: Option<&Document>,
-    ui_locale: Option<&str>,
 ) -> Result<HashMap<String, Value>> {
     let mut after_data = doc.fields.clone();
     after_data.insert("id".to_string(), Value::String(doc.id.clone()));
-    let mut builder = HookContext::builder(slug, operation)
+    let mut builder = HookContext::builder(input.slug, input.operation)
         .data(after_data)
-        .draft(is_draft)
-        .context(req_context)
-        .user(user)
-        .ui_locale(ui_locale);
+        .draft(input.is_draft)
+        .context(input.req_context)
+        .user(input.user)
+        .ui_locale(input.ui_locale);
 
-    if let Some(l) = locale {
+    if let Some(l) = input.locale {
         builder = builder.locale(l);
     }
     let after_ctx = builder.build();
@@ -126,6 +199,53 @@ pub struct PersistOptions<'a> {
     pub password: Option<&'a str>,
     pub locale_ctx: Option<&'a LocaleContext>,
     pub is_draft: bool,
+}
+
+impl<'a> PersistOptions<'a> {
+    /// Create a builder with all fields defaulted.
+    pub fn builder() -> PersistOptionsBuilder<'a> {
+        PersistOptionsBuilder::new()
+    }
+}
+
+/// Builder for [`PersistOptions`]. Created via [`PersistOptions::builder`].
+pub struct PersistOptionsBuilder<'a> {
+    password: Option<&'a str>,
+    locale_ctx: Option<&'a LocaleContext>,
+    is_draft: bool,
+}
+
+impl<'a> PersistOptionsBuilder<'a> {
+    fn new() -> Self {
+        Self {
+            password: None,
+            locale_ctx: None,
+            is_draft: false,
+        }
+    }
+
+    pub fn password(mut self, password: Option<&'a str>) -> Self {
+        self.password = password;
+        self
+    }
+
+    pub fn locale_ctx(mut self, locale_ctx: Option<&'a LocaleContext>) -> Self {
+        self.locale_ctx = locale_ctx;
+        self
+    }
+
+    pub fn draft(mut self, is_draft: bool) -> Self {
+        self.is_draft = is_draft;
+        self
+    }
+
+    pub fn build(self) -> PersistOptions<'a> {
+        PersistOptions {
+            password: self.password,
+            locale_ctx: self.locale_ctx,
+            is_draft: self.is_draft,
+        }
+    }
 }
 
 /// Persist the DB write phase of a create operation.
@@ -165,7 +285,6 @@ pub fn persist_create(
 
 /// Persist the DB write phase of a normal (non-draft) update operation.
 /// Performs: update → join data → password → version snapshot (published).
-#[allow(clippy::too_many_arguments)]
 pub fn persist_update(
     conn: &rusqlite::Connection,
     slug: &str,
@@ -173,13 +292,12 @@ pub fn persist_update(
     def: &CollectionDefinition,
     final_data: &HashMap<String, String>,
     hook_data: &HashMap<String, Value>,
-    password: Option<&str>,
-    locale_ctx: Option<&LocaleContext>,
+    opts: &PersistOptions<'_>,
 ) -> Result<Document> {
-    let doc = query::update(conn, slug, def, id, final_data, locale_ctx)?;
-    query::save_join_table_data(conn, slug, &def.fields, &doc.id, hook_data, locale_ctx)?;
+    let doc = query::update(conn, slug, def, id, final_data, opts.locale_ctx)?;
+    query::save_join_table_data(conn, slug, &def.fields, &doc.id, hook_data, opts.locale_ctx)?;
 
-    if let Some(pw) = password
+    if let Some(pw) = opts.password
         && !pw.is_empty()
     {
         query::update_password(conn, slug, &doc.id, pw)?;
@@ -322,8 +440,7 @@ mod tests {
             &def,
             &update_data,
             &HashMap::new(),
-            None,
-            None,
+            &PersistOptions::default(),
         )
         .unwrap();
         assert_eq!(updated.get_str("title"), Some("Updated"));

@@ -12,7 +12,7 @@ use tonic::Request;
 
 use crap_cms::api::content;
 use crap_cms::api::content::content_api_server::ContentApi;
-use crap_cms::api::service::ContentService;
+use crap_cms::api::service::{ContentService, ContentServiceDeps};
 use crap_cms::config::*;
 use crap_cms::core::Registry;
 use crap_cms::core::collection::*;
@@ -114,22 +114,21 @@ fn setup_service(defs: Vec<CollectionDefinition>) -> TestSetup {
     let email_renderer = Arc::new(EmailRenderer::new(tmp.path()).expect("email renderer"));
 
     let service = ContentService::new(
-        db_pool.clone(),
-        Registry::snapshot(&registry),
-        hook_runner.clone(),
-        config.auth.secret.clone(),
-        &config.depth,
-        &config.pagination,
-        config.email.clone(),
-        email_renderer,
-        config.server.clone(),
-        None,
-        config.locale.clone(),
-        tmp.path().to_path_buf(),
-        std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300)),
-        config.auth.reset_token_expiry,
-        config.auth.password_policy.clone(),
-        std::sync::Arc::new(crap_cms::core::rate_limit::LoginRateLimiter::new(3, 900)),
+        ContentServiceDeps::builder()
+            .pool(db_pool.clone())
+            .registry(Registry::snapshot(&registry))
+            .hook_runner(hook_runner.clone())
+            .jwt_secret(config.auth.secret.clone())
+            .config(config.clone())
+            .config_dir(tmp.path().to_path_buf())
+            .email_renderer(email_renderer)
+            .login_limiter(std::sync::Arc::new(
+                crap_cms::core::rate_limit::LoginRateLimiter::new(5, 300),
+            ))
+            .forgot_password_limiter(std::sync::Arc::new(
+                crap_cms::core::rate_limit::LoginRateLimiter::new(3, 900),
+            ))
+            .build(),
     );
 
     TestSetup {
@@ -1140,10 +1139,7 @@ fn persist_create_draft() {
         .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
         .collect();
 
-    let opts = service::PersistOptions {
-        is_draft: true,
-        ..service::PersistOptions::default()
-    };
+    let opts = service::PersistOptions::builder().draft(true).build();
     let doc =
         service::persist_create(&conn, "articles", &def, &final_data, &hook_data, &opts).unwrap();
 
@@ -1185,8 +1181,7 @@ fn persist_update_publishes() {
         &def,
         &update_data,
         &hook_data,
-        None,
-        None,
+        &service::PersistOptions::default(),
     )
     .unwrap();
     assert_eq!(updated.get_str("title"), Some("After Update"));

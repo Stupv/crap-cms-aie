@@ -3,6 +3,7 @@
 pub mod context;
 pub mod handlers;
 pub mod server;
+pub mod server_builder;
 pub mod templates;
 pub mod translations;
 

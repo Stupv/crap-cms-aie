@@ -8,7 +8,7 @@ use crap_cms::core::field::{FieldDefinition, FieldType};
 use crap_cms::db::query::AccessResult;
 use crap_cms::db::{migrate, pool, query};
 use crap_cms::hooks;
-use crap_cms::hooks::lifecycle::{AfterReadCtx, HookRunner};
+use crap_cms::hooks::lifecycle::{AfterReadCtx, FieldWriteCtx, HookRunner, ValidationCtx};
 
 fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/hook_tests")
@@ -165,9 +165,7 @@ fn field_before_change_transforms_value() {
             &mut data,
             "articles",
             "create",
-            &tx,
-            None,
-            None,
+            &FieldWriteCtx::builder(&tx).build(),
         )
         .expect("Field hook failed");
 
@@ -267,7 +265,12 @@ fn run_before_write_full_lifecycle() {
     let tx = conn.transaction().expect("Start transaction");
 
     let result = runner
-        .run_before_write(&def.hooks, &def.fields, ctx, &tx, "articles", None, None)
+        .run_before_write(
+            &def.hooks,
+            &def.fields,
+            ctx,
+            &ValidationCtx::builder(&tx, "articles").build(),
+        )
         .expect("run_before_write failed");
 
     // Title should be trimmed (before_validate hook)
@@ -317,7 +320,12 @@ fn run_before_write_fails_on_validation_error() {
     let mut conn = pool.get().expect("DB connection");
     let tx = conn.transaction().expect("Start transaction");
 
-    let result = runner.run_before_write(&def.hooks, &def.fields, ctx, &tx, "articles", None, None);
+    let result = runner.run_before_write(
+        &def.hooks,
+        &def.fields,
+        ctx,
+        &ValidationCtx::builder(&tx, "articles").build(),
+    );
     assert!(
         result.is_err(),
         "run_before_write should fail when validation fails"

@@ -45,7 +45,7 @@ pub async fn create_form(
                 "You don't have permission to create items in this collection",
             );
         }
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
         _ => {}
     }
 

@@ -27,6 +27,59 @@ pub struct ValidationCtx<'a> {
     pub locale_ctx: Option<&'a LocaleContext>,
 }
 
+impl<'a> ValidationCtx<'a> {
+    /// Create a builder with the required connection and table name.
+    pub fn builder(conn: &'a rusqlite::Connection, table: &'a str) -> ValidationCtxBuilder<'a> {
+        ValidationCtxBuilder::new(conn, table)
+    }
+}
+
+/// Builder for [`ValidationCtx`]. Created via [`ValidationCtx::builder`].
+pub struct ValidationCtxBuilder<'a> {
+    conn: &'a rusqlite::Connection,
+    table: &'a str,
+    exclude_id: Option<&'a str>,
+    is_draft: bool,
+    locale_ctx: Option<&'a LocaleContext>,
+}
+
+impl<'a> ValidationCtxBuilder<'a> {
+    fn new(conn: &'a rusqlite::Connection, table: &'a str) -> Self {
+        Self {
+            conn,
+            table,
+            exclude_id: None,
+            is_draft: false,
+            locale_ctx: None,
+        }
+    }
+
+    pub fn exclude_id(mut self, exclude_id: Option<&'a str>) -> Self {
+        self.exclude_id = exclude_id;
+        self
+    }
+
+    pub fn draft(mut self, is_draft: bool) -> Self {
+        self.is_draft = is_draft;
+        self
+    }
+
+    pub fn locale_ctx(mut self, locale_ctx: Option<&'a LocaleContext>) -> Self {
+        self.locale_ctx = locale_ctx;
+        self
+    }
+
+    pub fn build(self) -> ValidationCtx<'a> {
+        ValidationCtx {
+            conn: self.conn,
+            table: self.table,
+            exclude_id: self.exclude_id,
+            is_draft: self.is_draft,
+            locale_ctx: self.locale_ctx,
+        }
+    }
+}
+
 /// Inner implementation of `validate_fields` — operates on a locked `&Lua`.
 /// Used by both `HookRunner::validate_fields` and Lua CRUD closures.
 pub(crate) fn validate_fields_inner(
@@ -36,19 +89,7 @@ pub(crate) fn validate_fields_inner(
     ctx: &ValidationCtx,
 ) -> Result<(), ValidationError> {
     let mut errors = Vec::new();
-    recursive::validate_fields_recursive(
-        lua,
-        fields,
-        data,
-        ctx.conn,
-        ctx.table,
-        ctx.exclude_id,
-        ctx.is_draft,
-        "",
-        ctx.locale_ctx,
-        false,
-        &mut errors,
-    );
+    recursive::validate_fields_recursive(lua, fields, data, ctx, "", false, &mut errors);
 
     if errors.is_empty() {
         Ok(())

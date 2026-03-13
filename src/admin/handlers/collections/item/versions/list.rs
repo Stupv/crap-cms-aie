@@ -53,7 +53,7 @@ pub async fn list_versions_page(
         Ok(AccessResult::Denied) => {
             return forbidden(&state, "You don't have permission to view this item");
         }
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
         _ => {}
     }
 

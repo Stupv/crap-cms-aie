@@ -185,13 +185,10 @@ pub(super) fn register_create(
 
             // Validation (always runs unless hooks=false)
             if run_hooks {
-                let val_ctx = ValidationCtx {
-                    conn,
-                    table: &collection,
-                    exclude_id: None,
-                    is_draft,
-                    locale_ctx: locale_ctx.as_ref(),
-                };
+                let val_ctx = ValidationCtx::builder(conn, &collection)
+                    .draft(is_draft)
+                    .locale_ctx(locale_ctx.as_ref())
+                    .build();
                 validate_fields_inner(lua, &def.fields, &hook_data, &val_ctx)
                     .map_err(|e| mlua::Error::RuntimeError(format!("validation error: {}", e)))?;
             }
@@ -234,11 +231,11 @@ pub(super) fn register_create(
                 .build()
                 .to_string_map(&def.fields);
 
-            let persist_opts = PersistOptions {
-                password: password.as_deref(),
-                locale_ctx: locale_ctx.as_ref(),
-                is_draft,
-            };
+            let persist_opts = PersistOptions::builder()
+                .password(password.as_deref())
+                .locale_ctx(locale_ctx.as_ref())
+                .draft(is_draft)
+                .build();
             let doc = service::persist_create(
                 conn,
                 &collection,
@@ -525,13 +522,11 @@ pub(super) fn register_update(
             }
 
             if run_hooks {
-                let val_ctx = ValidationCtx {
-                    conn,
-                    table: &collection,
-                    exclude_id: Some(&id),
-                    is_draft,
-                    locale_ctx: locale_ctx.as_ref(),
-                };
+                let val_ctx = ValidationCtx::builder(conn, &collection)
+                    .exclude_id(Some(&id))
+                    .draft(is_draft)
+                    .locale_ctx(locale_ctx.as_ref())
+                    .build();
                 validate_fields_inner(lua, &def.fields, &hook_data, &val_ctx)
                     .map_err(|e| mlua::Error::RuntimeError(format!("validation error: {}", e)))?;
             }
@@ -619,8 +614,10 @@ pub(super) fn register_update(
                     &def,
                     &final_data,
                     &hook_data,
-                    password.as_deref(),
-                    locale_ctx.as_ref(),
+                    &service::PersistOptions::builder()
+                        .password(password.as_deref())
+                        .locale_ctx(locale_ctx.as_ref())
+                        .build(),
                 )
                 .map_err(|e| mlua::Error::RuntimeError(format!("update error: {}", e)))?;
 

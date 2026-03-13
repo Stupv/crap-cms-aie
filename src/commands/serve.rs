@@ -341,26 +341,29 @@ pub async fn run(config_dir: &Path) -> Result<()> {
 
     let admin_handle = admin::server::start(
         &admin_addr,
-        cfg.clone(),
-        config_dir.clone(),
-        pool.clone(),
-        registry_snapshot.clone(),
-        hook_runner.clone(),
-        jwt_secret.clone(),
-        event_bus.clone(),
+        admin::server::AdminStartParams::builder()
+            .config(cfg.clone())
+            .config_dir(config_dir.clone())
+            .pool(pool.clone())
+            .registry(registry_snapshot.clone())
+            .hook_runner(hook_runner.clone())
+            .jwt_secret(jwt_secret.clone())
+            .event_bus(event_bus.clone())
+            .build(),
         shutdown.clone(),
     );
 
     let grpc_handle = api::start_server(
         &grpc_addr,
-        pool.clone(),
-        registry_snapshot,
-        hook_runner.clone(),
-        jwt_secret,
-        &cfg.depth,
-        &cfg,
-        &config_dir,
-        event_bus,
+        api::GrpcStartParams::builder()
+            .pool(pool.clone())
+            .registry(registry_snapshot)
+            .hook_runner(hook_runner.clone())
+            .jwt_secret(jwt_secret)
+            .config(cfg.clone())
+            .config_dir(config_dir.clone())
+            .event_bus(event_bus)
+            .build(),
         shutdown.clone(),
     );
 
