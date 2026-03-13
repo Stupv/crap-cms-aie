@@ -15,7 +15,10 @@ use axum::{
     response::{Html, IntoResponse, Redirect, Response},
     routing::{MethodRouter, get, post},
 };
+use serde_json::Value;
+use subtle::ConstantTimeEq;
 use tokio_util::sync::CancellationToken;
+use tower_http::{compression::CompressionLayer, trace::TraceLayer};
 
 use super::{
     AdminState,
@@ -27,6 +30,7 @@ use super::{
     translations::Translations,
 };
 use crate::{
+    api::upload::upload_router,
     config::{CompressionMode, CrapConfig, LocaleConfig},
     core::{
         Registry,
@@ -37,6 +41,10 @@ use crate::{
     },
     db::{DbPool, query},
     hooks::lifecycle::HookRunner,
+    mcp::{
+        McpServer,
+        protocol::{INTERNAL_ERROR, JsonRpcError, JsonRpcRequest, JsonRpcResponse, PARSE_ERROR},
+    },
 };
 
 /// Start the admin HTTP server (Axum) with all routes, middleware, and static file serving.
@@ -120,6 +128,7 @@ pub async fn start(
 #[cfg(not(tarpaulin_include))]
 pub fn build_router(state: AdminState) -> Router {
     let has_auth = state.has_auth;
+
     // Build method routers explicitly to handle multiple methods on same path
     let slug_methods: MethodRouter<AdminState> = MethodRouter::new()
         .get(collections::list_items)
@@ -206,7 +215,7 @@ pub fn build_router(state: AdminState) -> Router {
         None
     };
 
-    let upload_api = crate::api::upload::upload_router(state.clone());
+    let upload_api = upload_router(state.clone());
 
     let router = Router::new()
         .route("/health", get(health_liveness))
@@ -260,24 +269,18 @@ pub fn build_router(state: AdminState) -> Router {
     // Add response compression if configured
     let router = match state.config.server.compression {
         CompressionMode::Off => router,
-        CompressionMode::Gzip => router.layer(
-            tower_http::compression::CompressionLayer::new()
-                .no_br()
-                .no_deflate()
-                .no_zstd(),
-        ),
-        CompressionMode::Br => router.layer(
-            tower_http::compression::CompressionLayer::new()
-                .no_gzip()
-                .no_deflate()
-                .no_zstd(),
-        ),
-        CompressionMode::All => router.layer(tower_http::compression::CompressionLayer::new()),
+        CompressionMode::Gzip => {
+            router.layer(CompressionLayer::new().no_br().no_deflate().no_zstd())
+        }
+        CompressionMode::Br => {
+            router.layer(CompressionLayer::new().no_gzip().no_deflate().no_zstd())
+        }
+        CompressionMode::All => router.layer(CompressionLayer::new()),
     };
 
     // Request tracing: per-request spans with method, path, status, latency
     let router = router.layer(
-        tower_http::trace::TraceLayer::new_for_http()
+        TraceLayer::new_for_http()
             .make_span_with(|req: &Request<_>| {
                 let request_id = nanoid::nanoid!(12);
                 tracing::info_span!(
@@ -288,9 +291,7 @@ pub fn build_router(state: AdminState) -> Router {
                 )
             })
             .on_response(
-                |resp: &axum::http::Response<_>,
-                 latency: std::time::Duration,
-                 _span: &tracing::Span| {
+                |resp: &axum::http::Response<_>, latency: Duration, _span: &tracing::Span| {
                     tracing::info!(
                         status = resp.status().as_u16(),
                         latency_ms = latency.as_millis(),
@@ -341,6 +342,7 @@ async fn security_headers(request: Request<Body>, next: Next) -> Response {
         HeaderName::from_static("permissions-policy"),
         HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
     );
+
     response
 }
 
@@ -352,6 +354,7 @@ async fn security_headers(request: Request<Body>, next: Next) -> Response {
 #[cfg(not(tarpaulin_include))]
 async fn html_cache_control(request: Request<Body>, next: Next) -> Response {
     let mut response = next.run(request).await;
+
     if let Some(ct) = response.headers().get(header::CONTENT_TYPE)
         && ct.to_str().unwrap_or("").starts_with("text/html")
     {
@@ -384,6 +387,7 @@ async fn csrf_middleware(
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .is_some_and(|v| v.starts_with("Bearer "));
+
     if has_bearer {
         return next.run(request).await;
     }
@@ -479,12 +483,14 @@ fn ensure_csrf_cookie(response: &mut Response, existing_cookie: Option<&str>, de
     if existing_cookie.is_some() {
         return;
     }
+
     let token = nanoid::nanoid!(32);
     let secure = if dev_mode { "" } else { "; Secure" };
     let cookie = format!(
         "crap_csrf={}; Path=/; SameSite=Strict; Max-Age=86400{}",
         token, secure
     );
+
     if let Ok(value) = cookie.parse() {
         response.headers_mut().append(header::SET_COOKIE, value);
     }
@@ -535,7 +541,9 @@ async fn auth_middleware(
             }
             request.extensions_mut().insert(auth_user);
         }
+
         request.extensions_mut().insert(claims);
+
         return next.run(request).await;
     }
 
@@ -627,7 +635,9 @@ async fn auth_middleware(
                 }
                 request.extensions_mut().insert(auth_user);
             }
+
             request.extensions_mut().insert(claims);
+
             return next.run(request).await;
         }
     }
@@ -654,7 +664,6 @@ async fn auth_middleware(
 #[cfg(not(tarpaulin_include))]
 async fn check_admin_gate(state: &AdminState, auth_user: &AuthUser) -> Option<Response> {
     let access_ref = state.config.admin.access.as_deref()?;
-
     let pool = state.pool.clone();
     let hook_runner = state.hook_runner.clone();
     let user_doc = auth_user.user_doc.clone();
@@ -679,6 +688,7 @@ async fn check_admin_gate(state: &AdminState, auth_user: &AuthUser) -> Option<Re
 /// Render the "setup required" page (no auth collection exists, require_auth is on).
 fn auth_required_response(state: &AdminState) -> Response {
     let data = ContextBuilder::auth(state).build();
+
     match state.render("errors/auth_required", &data) {
         Ok(html) => (StatusCode::SERVICE_UNAVAILABLE, Html(html)).into_response(),
         Err(_) => (
@@ -692,6 +702,7 @@ fn auth_required_response(state: &AdminState) -> Response {
 /// Render the "access denied" page (user authenticated but not authorized for admin).
 fn admin_denied_response(state: &AdminState) -> Response {
     let data = ContextBuilder::auth(state).build();
+
     match state.render("errors/admin_denied", &data) {
         Ok(html) => (StatusCode::FORBIDDEN, Html(html)).into_response(),
         Err(_) => (StatusCode::FORBIDDEN, "Access denied").into_response(),
@@ -712,7 +723,9 @@ pub(crate) fn load_auth_user(
 ) -> Option<AuthUser> {
     let def = registry.get_collection(&claims.collection)?.clone();
     let locale_ctx = query::LocaleContext::from_locale_string(None, locale_config);
+
     let conn = pool.get().ok()?;
+
     let doc = query::find_by_id(
         &conn,
         &claims.collection,
@@ -726,7 +739,7 @@ pub(crate) fn load_auth_user(
     let ui_locale = query::get_user_settings(&conn, &claims.sub)
         .ok()
         .flatten()
-        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
         .and_then(|v| {
             v.get("ui_locale")
                 .and_then(|l| l.as_str())
@@ -736,6 +749,7 @@ pub(crate) fn load_auth_user(
 
     let mut auth = AuthUser::new(claims.clone(), doc);
     auth.ui_locale = ui_locale;
+
     Some(auth)
 }
 
@@ -767,8 +781,8 @@ async fn mcp_http_handler(State(state): State<AdminState>, request: Request<Body
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
         let expected = format!("Bearer {}", state.config.mcp.api_key);
-        use subtle::ConstantTimeEq;
         let is_valid = auth_header.as_bytes().ct_eq(expected.as_bytes());
+
         if !bool::from(is_valid) {
             return (StatusCode::UNAUTHORIZED, "Invalid or missing API key").into_response();
         }
@@ -779,25 +793,24 @@ async fn mcp_http_handler(State(state): State<AdminState>, request: Request<Body
         Err(_) => return (StatusCode::BAD_REQUEST, "Request body too large").into_response(),
     };
 
-    let rpc_request: crate::mcp::protocol::JsonRpcRequest =
-        match serde_json::from_slice(&body_bytes) {
-            Ok(r) => r,
-            Err(e) => {
-                let error_resp = crate::mcp::protocol::JsonRpcResponse {
-                    jsonrpc: "2.0".to_string(),
-                    id: None,
-                    result: None,
-                    error: Some(crate::mcp::protocol::JsonRpcError {
-                        code: crate::mcp::protocol::PARSE_ERROR,
-                        message: format!("Parse error: {}", e),
-                        data: None,
-                    }),
-                };
-                return Json(error_resp).into_response();
-            }
-        };
+    let rpc_request: JsonRpcRequest = match serde_json::from_slice(&body_bytes) {
+        Ok(r) => r,
+        Err(e) => {
+            let error_resp = JsonRpcResponse {
+                jsonrpc: "2.0".to_string(),
+                id: None,
+                result: None,
+                error: Some(JsonRpcError {
+                    code: PARSE_ERROR,
+                    message: format!("Parse error: {}", e),
+                    data: None,
+                }),
+            };
+            return Json(error_resp).into_response();
+        }
+    };
 
-    let server = crate::mcp::McpServer {
+    let server = McpServer {
         pool: state.pool.clone(),
         registry: state.registry.clone(),
         runner: state.hook_runner.clone(),
@@ -809,11 +822,7 @@ async fn mcp_http_handler(State(state): State<AdminState>, request: Request<Body
     let response =
         match tokio::task::spawn_blocking(move || server.handle_message(rpc_request)).await {
             Ok(resp) => resp,
-            Err(_) => crate::mcp::protocol::JsonRpcResponse::error(
-                None,
-                crate::mcp::protocol::INTERNAL_ERROR,
-                "Internal error",
-            ),
+            Err(_) => JsonRpcResponse::error(None, INTERNAL_ERROR, "Internal error"),
         };
 
     // Notifications must not receive a response per JSON-RPC spec

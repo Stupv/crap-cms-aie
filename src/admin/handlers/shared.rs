@@ -25,7 +25,7 @@ use crate::{
         collection::{CollectionDefinition, VersionsConfig},
         document::VersionSnapshot,
         event::EventUser,
-        field::{FieldAdmin, FieldDefinition, FieldType},
+        field::{self, FieldAdmin, FieldDefinition, FieldType},
         validate::ValidationError,
     },
     db::{
@@ -176,7 +176,7 @@ pub(crate) fn build_locale_template_data(
 
 /// Auto-generate a label from a field name (e.g. "my_field" -> "My Field").
 pub(crate) fn auto_label_from_name(name: &str) -> String {
-    crate::core::field::to_title_case(name)
+    field::to_title_case(name)
 }
 
 /// Parse `where[field][op]=value` parameters from a raw query string.
@@ -479,7 +479,7 @@ pub(crate) fn translate_validation_errors(
 pub(crate) fn forbidden(state: &AdminState, message: &str) -> Response {
     let data = ContextBuilder::new(state, None)
         .page(PageType::Error403, "Forbidden")
-        .set("message", serde_json::Value::String(message.to_string()))
+        .set("message", Value::String(message.to_string()))
         .build();
 
     let data = state.hook_runner.run_before_render(data);
@@ -519,7 +519,7 @@ pub(crate) fn html_with_toast(
     match state.render(template, data) {
         Ok(html) => {
             let mut resp = Html(html).into_response();
-            let json_toast = serde_json::json!({ "message": toast, "type": "error" }).to_string();
+            let json_toast = json!({ "message": toast, "type": "error" }).to_string();
 
             if let Ok(val) = json_toast.parse() {
                 resp.headers_mut().insert("X-Crap-Toast", val);
@@ -809,9 +809,9 @@ mod tests {
     #[test]
     fn strip_denied_fields_removes_specified_keys() {
         let mut fields = HashMap::new();
-        fields.insert("title".to_string(), serde_json::json!("Hello"));
-        fields.insert("secret".to_string(), serde_json::json!("hidden"));
-        fields.insert("body".to_string(), serde_json::json!("content"));
+        fields.insert("title".to_string(), json!("Hello"));
+        fields.insert("secret".to_string(), json!("hidden"));
+        fields.insert("body".to_string(), json!("content"));
 
         strip_denied_fields(&mut fields, &["secret".to_string()]);
 
@@ -824,8 +824,8 @@ mod tests {
     #[test]
     fn strip_denied_fields_empty_denied_list() {
         let mut fields = HashMap::new();
-        fields.insert("title".to_string(), serde_json::json!("Hello"));
-        fields.insert("body".to_string(), serde_json::json!("content"));
+        fields.insert("title".to_string(), json!("Hello"));
+        fields.insert("body".to_string(), json!("content"));
 
         strip_denied_fields(&mut fields, &[]);
 
@@ -836,7 +836,7 @@ mod tests {
 
     #[test]
     fn strip_denied_fields_empty_fields_map() {
-        let mut fields: HashMap<String, serde_json::Value> = HashMap::new();
+        let mut fields: HashMap<String, Value> = HashMap::new();
         strip_denied_fields(&mut fields, &["secret".to_string()]);
         assert!(fields.is_empty());
     }
@@ -844,7 +844,7 @@ mod tests {
     #[test]
     fn strip_denied_fields_nonexistent_key() {
         let mut fields = HashMap::new();
-        fields.insert("title".to_string(), serde_json::json!("Hello"));
+        fields.insert("title".to_string(), json!("Hello"));
 
         strip_denied_fields(&mut fields, &["nonexistent".to_string()]);
 
@@ -862,7 +862,7 @@ mod tests {
             .latest(true)
             .created_at("2026-01-01T00:00:00Z")
             .updated_at("2026-01-01T00:00:00Z")
-            .snapshot(serde_json::json!({}))
+            .snapshot(json!({}))
             .build();
         let json = version_to_json(v);
         assert_eq!(json["id"], "v1");
@@ -879,8 +879,8 @@ mod tests {
     #[test]
     fn compute_row_label_from_label_field() {
         let admin = FieldAdmin::builder().label_field("title").build();
-        let mut row = serde_json::Map::new();
-        row.insert("title".to_string(), serde_json::json!("My Title"));
+        let mut row = Map::new();
+        row.insert("title".to_string(), json!("My Title"));
         // Construct a minimal mock HookRunner -- compute_row_label with no row_label set
         // will skip the Lua call and go straight to label_field lookup.
         // Since we can't construct a real HookRunner in a unit test, we test the label_field
@@ -891,7 +891,7 @@ mod tests {
         assert_eq!(lf, Some("title"));
         let val = row.get("title").unwrap();
         match val {
-            serde_json::Value::String(s) if !s.is_empty() => {
+            Value::String(s) if !s.is_empty() => {
                 assert_eq!(s, "My Title");
             }
             _ => panic!("Expected non-empty string"),
@@ -901,9 +901,9 @@ mod tests {
     #[test]
     fn compute_row_label_number_value() {
         // Test that Number values are stringified
-        let val = serde_json::json!(42);
+        let val = json!(42);
         match &val {
-            serde_json::Value::Number(n) => assert_eq!(n.to_string(), "42"),
+            Value::Number(n) => assert_eq!(n.to_string(), "42"),
             _ => panic!("Expected number"),
         }
     }
@@ -911,9 +911,9 @@ mod tests {
     #[test]
     fn compute_row_label_bool_value() {
         // Test that Bool values are stringified
-        let val = serde_json::json!(true);
+        let val = json!(true);
         match &val {
-            serde_json::Value::Bool(b) => assert_eq!(b.to_string(), "true"),
+            Value::Bool(b) => assert_eq!(b.to_string(), "true"),
             _ => panic!("Expected bool"),
         }
     }
@@ -938,8 +938,8 @@ mod tests {
 
     // --- extract_editor_locale tests ---
 
-    fn locale_config_enabled() -> crate::config::LocaleConfig {
-        crate::config::LocaleConfig {
+    fn locale_config_enabled() -> LocaleConfig {
+        LocaleConfig {
             default_locale: "en".to_string(),
             locales: vec!["en".to_string(), "de".to_string(), "fr".to_string()],
             fallback: false,
@@ -948,50 +948,41 @@ mod tests {
 
     #[test]
     fn extract_editor_locale_from_cookie() {
-        let mut headers = axum::http::HeaderMap::new();
-        headers.insert(
-            axum::http::header::COOKIE,
-            "crap_editor_locale=de".parse().unwrap(),
-        );
+        let mut headers = HeaderMap::new();
+        headers.insert(header::COOKIE, "crap_editor_locale=de".parse().unwrap());
         let result = extract_editor_locale(&headers, &locale_config_enabled());
         assert_eq!(result, Some("de".to_string()));
     }
 
     #[test]
     fn extract_editor_locale_falls_back_to_default() {
-        let headers = axum::http::HeaderMap::new();
+        let headers = HeaderMap::new();
         let result = extract_editor_locale(&headers, &locale_config_enabled());
         assert_eq!(result, Some("en".to_string()));
     }
 
     #[test]
     fn extract_editor_locale_invalid_locale_falls_back() {
-        let mut headers = axum::http::HeaderMap::new();
-        headers.insert(
-            axum::http::header::COOKIE,
-            "crap_editor_locale=zz".parse().unwrap(),
-        );
+        let mut headers = HeaderMap::new();
+        headers.insert(header::COOKIE, "crap_editor_locale=zz".parse().unwrap());
         let result = extract_editor_locale(&headers, &locale_config_enabled());
         assert_eq!(result, Some("en".to_string()));
     }
 
     #[test]
     fn extract_editor_locale_disabled_returns_none() {
-        let mut headers = axum::http::HeaderMap::new();
-        headers.insert(
-            axum::http::header::COOKIE,
-            "crap_editor_locale=de".parse().unwrap(),
-        );
-        let config = crate::config::LocaleConfig::default(); // empty locales = disabled
+        let mut headers = HeaderMap::new();
+        headers.insert(header::COOKIE, "crap_editor_locale=de".parse().unwrap());
+        let config = LocaleConfig::default(); // empty locales = disabled
         let result = extract_editor_locale(&headers, &config);
         assert_eq!(result, None);
     }
 
     #[test]
     fn extract_editor_locale_with_multiple_cookies() {
-        let mut headers = axum::http::HeaderMap::new();
+        let mut headers = HeaderMap::new();
         headers.insert(
-            axum::http::header::COOKIE,
+            header::COOKIE,
             "crap_session=abc; crap_editor_locale=fr; other=xyz"
                 .parse()
                 .unwrap(),

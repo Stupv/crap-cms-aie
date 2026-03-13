@@ -820,7 +820,7 @@ fn build_upload_item(
         None
     };
 
-    let mut item = serde_json::json!({ "id": doc.id, "label": label });
+    let mut item = json!({ "id": doc.id, "label": label });
 
     if let Some(ref url) = thumb_url {
         item["thumbnail_url"] = json!(url);

@@ -176,6 +176,7 @@ pub async fn list_items(
     } else {
         Vec::new()
     };
+
     let documents: Vec<_> = documents
         .into_iter()
         .map(|mut doc| {
@@ -242,6 +243,7 @@ pub async fn list_items(
     } else {
         None
     };
+
     let title_sorted_asc = title_field
         .as_ref()
         .map(|tf| {

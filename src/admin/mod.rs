@@ -11,6 +11,8 @@ use std::{path::PathBuf, sync::Arc};
 use handlebars::Handlebars;
 use tokio_util::sync::CancellationToken;
 
+use serde_json::Value;
+
 use crate::{
     config::CrapConfig,
     core::{Registry, email::EmailRenderer, event::EventBus, rate_limit::LoginRateLimiter},
@@ -56,7 +58,7 @@ pub struct AdminState {
 
 impl AdminState {
     /// Render a template with the given data, returning HTML string.
-    pub fn render(&self, template: &str, data: &serde_json::Value) -> Result<String, String> {
+    pub fn render(&self, template: &str, data: &Value) -> Result<String, String> {
         self.handlebars
             .render(template, data)
             .map_err(|e| format!("Template error: {}", e))

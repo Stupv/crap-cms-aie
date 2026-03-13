@@ -50,6 +50,7 @@ pub async fn restore_version(
     let id_owned = id.clone();
     let def_owned = def.clone();
     let locale_config = state.config.locale.clone();
+
     let result = task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| anyhow!("DB connection: {}", e))?;
         let tx = conn

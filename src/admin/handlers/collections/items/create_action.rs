@@ -160,12 +160,7 @@ pub async fn create_action(
         && !pw.is_empty()
         && let Err(e) = state.config.auth.password_policy.validate(pw)
     {
-        return html_with_toast(
-            &state,
-            "collections/edit_form",
-            &serde_json::json!({}),
-            &e.to_string(),
-        );
+        return html_with_toast(&state, "collections/edit_form", &json!({}), &e.to_string());
     }
 
     // Convert comma-separated multi-select values to JSON arrays

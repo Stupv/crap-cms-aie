@@ -111,6 +111,7 @@ pub async fn update_action(
     });
     let ui_locale = auth_user.as_ref().map(|Extension(au)| au.ui_locale.clone());
     let action_owned = action.clone();
+
     let result = tokio::task::spawn_blocking(move || {
         // Handle unpublish: set _status to 'draft' and create a version
         if action_owned == "unpublish" && def_owned.has_versions() {

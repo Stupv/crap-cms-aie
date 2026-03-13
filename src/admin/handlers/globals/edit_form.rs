@@ -85,6 +85,7 @@ pub async fn edit_form(
 
     if def.fields.iter().any(|f| f.access.read.is_some()) {
         let user_doc = get_user_doc(&auth_user);
+
         let mut conn = match state.pool.get() {
             Ok(c) => c,
             Err(e) => {
@@ -179,6 +180,7 @@ pub async fn edit_form(
 
     let has_versions = def.has_versions();
     let has_drafts = def.has_drafts();
+
     let doc_status = if has_drafts {
         document
             .fields
@@ -189,6 +191,7 @@ pub async fn edit_form(
     } else {
         String::new()
     };
+
     let global_table = format!("_global_{}", slug);
     let (versions, total_versions): (Vec<Value>, i64) = if has_versions {
         fetch_version_sidebar_data(&state.pool, &global_table, "default")

@@ -613,6 +613,7 @@ pub(super) async fn do_update(
     // Strip field-level update-denied fields (fail closed on pool exhaustion)
     if def.fields.iter().any(|f| f.access.update.is_some()) {
         let user_doc = get_user_doc(auth_user);
+
         let mut conn = match state.pool.get() {
             Ok(c) => c,
             Err(e) => {
@@ -633,6 +634,7 @@ pub(super) async fn do_update(
                 .check_field_write_access(&def.fields, user_doc, "update", &tx);
         // Read-only access check — commit result is irrelevant, rollback on drop is safe
         let _ = tx.commit();
+
         for name in &denied {
             form_data.remove(name);
         }

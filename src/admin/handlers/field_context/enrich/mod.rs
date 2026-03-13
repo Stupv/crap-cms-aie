@@ -534,9 +534,9 @@ pub fn enrich_field_contexts(
 pub fn enrich_nested_fields(
     sub_fields: &mut [Value],
     field_defs: &[FieldDefinition],
-    conn: &rusqlite::Connection,
-    reg: &crate::core::Registry,
-    rel_locale_ctx: Option<&query::LocaleContext>,
+    conn: &Connection,
+    reg: &Registry,
+    rel_locale_ctx: Option<&LocaleContext>,
 ) {
     for (ctx, field_def) in sub_fields.iter_mut().zip(field_defs.iter()) {
         match field_def.field_type {

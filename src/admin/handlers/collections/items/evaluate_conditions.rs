@@ -34,7 +34,7 @@ pub async fn evaluate_conditions(
 #[derive(serde::Deserialize)]
 pub struct EvaluateConditionsRequest {
     /// The current form data.
-    pub form_data: HashMap<String, serde_json::Value>,
+    pub form_data: HashMap<String, Value>,
     /// Map of field names to their condition function references.
     pub conditions: HashMap<String, String>,
 }

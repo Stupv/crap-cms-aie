@@ -62,6 +62,7 @@ pub async fn save_user_settings(
     // Load existing settings, merge, save
     let pool = state.pool.clone();
     let user_id = auth_user.claims.sub.clone();
+
     let result = task::spawn_blocking(move || {
         let conn = pool.get().context("Failed to get DB connection")?;
         let existing = query::auth::get_user_settings(&conn, &user_id)?;
