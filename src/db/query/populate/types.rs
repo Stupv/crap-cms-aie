@@ -3,7 +3,7 @@
 use dashmap::DashMap;
 
 use crate::core::{CollectionDefinition, Document, Registry};
-use crate::db::query::LocaleContext;
+use crate::db::LocaleContext;
 
 /// Shared cache for populated documents. Key is (collection_slug, document_id).
 /// Uses DashMap for concurrent cross-request sharing with interior mutability.

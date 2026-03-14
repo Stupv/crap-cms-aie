@@ -15,7 +15,7 @@ use crate::{
     core::{Registry, event::EventBus, upload::format_filesize},
     db::{migrate, pool},
     hooks,
-    hooks::lifecycle::HookRunner,
+    hooks::HookRunner,
     scheduler, typegen,
 };
 

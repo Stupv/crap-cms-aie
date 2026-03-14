@@ -2,7 +2,7 @@
 
 use mlua::Table;
 
-use crate::core::field::FieldAdmin;
+use crate::core::FieldAdmin;
 
 use super::helpers::*;
 

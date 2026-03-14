@@ -7,10 +7,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     core::{
-        Document,
-        collection::Hooks,
-        document::DocumentBuilder,
-        field::{FieldDefinition, FieldHooks},
+        Document, FieldDefinition, collection::Hooks, document::DocumentBuilder, field::FieldHooks,
     },
     hooks::{
         api,

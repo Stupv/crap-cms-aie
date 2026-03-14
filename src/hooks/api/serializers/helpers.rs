@@ -3,7 +3,7 @@
 use mlua::{Lua, Value};
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 
-use crate::core::field::LocalizedString;
+use crate::core::LocalizedString;
 
 /// Convert a LocalizedString to a Lua value (string or locale table).
 pub(super) fn localized_string_to_lua(lua: &Lua, ls: &LocalizedString) -> mlua::Result<Value> {

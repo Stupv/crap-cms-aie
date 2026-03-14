@@ -15,10 +15,7 @@ mod typescript;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
-use crate::core::{
-    Registry,
-    field::{FieldDefinition, FieldType},
-};
+use crate::core::{FieldDefinition, FieldType, Registry};
 
 /// Embedded Lua API type definitions — kept in sync with the CMS binary version.
 const LUA_API_TYPES: &str = include_str!("../../types/crap.lua");

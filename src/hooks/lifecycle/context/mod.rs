@@ -9,10 +9,7 @@ use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 
 use crate::{
-    core::{
-        Document,
-        field::{FieldDefinition, FieldType},
-    },
+    core::{Document, FieldDefinition, FieldType},
     hooks::{
         api,
         lifecycle::{HookDepth, converters::document_to_lua_table},

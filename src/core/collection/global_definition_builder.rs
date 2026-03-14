@@ -1,8 +1,8 @@
 //! Builder for [`GlobalDefinition`](super::GlobalDefinition).
 
 use crate::core::{
+    FieldDefinition,
     collection::{Access, GlobalDefinition, Hooks, Labels, LiveSetting, McpConfig, VersionsConfig},
-    field::FieldDefinition,
 };
 
 /// Builder for [`GlobalDefinition`].

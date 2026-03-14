@@ -17,8 +17,8 @@ use crate::{
         AdminState,
         server::{extract_cookie, load_auth_user},
     },
-    core::auth::{AuthUser, validate_token},
-    db::query::AccessResult,
+    core::{AuthUser, auth::validate_token},
+    db::AccessResult,
 };
 
 /// Serve an uploaded file, checking collection read access if configured.

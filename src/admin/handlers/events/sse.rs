@@ -18,10 +18,10 @@ use tokio_util::sync::WaitForCancellationFutureOwned;
 use crate::{
     admin::AdminState,
     core::{
-        auth::AuthUser,
+        AuthUser,
         event::{EventOperation, EventTarget},
     },
-    db::query::AccessResult,
+    db::AccessResult,
 };
 
 /// Stream wrapper that ends when a CancellationToken fires.

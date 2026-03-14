@@ -1,9 +1,6 @@
 use serde_json::Value;
 
-use crate::core::{
-    field::{FieldDefinition, FieldType},
-    validate::FieldError,
-};
+use crate::core::{FieldDefinition, FieldType, validate::FieldError};
 use std::collections::HashMap;
 
 /// Validate email format (only if non-empty).

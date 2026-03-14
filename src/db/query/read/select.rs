@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use crate::core::{CollectionDefinition, Document, field::FieldType};
+use crate::core::{CollectionDefinition, Document, FieldType};
 
 /// Filter SELECT columns based on a `select` list. If `select` is None or empty,
 /// returns all columns (backward compat). Always includes `id`, `created_at`, `updated_at`.

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::{
     config::LocaleConfig,
-    core::{CollectionDefinition, Registry, field::FieldType},
+    core::{CollectionDefinition, FieldType, Registry},
     db::query::sanitize_locale,
 };
 

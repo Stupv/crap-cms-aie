@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{config::CrapConfig, core::field::FieldType, db::query};
+use crate::{config::CrapConfig, core::FieldType, db::query};
 
 /// Export collection data to JSON.
 // Excluded from coverage: requires full Lua + DB setup via load_config_and_sync.

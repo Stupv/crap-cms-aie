@@ -9,10 +9,10 @@ use std::{
 
 use crate::{
     config::{CrapConfig, LocaleConfig},
-    core::{Registry, field::FieldType},
+    core::{FieldType, Registry},
     db::{migrate, pool},
     hooks,
-    hooks::lifecycle::HookRunner,
+    hooks::HookRunner,
     scaffold,
 };
 

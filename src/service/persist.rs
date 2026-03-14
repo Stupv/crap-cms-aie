@@ -10,8 +10,8 @@ use anyhow::{Result, anyhow};
 use serde_json::Value;
 
 use crate::{
-    core::{CollectionDefinition, document::Document},
-    db::query::{self, LocaleContext},
+    core::{CollectionDefinition, Document},
+    db::{LocaleContext, query},
 };
 
 use super::{PersistOptions, versions};

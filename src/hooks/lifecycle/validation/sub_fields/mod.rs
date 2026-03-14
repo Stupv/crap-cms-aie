@@ -3,10 +3,7 @@ use std::collections::HashMap;
 use mlua::Lua;
 use serde_json::{Map as JsonMap, Value};
 
-use crate::core::{
-    field::{FieldDefinition, FieldType},
-    validate::FieldError,
-};
+use crate::core::{FieldDefinition, FieldType, validate::FieldError};
 
 use super::{checks::is_valid_date_format, custom::run_validate_function_inner};
 

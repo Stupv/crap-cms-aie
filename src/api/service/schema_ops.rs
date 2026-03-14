@@ -20,8 +20,8 @@ use crate::{
         job::JobRun,
     },
     db::{
-        ops,
-        query::{self, AccessResult, LocaleContext, jobs},
+        AccessResult, LocaleContext, ops,
+        query::{self, jobs},
     },
     hooks::lifecycle::{AfterReadCtx, PublishEventInput},
     service::{self, WriteInput},

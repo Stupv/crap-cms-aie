@@ -4,10 +4,7 @@ use serde_json::{Map, Value};
 
 use crate::{
     config::LocaleConfig,
-    core::{
-        Document,
-        field::{FieldDefinition, FieldType},
-    },
+    core::{Document, FieldDefinition, FieldType},
 };
 
 use crate::db::query::sanitize_locale;

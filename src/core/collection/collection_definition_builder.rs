@@ -1,11 +1,11 @@
 //! Builder for [`CollectionDefinition`](super::CollectionDefinition).
 
 use crate::core::{
+    FieldDefinition,
     collection::{
         Access, AdminConfig, Auth, CollectionDefinition, Hooks, IndexDefinition, Labels,
         LiveSetting, McpConfig, VersionsConfig,
     },
-    field::FieldDefinition,
     upload::CollectionUpload,
 };
 

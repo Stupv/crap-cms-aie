@@ -2,12 +2,9 @@
 
 use std::collections::HashSet;
 
-use crate::core::{
-    CollectionDefinition,
-    field::{FieldDefinition, FieldType},
-};
+use crate::core::{CollectionDefinition, FieldDefinition, FieldType};
 
-use crate::db::query::LocaleContext;
+use crate::db::LocaleContext;
 
 /// Get column names for a collection (id + field columns + timestamps).
 pub fn get_column_names(def: &CollectionDefinition) -> Vec<String> {

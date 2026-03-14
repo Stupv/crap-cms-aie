@@ -5,8 +5,7 @@ use mlua::{Function, Lua, Table, Value};
 use serde_json::Value as JsonValue;
 
 use crate::core::{
-    SharedRegistry,
-    field::{LocalizedString, SelectOption},
+    LocalizedString, SelectOption, SharedRegistry,
     richtext::{
         NodeAttr, NodeAttrType, RichtextNodeDef, render_html_custom_nodes,
         render_prosemirror_to_html,

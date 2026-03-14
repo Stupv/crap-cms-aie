@@ -2,10 +2,7 @@
 
 use serde_json::{Map, Value};
 
-use crate::core::{
-    Document,
-    field::{FieldDefinition, FieldType},
-};
+use crate::core::{Document, FieldDefinition, FieldType};
 
 /// Recursively extract prefixed columns from `doc.fields` into a nested Group object.
 /// Handles Group→Row, Group→Collapsible, Group→Tabs, and Group→Group nesting.

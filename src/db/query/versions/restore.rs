@@ -8,9 +8,7 @@ use std::collections::HashMap;
 use crate::{
     config::LocaleConfig,
     core::{
-        Document,
-        collection::{CollectionDefinition, GlobalDefinition},
-        field::{FieldDefinition, FieldType},
+        CollectionDefinition, Document, FieldDefinition, FieldType, collection::GlobalDefinition,
     },
     db::query::sanitize_locale,
 };

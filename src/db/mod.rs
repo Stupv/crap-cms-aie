@@ -7,3 +7,6 @@ pub mod pool;
 pub mod query;
 
 pub use pool::DbPool;
+pub use query::{
+    AccessResult, Filter, FilterClause, FilterOp, FindQuery, LocaleContext, LocaleMode,
+};

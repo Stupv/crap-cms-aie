@@ -3,7 +3,7 @@
 use anyhow::Result;
 use mlua::{Lua, Table, Value};
 
-use crate::core::{CollectionDefinition, SharedRegistry, field::FieldDefinition};
+use crate::core::{CollectionDefinition, FieldDefinition, SharedRegistry};
 
 /// Register `crap.schema` — read-only collection/global introspection.
 pub(super) fn register_schema(lua: &Lua, crap: &Table, registry: SharedRegistry) -> Result<()> {

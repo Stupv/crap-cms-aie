@@ -4,7 +4,7 @@ use mlua::Lua;
 use serde_json::Value;
 
 use crate::{
-    core::{field::FieldDefinition, validate::FieldError},
+    core::{FieldDefinition, validate::FieldError},
     hooks::lifecycle::validation::custom::run_validate_function_inner,
 };
 

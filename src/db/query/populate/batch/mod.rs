@@ -13,8 +13,11 @@ use crate::db::query::populate::{
     PopulateCache, PopulateContext, PopulateCtx, PopulateOpts, document_to_json,
 };
 use crate::{
-    core::{Document, field::FieldType, upload},
-    db::query::{Filter, FilterClause, FilterOp, FindQuery, hydrate_document, read},
+    core::{Document, FieldType, upload},
+    db::{
+        Filter, FilterClause, FilterOp, FindQuery,
+        query::{hydrate_document, read},
+    },
 };
 
 use super::single::populate_relationships_cached;

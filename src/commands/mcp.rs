@@ -9,7 +9,7 @@ use crate::{
     core::Registry,
     db::{migrate, pool},
     hooks,
-    hooks::lifecycle::HookRunner,
+    hooks::HookRunner,
     mcp,
 };
 

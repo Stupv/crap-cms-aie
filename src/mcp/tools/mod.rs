@@ -14,7 +14,7 @@ use std::{path::Path, sync::Arc};
 use anyhow::{Result, bail};
 use serde_json::{Value, json};
 
-use crate::{config::McpConfig, core::Registry, db::DbPool, hooks::lifecycle::HookRunner};
+use crate::{config::McpConfig, core::Registry, db::DbPool, hooks::HookRunner};
 
 use crate::mcp::{
     protocol::ToolDefinition,

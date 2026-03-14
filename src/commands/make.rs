@@ -5,7 +5,7 @@ use std::{fs, path::Path};
 
 use crate::{
     config::CrapConfig,
-    core::field::FieldType,
+    core::FieldType,
     hooks,
     scaffold::{
         self, CollectionOptions, ConditionFieldInfo, HookType, MakeHookOptions, VALID_FIELD_TYPES,

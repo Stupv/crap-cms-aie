@@ -4,8 +4,8 @@ use tonic::Status;
 
 use crate::{
     api::service::convert::parse_where_json,
-    core::field::FieldDefinition,
-    db::query::{AccessResult, Filter, FilterClause, FilterOp, filter::normalize_filter_fields},
+    core::FieldDefinition,
+    db::{AccessResult, Filter, FilterClause, FilterOp, query::filter::normalize_filter_fields},
 };
 
 /// Builder for constructing filter clauses from a gRPC request's `where` JSON,

@@ -3,11 +3,11 @@
 use serde::{Deserialize, Serialize};
 
 use crate::core::{
+    FieldDefinition,
     collection::{
         Access, AdminConfig, Auth, Hooks, IndexDefinition, Labels, LiveSetting, McpConfig,
         VersionsConfig,
     },
-    field::FieldDefinition,
     upload::CollectionUpload,
 };
 

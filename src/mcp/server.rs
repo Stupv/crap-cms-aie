@@ -4,7 +4,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use serde_json::{Value, json};
 
-use crate::{config::CrapConfig, core::Registry, db::DbPool, hooks::lifecycle::HookRunner};
+use crate::{config::CrapConfig, core::Registry, db::DbPool, hooks::HookRunner};
 
 use super::protocol::{
     INTERNAL_ERROR, INVALID_PARAMS, InitializeParams, JsonRpcRequest, JsonRpcResponse,

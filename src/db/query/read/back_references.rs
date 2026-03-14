@@ -6,10 +6,8 @@ use serde::Serialize;
 use crate::{
     config::LocaleConfig,
     core::{
-        Registry,
-        field::{
-            BlockDefinition, FieldDefinition, FieldType, flatten_array_sub_fields, to_title_case,
-        },
+        BlockDefinition, FieldDefinition, FieldType, Registry,
+        field::{flatten_array_sub_fields, to_title_case},
     },
 };
 

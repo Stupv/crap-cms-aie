@@ -4,9 +4,10 @@ use std::{fs, path::Path};
 
 use anyhow::{Context as _, Result};
 
-use crate::hooks::lifecycle::types::{TxContext, UserContext};
-
-use crate::hooks::lifecycle::HookRunner;
+use crate::hooks::{
+    HookRunner,
+    lifecycle::types::{TxContext, UserContext},
+};
 
 impl HookRunner {
     /// Run a migration file (up or down direction) within a transaction.

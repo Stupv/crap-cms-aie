@@ -4,9 +4,7 @@ use std::fmt::Write;
 
 use crate::{
     core::{
-        Registry,
-        collection::{CollectionDefinition, GlobalDefinition},
-        field::{FieldDefinition, FieldType},
+        CollectionDefinition, FieldDefinition, FieldType, Registry, collection::GlobalDefinition,
     },
     db::query::get_column_names,
 };

@@ -5,10 +5,7 @@ use std::collections::HashMap;
 use anyhow::Result;
 use mlua::{Table, Value};
 
-use crate::core::{
-    collection::Hooks,
-    field::{LocalizedString, SelectOption},
-};
+use crate::core::{LocalizedString, SelectOption, collection::Hooks};
 
 pub(super) fn get_table(tbl: &Table, key: &str) -> mlua::Result<Table> {
     tbl.get(key)

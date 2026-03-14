@@ -6,14 +6,12 @@ use mlua::Value;
 use serde_json::Value as JsonValue;
 
 use crate::hooks::{
-    api,
+    HookRunner, api,
     lifecycle::{
         execution::{call_display_condition_with_lua, has_registered_hooks, resolve_hook_function},
         types::DisplayConditionResult,
     },
 };
-
-use crate::hooks::lifecycle::HookRunner;
 
 impl HookRunner {
     /// Call a Lua function to compute a row label for an array/blocks row.

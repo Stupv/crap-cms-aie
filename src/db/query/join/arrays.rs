@@ -4,7 +4,7 @@ use anyhow::Result;
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
-use crate::core::field::{FieldDefinition, FieldType, flatten_array_sub_fields};
+use crate::core::{FieldDefinition, FieldType, field::flatten_array_sub_fields};
 use crate::db::query::coerce_value;
 
 /// Set array rows for an array field join table.

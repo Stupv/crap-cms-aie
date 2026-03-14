@@ -3,8 +3,8 @@
 //! composite types (Array, Blocks, Group) with nesting depth limits.
 
 use crate::{
-    core::field::FieldDefinition,
-    hooks::lifecycle::{DisplayConditionResult, HookRunner},
+    core::FieldDefinition,
+    hooks::{HookRunner, lifecycle::DisplayConditionResult},
 };
 use serde_json::{Value, json};
 

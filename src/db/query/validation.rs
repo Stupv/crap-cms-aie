@@ -4,10 +4,10 @@ use std::collections::HashSet;
 
 use anyhow::{Result, bail};
 
-use crate::core::{CollectionDefinition, field::FieldType};
+use crate::core::{CollectionDefinition, FieldType};
 
 use super::columns::get_valid_filter_columns;
-use crate::db::query::{FilterClause, FindQuery, LocaleContext};
+use crate::db::{FilterClause, FindQuery, LocaleContext};
 
 /// Check that a string is a safe SQL identifier (alphanumeric + underscore).
 pub fn is_valid_identifier(s: &str) -> bool {

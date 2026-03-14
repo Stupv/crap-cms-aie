@@ -4,10 +4,12 @@ use anyhow::{Context as _, Result, bail};
 use rusqlite::params_from_iter;
 
 use crate::core::CollectionDefinition;
-use crate::db::query::{
+use crate::db::{
     FilterClause, LocaleContext,
-    filter::{build_where_clause, resolve_filters},
-    is_valid_identifier,
+    query::{
+        filter::{build_where_clause, resolve_filters},
+        is_valid_identifier,
+    },
 };
 
 /// Count documents in a collection.

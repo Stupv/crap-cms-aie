@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use crate::{
     config::LocaleConfig,
-    core::{CollectionDefinition, field::FieldType},
+    core::{CollectionDefinition, FieldType},
     db::migrate::helpers::{collect_column_specs, get_table_columns, sanitize_locale},
 };
 

@@ -3,6 +3,8 @@
 pub mod api;
 pub mod lifecycle;
 
+pub use lifecycle::{HookContext, HookEvent, HookRunner, ValidationCtx};
+
 use anyhow::{Context as _, Result};
 use mlua::Lua;
 use std::path::Path;

@@ -1,7 +1,8 @@
 //! Complete definition of a single field within a collection.
 
-use crate::core::field::{
-    BlockDefinition, FieldAdmin, FieldTab, FieldType, JoinConfig, RelationshipConfig, SelectOption,
+use crate::core::{
+    BlockDefinition, FieldAdmin, FieldTab, FieldType, RelationshipConfig, SelectOption,
+    field::JoinConfig,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

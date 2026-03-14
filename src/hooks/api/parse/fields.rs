@@ -5,8 +5,9 @@ use mlua::{Table, Value};
 use serde_json::{Number as JsonNumber, Value as JsonValue};
 
 use crate::{
-    core::field::{
-        FieldAccess, FieldAdmin, FieldDefinition, FieldHooks, FieldType, JoinConfig, McpFieldConfig,
+    core::{
+        FieldAdmin, FieldDefinition, FieldType,
+        field::{FieldAccess, FieldHooks, JoinConfig, McpFieldConfig},
     },
     db::query,
 };

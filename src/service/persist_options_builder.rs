@@ -1,4 +1,4 @@
-use crate::db::query::LocaleContext;
+use crate::db::LocaleContext;
 
 use super::PersistOptions;
 

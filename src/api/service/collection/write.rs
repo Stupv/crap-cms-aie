@@ -12,7 +12,7 @@ use crate::{
         },
     },
     core::event::{EventOperation, EventTarget},
-    db::query::{AccessResult, LocaleContext},
+    db::{AccessResult, LocaleContext},
     hooks::lifecycle::PublishEventInput,
     service::{self, WriteInput},
 };

@@ -21,7 +21,7 @@ use crate::{
         rate_limit::{GrpcRateLimiter, LoginRateLimiter},
     },
     db::DbPool,
-    hooks::lifecycle::HookRunner,
+    hooks::HookRunner,
 };
 
 /// Generated gRPC content service types.

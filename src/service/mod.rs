@@ -34,8 +34,8 @@ use anyhow::Result;
 use serde_json::Value;
 
 use crate::{
-    core::{collection::Hooks, document::Document, field::FieldDefinition},
-    hooks::lifecycle::{HookContext, HookEvent, HookRunner},
+    core::{Document, FieldDefinition, collection::Hooks},
+    hooks::{HookContext, HookEvent, HookRunner},
 };
 
 /// Build the hook data map from form data + structured join data.

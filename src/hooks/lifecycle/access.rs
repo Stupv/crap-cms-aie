@@ -6,8 +6,8 @@ use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 
 use crate::{
-    core::{Document, field::FieldDefinition},
-    db::query::{AccessResult, Filter, FilterClause, FilterOp},
+    core::{Document, FieldDefinition},
+    db::{AccessResult, Filter, FilterClause, FilterOp},
     hooks::{
         api,
         lifecycle::{

@@ -14,7 +14,7 @@ use crate::{
         job::{JobDefinition, JobRun},
     },
     db::{DbPool, query::jobs as job_query},
-    hooks::lifecycle::HookRunner,
+    hooks::HookRunner,
 };
 
 /// Execute a single job: call the Lua handler with CRUD access.

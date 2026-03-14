@@ -1,6 +1,6 @@
 //! Builder for `crate::core::auth::Claims`.
 
-use crate::core::auth::Claims;
+use crate::core::Claims;
 
 /// Builder for [`Claims`].
 ///

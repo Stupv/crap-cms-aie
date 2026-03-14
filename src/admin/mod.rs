@@ -9,6 +9,7 @@ pub mod templates;
 pub mod translations;
 
 pub use context_builder::ContextBuilder;
+pub use translations::Translations;
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -21,10 +22,8 @@ use crate::{
     config::CrapConfig,
     core::{Registry, email::EmailRenderer, event::EventBus, rate_limit::LoginRateLimiter},
     db::DbPool,
-    hooks::lifecycle::HookRunner,
+    hooks::HookRunner,
 };
-
-use self::translations::Translations;
 
 /// Shared state for all admin handlers.
 #[derive(Clone)]

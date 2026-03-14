@@ -5,11 +5,8 @@ use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
 use crate::core::{
-    Registry,
-    field::{
-        BlockDefinition, FieldDefinition, FieldType, RelationshipConfig, flatten_array_sub_fields,
-        to_title_case,
-    },
+    BlockDefinition, FieldDefinition, FieldType, Registry, RelationshipConfig,
+    field::{flatten_array_sub_fields, to_title_case},
 };
 
 use super::back_references::field_display_label;

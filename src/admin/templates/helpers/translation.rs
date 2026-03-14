@@ -3,7 +3,7 @@ use std::sync::Arc;
 use handlebars::{Handlebars, Helper, HelperDef, RenderContext, RenderError, ScopedJson};
 use serde_json::Value;
 
-use crate::admin::translations::Translations;
+use crate::admin::Translations;
 
 /// Handlebars helper for admin UI translations.
 /// Usage: `{{t "key"}}` or with interpolation: `{{t "key" name=value}}`

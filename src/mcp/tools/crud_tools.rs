@@ -6,12 +6,9 @@ use anyhow::{Context as _, Result};
 use serde_json::{Map, Value, json};
 
 use crate::{
-    core::{Registry, document::Document},
-    db::{
-        DbPool,
-        query::{self, FindQuery},
-    },
-    hooks::lifecycle::HookRunner,
+    core::{Document, Registry},
+    db::{DbPool, FindQuery, query},
+    hooks::HookRunner,
 };
 
 /// Parse JSON `where` object into filter clauses.

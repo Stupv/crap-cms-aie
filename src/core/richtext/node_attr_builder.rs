@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use crate::core::{
-    field::SelectOption,
+    SelectOption,
     richtext::{NodeAttr, NodeAttrType},
 };
 

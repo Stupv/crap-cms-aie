@@ -5,7 +5,7 @@ use mlua::{Table, Value};
 use crate::{
     config::parse_filesize_string,
     core::{
-        field::{FieldAdmin, FieldDefinition, FieldType},
+        FieldAdmin, FieldDefinition, FieldType,
         upload::{
             CollectionUpload, FormatOptions, FormatQuality, ImageFit, ImageSize, ImageSizeBuilder,
         },

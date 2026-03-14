@@ -6,8 +6,7 @@ use std::{
 };
 
 use crate::core::{
-    collection::{CollectionDefinition, GlobalDefinition},
-    job::JobDefinition,
+    CollectionDefinition, collection::GlobalDefinition, job::JobDefinition,
     richtext::RichtextNodeDef,
 };
 

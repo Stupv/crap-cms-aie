@@ -10,19 +10,18 @@ use crate::{
     api::content::{self, content_api_server::ContentApi},
     config::{EmailConfig, LocaleConfig, PasswordPolicy, ServerConfig},
     core::{
-        CollectionDefinition, Registry,
-        auth::{AuthUser, validate_token},
+        AuthUser, CollectionDefinition, FieldDefinition, Registry,
+        auth::validate_token,
         collection::GlobalDefinition,
         email::EmailRenderer,
         event::{EventBus, EventUser},
-        field::FieldDefinition,
         rate_limit::LoginRateLimiter,
     },
     db::{
-        DbPool,
-        query::{self, AccessResult},
+        AccessResult, DbPool,
+        query::{self},
     },
-    hooks::lifecycle::HookRunner,
+    hooks::HookRunner,
 };
 
 use super::ContentServiceDeps;

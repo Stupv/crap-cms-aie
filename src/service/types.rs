@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::{core::document::Document, db::query::LocaleContext};
+use crate::{core::Document, db::LocaleContext};
 
 use super::{AfterChangeInputBuilder, PersistOptionsBuilder, WriteInputBuilder};
 

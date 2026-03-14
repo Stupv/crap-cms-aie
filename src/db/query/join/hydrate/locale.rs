@@ -1,8 +1,8 @@
 //! Locale resolution helpers for join table hydration.
 
 use crate::{
-    core::field::FieldDefinition,
-    db::query::{LocaleContext, LocaleMode},
+    core::FieldDefinition,
+    db::{LocaleContext, LocaleMode},
 };
 
 /// Resolve the effective locale string for a join table operation.

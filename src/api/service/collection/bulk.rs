@@ -11,7 +11,7 @@ use crate::{
             convert::{prost_struct_to_hashmap, prost_struct_to_json_map},
         },
     },
-    db::query::{self, AccessResult, FindQuery, LocaleContext},
+    db::{AccessResult, FindQuery, LocaleContext, query},
 };
 
 use super::{filter_builder::FilterBuilder, helpers::map_db_error};

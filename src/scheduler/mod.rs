@@ -19,7 +19,7 @@ use crate::{
         DbPool,
         query::{images as image_query, jobs as job_query},
     },
-    hooks::lifecycle::HookRunner,
+    hooks::HookRunner,
 };
 
 /// Start the scheduler background loop. Runs until the task is cancelled.

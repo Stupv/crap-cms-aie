@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::core::{field::FieldDefinition, validate::FieldError};
+use crate::core::{FieldDefinition, validate::FieldError};
 use std::collections::HashMap;
 
 /// Validate min_length / max_length for text/textarea fields.

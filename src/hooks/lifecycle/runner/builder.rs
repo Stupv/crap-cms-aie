@@ -9,7 +9,7 @@ use crate::{
     config::CrapConfig,
     core::SharedRegistry,
     hooks::{
-        self,
+        self, HookRunner,
         api::{self, VmLabel},
         lifecycle::{
             crud::register_crud_functions,
@@ -20,8 +20,6 @@ use crate::{
 };
 
 use super::vm_pool::VmPool;
-
-use crate::hooks::lifecycle::HookRunner;
 
 /// Builder for [`HookRunner`]. Created via [`HookRunner::builder`].
 pub struct HookRunnerBuilder<'a> {

@@ -4,7 +4,10 @@
 use mlua::{Lua, Table};
 use serde_json::Value as JsonValue;
 
-use crate::core::field::{FieldAccess, FieldDefinition, FieldHooks};
+use crate::core::{
+    FieldDefinition,
+    field::{FieldAccess, FieldHooks},
+};
 
 use super::{admin::field_admin_to_lua, helpers::localized_string_to_lua};
 

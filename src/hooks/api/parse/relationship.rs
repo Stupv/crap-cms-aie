@@ -2,7 +2,7 @@
 
 use mlua::Table;
 
-use crate::core::field::{FieldType, RelationshipConfig};
+use crate::core::{FieldType, RelationshipConfig};
 
 use super::helpers::*;
 

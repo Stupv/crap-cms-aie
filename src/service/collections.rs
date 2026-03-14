@@ -12,12 +12,9 @@ use rusqlite::TransactionBehavior;
 
 use crate::{
     config::LocaleConfig,
-    core::{CollectionDefinition, document::Document, upload},
-    db::{
-        DbPool,
-        query::{self, LocaleContext},
-    },
-    hooks::lifecycle::{HookContext, HookEvent, HookRunner, ValidationCtx},
+    core::{CollectionDefinition, Document, upload},
+    db::{DbPool, LocaleContext, query},
+    hooks::{HookContext, HookEvent, HookRunner, ValidationCtx},
     service::{AfterChangeInput, WriteInput, WriteResult, build_hook_data, run_after_change_hooks},
 };
 

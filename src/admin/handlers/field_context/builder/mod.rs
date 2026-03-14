@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::core::field::FieldDefinition;
+use crate::core::FieldDefinition;
 
 mod field_type_extras;
 mod single;

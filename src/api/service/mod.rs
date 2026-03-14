@@ -17,7 +17,7 @@ use crate::{
     config::CrapConfig,
     core::{Registry, email::EmailRenderer, event::EventBus, rate_limit::LoginRateLimiter},
     db::DbPool,
-    hooks::lifecycle::HookRunner,
+    hooks::HookRunner,
 };
 
 /// Dependencies for constructing a `ContentService`.

@@ -5,9 +5,9 @@ use anyhow::{Context as _, Result};
 use rusqlite::TransactionBehavior;
 
 use crate::{
-    core::{collection::GlobalDefinition, document::Document},
+    core::{Document, collection::GlobalDefinition},
     db::{DbPool, query},
-    hooks::lifecycle::{HookContext, HookRunner, ValidationCtx},
+    hooks::{HookContext, HookRunner, ValidationCtx},
     service::{AfterChangeInput, WriteInput, WriteResult, build_hook_data, run_after_change_hooks},
 };
 

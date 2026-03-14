@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::core::{field::FieldDefinition, validate::FieldError};
+use crate::core::{FieldDefinition, validate::FieldError};
 use std::collections::HashMap;
 
 /// Validate min_rows / max_rows for Array, Blocks, and has-many Relationship fields.

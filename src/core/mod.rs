@@ -13,6 +13,11 @@ pub mod richtext;
 pub mod upload;
 pub mod validate;
 
+pub use auth::{AuthUser, Claims};
 pub use collection::CollectionDefinition;
 pub use document::Document;
+pub use field::{
+    BlockDefinition, FieldAdmin, FieldDefinition, FieldTab, FieldType, LocalizedString,
+    RelationshipConfig, SelectOption,
+};
 pub use registry::{Registry, SharedRegistry};

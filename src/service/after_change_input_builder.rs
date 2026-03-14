@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::core::document::Document;
+use crate::core::Document;
 
 use super::AfterChangeInput;
 

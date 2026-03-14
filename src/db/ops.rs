@@ -7,10 +7,7 @@ use std::collections::HashMap;
 use crate::core::{
     CollectionDefinition, Document, collection::GlobalDefinition, document::DocumentBuilder,
 };
-use crate::db::{
-    DbPool,
-    query::{self, Filter, FilterClause, FilterOp, FindQuery, LocaleContext},
-};
+use crate::db::{DbPool, Filter, FilterClause, FilterOp, FindQuery, LocaleContext, query};
 
 /// Find documents (read-only, no transaction needed).
 pub fn find_documents(

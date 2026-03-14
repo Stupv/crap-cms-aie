@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::db::query::LocaleContext;
+use crate::db::LocaleContext;
 
 use super::WriteInput;
 

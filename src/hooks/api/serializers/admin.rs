@@ -2,7 +2,7 @@
 
 use mlua::{Lua, Table};
 
-use crate::core::field::FieldAdmin;
+use crate::core::FieldAdmin;
 
 use super::helpers::localized_string_to_lua;
 

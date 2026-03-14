@@ -6,7 +6,7 @@ use anyhow::Result;
 use serde_json::{Map, Value};
 
 use crate::{
-    core::{collection::VersionsConfig, document::Document, field::FieldDefinition},
+    core::{Document, FieldDefinition, collection::VersionsConfig},
     db::query,
 };
 
@@ -35,7 +35,7 @@ fn merge_join_data_into_snapshot(
     fields: &[FieldDefinition],
     data: &HashMap<String, Value>,
 ) {
-    use crate::core::field::FieldType;
+    use crate::core::FieldType;
     for field in fields {
         match field.field_type {
             FieldType::Array | FieldType::Blocks | FieldType::Relationship => {

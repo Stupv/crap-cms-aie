@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::{
     config::LocaleConfig,
-    core::{CollectionDefinition, field::FieldType},
+    core::{CollectionDefinition, FieldType},
     db::migrate::helpers::{collect_column_specs, sanitize_locale},
 };
 

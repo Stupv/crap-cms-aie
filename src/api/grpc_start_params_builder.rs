@@ -7,7 +7,7 @@ use crate::{
     config::CrapConfig,
     core::{Registry, event::EventBus},
     db::DbPool,
-    hooks::lifecycle::HookRunner,
+    hooks::HookRunner,
 };
 
 /// Builder for [`GrpcStartParams`]. Created via [`GrpcStartParams::builder`].

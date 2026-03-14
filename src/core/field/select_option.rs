@@ -1,6 +1,6 @@
 //! Select field options (label/value pairs).
 
-use crate::core::field::LocalizedString;
+use crate::core::LocalizedString;
 use serde::{Deserialize, Serialize};
 
 /// A label/value pair for select field options.

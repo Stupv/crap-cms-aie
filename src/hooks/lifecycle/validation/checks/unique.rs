@@ -3,9 +3,9 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 use crate::{
-    core::{field::FieldDefinition, validate::FieldError},
+    core::{FieldDefinition, validate::FieldError},
     db::query,
-    hooks::lifecycle::ValidationCtx,
+    hooks::ValidationCtx,
 };
 
 /// Check unique constraint (only if value is non-empty and field has a parent column).

@@ -5,11 +5,11 @@ use mlua::{Lua, Table, Value};
 
 use crate::{
     core::{
+        CollectionDefinition, FieldAdmin, FieldDefinition, FieldType, LocalizedString,
         collection::{
-            Access, AdminConfig, CollectionDefinition, GlobalDefinition, Hooks, IndexDefinition,
-            Labels, LiveSetting, McpConfig, VersionsConfig,
+            Access, AdminConfig, GlobalDefinition, Hooks, IndexDefinition, Labels, LiveSetting,
+            McpConfig, VersionsConfig,
         },
-        field::{FieldAdmin, FieldDefinition, FieldType, LocalizedString},
     },
     db::query,
 };

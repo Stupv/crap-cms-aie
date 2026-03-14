@@ -15,11 +15,8 @@ use super::{
     relationships::{find_polymorphic_related, find_related_ids},
 };
 use crate::{
-    core::{
-        Document,
-        field::{FieldDefinition, FieldType},
-    },
-    db::query::LocaleContext,
+    core::{Document, FieldDefinition, FieldType},
+    db::LocaleContext,
 };
 use group::reconstruct_group_fields;
 

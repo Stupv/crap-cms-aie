@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use crate::{
     config::LocaleConfig,
-    core::field::{FieldDefinition, FieldType, flatten_array_sub_fields},
+    core::{FieldDefinition, FieldType, field::flatten_array_sub_fields},
 };
 
 pub fn table_exists(conn: &rusqlite::Connection, name: &str) -> Result<bool> {

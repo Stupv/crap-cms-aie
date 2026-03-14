@@ -6,8 +6,8 @@
 
 use anyhow::{Result, anyhow, bail};
 
-use crate::core::field::{BlockDefinition, FieldDefinition, FieldType};
-use crate::db::query::{FilterClause, is_valid_identifier};
+use crate::core::{BlockDefinition, FieldDefinition, FieldType};
+use crate::db::{FilterClause, query::is_valid_identifier};
 
 // ── Dot notation normalization ───────────────────────────────────────────
 

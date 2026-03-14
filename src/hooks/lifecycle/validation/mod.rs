@@ -14,8 +14,8 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use crate::{
-    core::{field::FieldDefinition, validate::ValidationError},
-    db::query::LocaleContext,
+    core::{FieldDefinition, validate::ValidationError},
+    db::LocaleContext,
 };
 
 /// Context for field validation, bundling database and request parameters.

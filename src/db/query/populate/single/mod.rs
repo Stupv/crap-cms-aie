@@ -9,7 +9,7 @@ mod tests;
 use anyhow::Result;
 use std::collections::HashSet;
 
-use crate::core::{Document, field::FieldType};
+use crate::core::{Document, FieldType};
 use crate::db::query::populate::{PopulateCache, PopulateContext, PopulateCtx, PopulateOpts};
 
 /// Recursively populate relationship fields with full document objects.

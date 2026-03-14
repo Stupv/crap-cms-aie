@@ -18,8 +18,8 @@ use crate::{
             split_sidebar_fields,
         },
     },
-    core::auth::{AuthUser, Claims},
-    db::query::AccessResult,
+    core::{AuthUser, Claims},
+    db::AccessResult,
 };
 
 /// GET /admin/collections/{slug}/create — show create form

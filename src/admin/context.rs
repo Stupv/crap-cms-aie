@@ -3,14 +3,11 @@
 //! Every admin page receives a structured context built through `ContextBuilder`.
 //! This replaces the ad-hoc `serde_json::json!()` calls in individual handlers.
 
-pub use crate::admin::context_builder::ContextBuilder;
+pub use crate::admin::ContextBuilder;
 
 use serde_json::{Value, json};
 
-use crate::core::{
-    collection::{CollectionDefinition, GlobalDefinition},
-    field::FieldDefinition,
-};
+use crate::core::{CollectionDefinition, FieldDefinition, collection::GlobalDefinition};
 
 /// Page type identifiers for template conditional logic.
 pub enum PageType {

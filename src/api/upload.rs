@@ -27,7 +27,7 @@ use crate::{
         event::{EventOperation, EventTarget, EventUser},
         upload::{self, inject_upload_metadata},
     },
-    db::query::{self, AccessResult},
+    db::{AccessResult, query},
     hooks::lifecycle::PublishEventInput,
     service::{self, WriteInput},
 };
@@ -48,6 +48,7 @@ fn extract_bearer_user(state: &AdminState, headers: &HeaderMap) -> Option<AuthUs
     let auth_header = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
     let token = auth_header.strip_prefix("Bearer ")?;
     let claims = auth::validate_token(token, &state.jwt_secret).ok()?;
+
     load_auth_user(&state.pool, &state.registry, &claims, &state.config.locale)
 }
 
@@ -119,8 +120,10 @@ async fn create_upload(
                 .check_access(def.access.create.as_deref(), user_doc, None, None, &tx);
         // Read-only access check — commit result is irrelevant, rollback on drop is safe
         let _ = tx.commit();
+
         result
     };
+
     match access {
         Ok(AccessResult::Denied) => {
             return json_error(StatusCode::FORBIDDEN, "Create access denied");
@@ -184,8 +187,10 @@ async fn create_upload(
             );
         }
     };
+
     let queued_conversions = processed.queued_conversions.clone();
     let created_files = processed.created_files.clone();
+
     inject_upload_metadata(&mut form_data, &processed);
 
     // Strip field-level create-denied fields
@@ -199,6 +204,7 @@ async fn create_upload(
                     .check_field_write_access(&def.fields, user_doc, "create", &tx);
             // Read-only access check — commit result is irrelevant, rollback on drop is safe
             let _ = tx.commit();
+
             for name in &denied {
                 form_data.remove(name);
             }
@@ -333,6 +339,7 @@ async fn update_upload(
         let _ = tx.commit();
         result
     };
+
     match access {
         Ok(AccessResult::Denied) => {
             return json_error(StatusCode::FORBIDDEN, "Update access denied");
@@ -433,6 +440,7 @@ async fn update_upload(
     let def_owned = def.clone();
     let user_doc_owned = auth_user.as_ref().map(|au| au.user_doc.clone());
     let ui_locale = auth_user.as_ref().map(|au| au.ui_locale.clone());
+
     let result = tokio::task::spawn_blocking(move || {
         service::update_document(
             &pool,
@@ -481,14 +489,17 @@ async fn update_upload(
             );
 
             let body = json!({ "document": doc });
+
             json_ok(StatusCode::OK, &body)
         }
         Ok(Err(e)) => {
             cleanup_files(&created_files);
+
             json_error(StatusCode::BAD_REQUEST, &e.to_string())
         }
         Err(e) => {
             cleanup_files(&created_files);
+
             json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 &format!("Task error: {}", e),
@@ -537,10 +548,12 @@ async fn delete_upload(
             Ok(c) => c,
             Err(_) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Database error"),
         };
+
         let tx = match conn.transaction() {
             Ok(t) => t,
             Err(_) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Database error"),
         };
+
         let result = state.hook_runner.check_access(
             def.access.delete.as_deref(),
             user_doc,
@@ -548,8 +561,10 @@ async fn delete_upload(
             None,
             &tx,
         );
+
         // Read-only access check — commit result is irrelevant, rollback on drop is safe
         let _ = tx.commit();
+
         result
     };
     match access {
@@ -610,6 +625,7 @@ async fn delete_upload(
             let edited_by = auth_user
                 .as_ref()
                 .map(|au| EventUser::new(au.claims.sub.clone(), au.claims.email.clone()));
+
             state.hook_runner.publish_event(
                 &state.event_bus,
                 &def.hooks,

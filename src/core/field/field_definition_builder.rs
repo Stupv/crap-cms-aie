@@ -2,9 +2,10 @@
 
 use serde_json::Value;
 
-use crate::core::field::{
-    BlockDefinition, FieldAccess, FieldAdmin, FieldDefinition, FieldHooks, FieldTab, FieldType,
-    JoinConfig, McpFieldConfig, RelationshipConfig, SelectOption,
+use crate::core::{
+    BlockDefinition, FieldAdmin, FieldDefinition, FieldTab, FieldType, RelationshipConfig,
+    SelectOption,
+    field::{FieldAccess, FieldHooks, JoinConfig, McpFieldConfig},
 };
 
 /// Builder for [`FieldDefinition`].

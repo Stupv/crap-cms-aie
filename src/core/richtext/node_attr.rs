@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::core::{field::SelectOption, richtext::node_attr_builder::NodeAttrBuilder};
+use crate::core::{SelectOption, richtext::node_attr_builder::NodeAttrBuilder};
 
 /// Attribute type for custom node attributes (maps to form input type in admin).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

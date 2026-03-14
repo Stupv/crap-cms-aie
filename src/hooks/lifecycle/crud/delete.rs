@@ -7,13 +7,16 @@ use serde_json::Value;
 use crate::{
     config::LocaleConfig,
     core::SharedRegistry,
-    db::query::{
-        self, AccessResult, Filter, FilterClause, FilterOp, FindQuery, LocaleContext,
-        filter::normalize_filter_fields,
+    db::{
+        AccessResult, Filter, FilterClause, FilterOp, FindQuery, LocaleContext,
+        query::{self, filter::normalize_filter_fields},
     },
-    hooks::lifecycle::{
-        HookContext, HookDepth, HookEvent, MaxHookDepth, UiLocaleContext, UserContext,
-        access::check_access_with_lua, converters::*, execution::run_hooks_inner,
+    hooks::{
+        HookContext, HookEvent,
+        lifecycle::{
+            HookDepth, MaxHookDepth, UiLocaleContext, UserContext, access::check_access_with_lua,
+            converters::*, execution::run_hooks_inner,
+        },
     },
 };
 

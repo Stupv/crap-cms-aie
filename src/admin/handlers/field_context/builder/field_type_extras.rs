@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde_json::{Value, from_str, json};
 
-use crate::core::field::{FieldDefinition, FieldType};
+use crate::core::{FieldDefinition, FieldType};
 
 use super::super::{MAX_FIELD_DEPTH, count_errors_in_fields, safe_template_id};
 use super::single::build_single_field_context;

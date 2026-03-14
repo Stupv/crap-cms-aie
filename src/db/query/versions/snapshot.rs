@@ -4,10 +4,7 @@ use anyhow::Result;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 
-use crate::core::{
-    Document,
-    field::{FieldDefinition, FieldType},
-};
+use crate::core::{Document, FieldDefinition, FieldType};
 
 /// Build a JSON snapshot of a document's current state (fields + join data).
 pub fn build_snapshot(

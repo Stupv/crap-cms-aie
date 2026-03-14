@@ -6,14 +6,16 @@ use anyhow::Result;
 use serde_json::Value;
 
 use crate::{
-    core::{Document, collection::Hooks, field::FieldDefinition},
-    hooks::lifecycle::{
-        context::HookContext,
-        execution::{
-            call_hook_ref, call_registered_hooks, get_hook_refs, has_field_hooks_for_event,
-            run_field_hooks_inner,
+    core::{Document, FieldDefinition, collection::Hooks},
+    hooks::{
+        HookContext, HookEvent, HookRunner,
+        lifecycle::{
+            execution::{
+                call_hook_ref, call_registered_hooks, get_hook_refs, has_field_hooks_for_event,
+                run_field_hooks_inner,
+            },
+            types::{FieldHookEvent, TxContext, UiLocaleContext, UserContext},
         },
-        types::{FieldHookEvent, HookEvent, TxContext, UiLocaleContext, UserContext},
     },
 };
 
@@ -32,8 +34,6 @@ impl<'a> FieldWriteCtx<'a> {
         FieldWriteCtxBuilder::new(conn)
     }
 }
-
-use crate::hooks::lifecycle::HookRunner;
 
 impl HookRunner {
     /// Run all hooks for a given event, mutating the context.

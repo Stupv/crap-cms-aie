@@ -1,6 +1,6 @@
 //! Value helpers: pagination limits, date normalization, type coercion.
 
-use crate::core::field::FieldType;
+use crate::core::FieldType;
 
 /// Clamp a requested limit to the configured default/max.
 ///

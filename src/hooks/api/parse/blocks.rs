@@ -3,7 +3,7 @@
 use anyhow::{Result, anyhow};
 use mlua::Table;
 
-use crate::core::field::{BlockDefinition, FieldTab};
+use crate::core::{BlockDefinition, FieldTab};
 
 use super::{fields::parse_fields, helpers::*};
 

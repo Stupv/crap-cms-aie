@@ -7,10 +7,10 @@ use mlua::Value;
 use serde_json::Value as JsonValue;
 
 use crate::{
-    core::{Document, document::DocumentBuilder, field::FieldDefinition},
-    db::query::AccessResult,
+    core::{Document, FieldDefinition, document::DocumentBuilder},
+    db::AccessResult,
     hooks::{
-        api,
+        HookRunner, api,
         lifecycle::{
             access::{
                 check_access_with_lua, check_field_read_access_with_lua,
@@ -21,8 +21,6 @@ use crate::{
         },
     },
 };
-
-use crate::hooks::lifecycle::HookRunner;
 
 impl HookRunner {
     /// Run a custom auth strategy function. Takes a strategy function ref and

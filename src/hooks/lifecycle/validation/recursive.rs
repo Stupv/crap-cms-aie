@@ -4,11 +4,8 @@ use mlua::Lua;
 use serde_json::Value;
 
 use crate::{
-    core::{
-        field::{FieldDefinition, FieldType},
-        validate::FieldError,
-    },
-    hooks::lifecycle::ValidationCtx,
+    core::{FieldDefinition, FieldType, validate::FieldError},
+    hooks::ValidationCtx,
 };
 
 use super::{checks, sub_fields::validate_sub_fields_inner};
@@ -144,7 +141,7 @@ fn validate_scalar_field(
     // Localized fields store data in suffixed columns (e.g., slug__en).
     let is_localized = (inherited_localized || field.localized) && ctx.locale_ctx.is_some();
     let col_name = if is_localized {
-        use crate::db::query::{LocaleMode, sanitize_locale};
+        use crate::db::{LocaleMode, query::sanitize_locale};
         let lctx = ctx.locale_ctx.unwrap();
         let locale = match &lctx.mode {
             LocaleMode::Single(l) => l.as_str(),

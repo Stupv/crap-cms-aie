@@ -22,25 +22,24 @@ use tower_http::{compression::CompressionLayer, trace::TraceLayer};
 
 use crate::{
     admin::{
-        AdminState,
+        AdminState, Translations,
         context::ContextBuilder,
         handlers::{
             auth as auth_handlers, collections, dashboard, events, globals, static_assets, uploads,
         },
         templates,
-        translations::Translations,
     },
     api::upload::upload_router,
     config::{CompressionMode, CrapConfig, LocaleConfig},
     core::{
-        Registry,
-        auth::{self, AuthUser, ClaimsBuilder},
+        AuthUser, Registry,
+        auth::{self, ClaimsBuilder},
         email::EmailRenderer,
         event::EventBus,
         rate_limit::LoginRateLimiter,
     },
     db::{DbPool, query},
-    hooks::lifecycle::HookRunner,
+    hooks::HookRunner,
     mcp::{
         McpServer,
         protocol::{INTERNAL_ERROR, JsonRpcError, JsonRpcRequest, JsonRpcResponse, PARSE_ERROR},

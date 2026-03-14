@@ -5,8 +5,8 @@ use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 
 use crate::{
-    core::field::{FieldDefinition, FieldType},
-    db::query::{Filter, FilterClause, FilterOp, FindQuery, cursor::CursorData},
+    core::{FieldDefinition, FieldType},
+    db::{Filter, FilterClause, FilterOp, FindQuery, query::cursor::CursorData},
     hooks::api,
 };
 

@@ -15,7 +15,7 @@ use std::{cmp::Ordering, sync::Arc};
 use handlebars::Handlebars;
 use serde_json::Value;
 
-use crate::admin::translations::Translations;
+use crate::admin::Translations;
 
 use self::and::AndHelper;
 use self::compare::CompareHelper;

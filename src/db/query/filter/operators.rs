@@ -2,7 +2,7 @@
 
 use anyhow::{Result, bail};
 
-use crate::db::query::{Filter, FilterOp, is_valid_identifier};
+use crate::db::{Filter, FilterOp, query::is_valid_identifier};
 
 /// Generate a SQL condition applying a [`FilterOp`] to an arbitrary SQL
 /// expression, appending bind parameters to `params`.

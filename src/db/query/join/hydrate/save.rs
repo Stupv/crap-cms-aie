@@ -13,8 +13,8 @@ use super::{
     locale::resolve_join_locale,
 };
 use crate::{
-    core::field::{FieldDefinition, FieldType},
-    db::query::LocaleContext,
+    core::{FieldDefinition, FieldType},
+    db::LocaleContext,
 };
 
 /// Parse polymorphic relationship values from form data.

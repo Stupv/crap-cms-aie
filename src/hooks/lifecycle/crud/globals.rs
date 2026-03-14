@@ -6,7 +6,7 @@ use mlua::{Lua, Value};
 use crate::{
     config::LocaleConfig,
     core::SharedRegistry,
-    db::query::{self, LocaleContext},
+    db::{LocaleContext, query},
     hooks::{api, lifecycle::converters::*},
 };
 

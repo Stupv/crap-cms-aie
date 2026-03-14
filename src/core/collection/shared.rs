@@ -1,8 +1,8 @@
 //! Types shared between collections and globals.
 
 use crate::core::{
+    LocalizedString,
     collection::{AccessBuilder, AdminConfigBuilder, HooksBuilder},
-    field::LocalizedString,
 };
 use serde::{Deserialize, Serialize};
 

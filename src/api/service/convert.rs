@@ -6,11 +6,8 @@ use serde_json::{Map, Number, Value};
 
 use crate::{
     api::content,
-    core::{
-        Document,
-        field::{FieldDefinition, FieldType},
-    },
-    db::query::{Filter, FilterClause, FilterOp},
+    core::{Document, FieldDefinition, FieldType},
+    db::{Filter, FilterClause, FilterOp},
 };
 
 /// Convert a core `Document` to a protobuf `Document`, mapping all fields to a prost Struct.
