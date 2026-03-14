@@ -1,6 +1,6 @@
 //! `serve` command — start admin UI and gRPC servers.
 
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::{Context as _, Result, anyhow, bail};
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -25,6 +25,17 @@ use crate::{
     hooks::HookRunner,
     scheduler, typegen,
 };
+
+/// Bail early if the config directory doesn't look valid.
+fn validate_config_dir(config_dir: &Path) -> Result<()> {
+    if !config_dir.join("crap.toml").exists() {
+        bail!(
+            "No crap.toml found in '{}'. Is this a valid config directory?",
+            config_dir.display()
+        );
+    }
+    Ok(())
+}
 
 /// Path to the PID file within the config directory.
 fn pid_file_path(config_dir: &Path) -> PathBuf {
@@ -76,6 +87,7 @@ pub fn detach(config_dir: &Path, only: Option<ServeMode>, no_scheduler: bool) ->
     let config_dir = config_dir
         .canonicalize()
         .unwrap_or_else(|_| config_dir.to_path_buf());
+    validate_config_dir(&config_dir)?;
     check_existing_pid(&config_dir);
 
     let mut cmd = process::Command::new(&exe);
@@ -242,6 +254,7 @@ pub async fn run(config_dir: &Path, only: Option<ServeMode>, no_scheduler: bool)
     let config_dir = config_dir
         .canonicalize()
         .unwrap_or_else(|_| config_dir.to_path_buf());
+    validate_config_dir(&config_dir)?;
 
     // PID file management
     check_existing_pid(&config_dir);
@@ -478,5 +491,23 @@ mod tests {
         write_pid_file(tmp.path(), 999999999).unwrap();
         // Should not panic
         check_existing_pid(tmp.path());
+    }
+
+    #[test]
+    fn validate_config_dir_missing_toml() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let err = validate_config_dir(tmp.path()).unwrap_err();
+        assert!(
+            err.to_string().contains("No crap.toml found"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn validate_config_dir_with_toml() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        fs::write(tmp.path().join("crap.toml"), "").unwrap();
+        validate_config_dir(tmp.path()).unwrap();
     }
 }
