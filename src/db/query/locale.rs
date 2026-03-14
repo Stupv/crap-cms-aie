@@ -10,7 +10,7 @@ use crate::{
     },
 };
 
-use super::validation::sanitize_locale;
+use crate::db::query::sanitize_locale;
 
 /// How to handle localized fields in a query.
 #[derive(Debug, Clone)]

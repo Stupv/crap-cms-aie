@@ -17,6 +17,8 @@ use crate::{
     },
 };
 
+use super::field_write_ctx_builder::FieldWriteCtxBuilder;
+
 /// Bundled transaction context for field-level write hooks.
 pub struct FieldWriteCtx<'a> {
     pub conn: &'a rusqlite::Connection,
@@ -31,42 +33,7 @@ impl<'a> FieldWriteCtx<'a> {
     }
 }
 
-/// Builder for [`FieldWriteCtx`]. Created via [`FieldWriteCtx::builder`].
-pub struct FieldWriteCtxBuilder<'a> {
-    conn: &'a rusqlite::Connection,
-    user: Option<&'a Document>,
-    ui_locale: Option<&'a str>,
-}
-
-impl<'a> FieldWriteCtxBuilder<'a> {
-    fn new(conn: &'a rusqlite::Connection) -> Self {
-        Self {
-            conn,
-            user: None,
-            ui_locale: None,
-        }
-    }
-
-    pub fn user(mut self, user: Option<&'a Document>) -> Self {
-        self.user = user;
-        self
-    }
-
-    pub fn ui_locale(mut self, ui_locale: Option<&'a str>) -> Self {
-        self.ui_locale = ui_locale;
-        self
-    }
-
-    pub fn build(self) -> FieldWriteCtx<'a> {
-        FieldWriteCtx {
-            conn: self.conn,
-            user: self.user,
-            ui_locale: self.ui_locale,
-        }
-    }
-}
-
-use super::HookRunner;
+use crate::hooks::lifecycle::HookRunner;
 
 impl HookRunner {
     /// Run all hooks for a given event, mutating the context.

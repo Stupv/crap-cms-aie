@@ -17,7 +17,7 @@ pub mod parse;
 pub(crate) mod richtext;
 mod schema;
 mod serializers;
-mod util;
+mod utils;
 
 use anyhow::{Context as _, Result};
 use mlua::Lua;
@@ -44,7 +44,7 @@ pub fn register_api(
     collections::register_collections(lua, &crap, registry.clone())?;
     globals::register_globals(lua, &crap, registry.clone())?;
     log::register_log(lua, &crap)?;
-    util::register_util(lua, &crap)?;
+    utils::register_util(lua, &crap)?;
     crypto::register_crypto(lua, &crap, &config.auth.secret)?;
     schema::register_schema(lua, &crap, registry.clone())?;
     hooks::register_hooks(lua, &crap)?;
@@ -61,7 +61,7 @@ pub fn register_api(
     lua.globals().set("crap", crap)?;
 
     // Load pure Lua helpers onto crap.util (after crap global is set)
-    util::load_lua_helpers(lua)?;
+    utils::load_lua_helpers(lua)?;
 
     Ok(())
 }

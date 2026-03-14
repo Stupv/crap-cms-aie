@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::{format::FormatResult, size_result::SizeResult};
+use crate::core::upload::{FormatResult, SizeResult};
 
 /// Builder for [`SizeResult`].
 ///

@@ -1,7 +1,9 @@
 use serde_json::Value;
 
-use super::{NodeAttr, NodeAttrType};
-use crate::core::field::SelectOption;
+use crate::core::{
+    field::SelectOption,
+    richtext::{NodeAttr, NodeAttrType},
+};
 
 /// Builder for [`NodeAttr`].
 ///

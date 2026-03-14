@@ -31,6 +31,6 @@ pub use items::list::list_items;
 pub use list_collections::list_collections;
 
 // Re-export shared types for super/server
-pub use super::shared::PaginationParams;
+pub use crate::admin::handlers::shared::PaginationParams;
 pub use api::search::SearchQuery;
 pub use items::evaluate_conditions::EvaluateConditionsRequest;

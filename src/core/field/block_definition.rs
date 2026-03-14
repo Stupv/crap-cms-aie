@@ -1,6 +1,6 @@
 //! Block and tab definitions for Blocks/Tabs layout fields.
 
-use super::{FieldDefinition, LocalizedString};
+use crate::core::field::{FieldDefinition, LocalizedString};
 use serde::{Deserialize, Serialize};
 
 /// A single tab within a Tabs layout field.

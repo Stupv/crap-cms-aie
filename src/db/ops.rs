@@ -4,12 +4,12 @@ use anyhow::{Context as _, Result};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use super::{
-    DbPool,
-    query::{self, Filter, FilterClause, FilterOp, FindQuery, LocaleContext},
-};
 use crate::core::{
     CollectionDefinition, Document, collection::GlobalDefinition, document::DocumentBuilder,
+};
+use crate::db::{
+    DbPool,
+    query::{self, Filter, FilterClause, FilterOp, FindQuery, LocaleContext},
 };
 
 /// Find documents (read-only, no transaction needed).

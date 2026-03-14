@@ -1,12 +1,12 @@
 use serde_json::Value;
 
+use std::collections::HashMap;
+
 use crate::{
     core::{field::FieldDefinition, validate::FieldError},
     db::query,
+    hooks::lifecycle::ValidationCtx,
 };
-use std::collections::HashMap;
-
-use super::super::ValidationCtx;
 
 /// Check unique constraint (only if value is non-empty and field has a parent column).
 /// `col_name` is the actual DB column to query (may differ from `data_key` for localized fields).

@@ -1,8 +1,11 @@
 //! gRPC API server (Tonic) implementing the ContentAPI service.
 
+pub mod grpc_start_params_builder;
 pub mod rate_limit;
 pub mod service;
 pub mod upload;
+
+pub use grpc_start_params_builder::GrpcStartParamsBuilder;
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -45,78 +48,6 @@ impl GrpcStartParams {
     /// Create a builder for `GrpcStartParams`.
     pub fn builder() -> GrpcStartParamsBuilder {
         GrpcStartParamsBuilder::new()
-    }
-}
-
-/// Builder for [`GrpcStartParams`]. Created via [`GrpcStartParams::builder`].
-pub struct GrpcStartParamsBuilder {
-    pool: Option<DbPool>,
-    registry: Option<Arc<Registry>>,
-    hook_runner: Option<HookRunner>,
-    jwt_secret: Option<String>,
-    config: Option<CrapConfig>,
-    config_dir: Option<PathBuf>,
-    event_bus: Option<EventBus>,
-}
-
-impl GrpcStartParamsBuilder {
-    fn new() -> Self {
-        Self {
-            pool: None,
-            registry: None,
-            hook_runner: None,
-            jwt_secret: None,
-            config: None,
-            config_dir: None,
-            event_bus: None,
-        }
-    }
-
-    pub fn pool(mut self, pool: DbPool) -> Self {
-        self.pool = Some(pool);
-        self
-    }
-
-    pub fn registry(mut self, registry: Arc<Registry>) -> Self {
-        self.registry = Some(registry);
-        self
-    }
-
-    pub fn hook_runner(mut self, hook_runner: HookRunner) -> Self {
-        self.hook_runner = Some(hook_runner);
-        self
-    }
-
-    pub fn jwt_secret(mut self, jwt_secret: String) -> Self {
-        self.jwt_secret = Some(jwt_secret);
-        self
-    }
-
-    pub fn config(mut self, config: CrapConfig) -> Self {
-        self.config = Some(config);
-        self
-    }
-
-    pub fn config_dir(mut self, config_dir: PathBuf) -> Self {
-        self.config_dir = Some(config_dir);
-        self
-    }
-
-    pub fn event_bus(mut self, event_bus: Option<EventBus>) -> Self {
-        self.event_bus = event_bus;
-        self
-    }
-
-    pub fn build(self) -> GrpcStartParams {
-        GrpcStartParams {
-            pool: self.pool.expect("pool is required"),
-            registry: self.registry.expect("registry is required"),
-            hook_runner: self.hook_runner.expect("hook_runner is required"),
-            jwt_secret: self.jwt_secret.expect("jwt_secret is required"),
-            config: self.config.expect("config is required"),
-            config_dir: self.config_dir.expect("config_dir is required"),
-            event_bus: self.event_bus,
-        }
     }
 }
 

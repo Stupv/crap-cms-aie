@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tracing::{debug, error};
 
-use super::McpServer;
+use crate::mcp::McpServer;
 
 /// Run the stdio MCP transport. Reads newline-delimited JSON-RPC from stdin,
 /// processes each message, and writes responses to stdout.

@@ -3,16 +3,15 @@
 use anyhow::{Result, bail};
 
 use super::{
-    super::{
-        Filter, FilterClause, FilterOp, LocaleContext, LocaleMode, is_valid_identifier,
-        sanitize_locale,
-    },
     operators::{build_filter_condition, build_op_condition},
     resolve::{ResolvedFilter, SubqueryCondition, resolve_filter},
 };
 use crate::core::{
     CollectionDefinition,
     field::{FieldDefinition, FieldType},
+};
+use crate::db::query::{
+    Filter, FilterClause, FilterOp, LocaleContext, LocaleMode, is_valid_identifier, sanitize_locale,
 };
 
 // ── Subquery SQL generation ──────────────────────────────────────────────

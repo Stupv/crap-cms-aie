@@ -1,6 +1,6 @@
 //! Admin UI display hints for fields.
 
-use super::LocalizedString;
+use crate::core::field::LocalizedString;
 use serde::{Deserialize, Serialize};
 
 fn default_true() -> bool {

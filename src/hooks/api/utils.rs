@@ -2,6 +2,7 @@
 //! and pure Lua table/string utilities loaded after the namespace is set.
 
 use anyhow::{Context as _, Result};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use mlua::{Function, Lua, Table};
 use serde_json::Value;
 
@@ -168,26 +169,27 @@ pub(super) fn register_util(lua: &Lua, crap: &Table) -> Result<()> {
 
     // Date helpers (Rust, using chrono)
     {
-        let date_now_fn = lua.create_function(|_, ()| -> mlua::Result<String> {
-            Ok(chrono::Utc::now().to_rfc3339())
-        })?;
+        let date_now_fn =
+            lua.create_function(|_, ()| -> mlua::Result<String> { Ok(Utc::now().to_rfc3339()) })?;
         util_table.set("date_now", date_now_fn)?;
 
-        let date_timestamp_fn = lua
-            .create_function(|_, ()| -> mlua::Result<i64> { Ok(chrono::Utc::now().timestamp()) })?;
+        let date_timestamp_fn =
+            lua.create_function(|_, ()| -> mlua::Result<i64> { Ok(Utc::now().timestamp()) })?;
         util_table.set("date_timestamp", date_timestamp_fn)?;
 
         let date_parse_fn = lua.create_function(|_, s: String| -> mlua::Result<i64> {
             // Try RFC 3339 first
-            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&s) {
+            if let Ok(dt) = DateTime::parse_from_rfc3339(&s) {
                 return Ok(dt.timestamp());
             }
+
             // Try "YYYY-MM-DD HH:MM:SS"
-            if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S") {
+            if let Ok(dt) = NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S") {
                 return Ok(dt.and_utc().timestamp());
             }
+
             // Try "YYYY-MM-DD"
-            if let Ok(d) = chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d") {
+            if let Ok(d) = NaiveDate::parse_from_str(&s, "%Y-%m-%d") {
                 return Ok(d
                     .and_hms_opt(0, 0, 0)
                     .expect("00:00:00 is valid")
@@ -203,7 +205,7 @@ pub(super) fn register_util(lua: &Lua, crap: &Table) -> Result<()> {
 
         let date_format_fn =
             lua.create_function(|_, (ts, fmt): (i64, String)| -> mlua::Result<String> {
-                let dt = chrono::DateTime::from_timestamp(ts, 0)
+                let dt = DateTime::from_timestamp(ts, 0)
                     .ok_or_else(|| mlua::Error::RuntimeError("invalid timestamp".into()))?;
                 Ok(dt.format(&fmt).to_string())
             })?;

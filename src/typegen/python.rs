@@ -8,7 +8,7 @@ use crate::core::{
     field::{FieldDefinition, FieldType},
 };
 
-use super::{
+use crate::typegen::{
     is_optional, rel_has_many, sorted_collection_slugs, sorted_global_slugs, to_pascal_case,
 };
 

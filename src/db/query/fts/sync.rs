@@ -59,7 +59,7 @@ pub fn sync_fts_table(
 
     // Validate field names (defense against injection — they come from Lua config)
     for f in &fts_fields {
-        if !super::super::is_valid_identifier(f) {
+        if !crate::db::query::is_valid_identifier(f) {
             bail!(
                 "Invalid FTS field name '{}': must be alphanumeric/underscore",
                 f

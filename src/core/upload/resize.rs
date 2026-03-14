@@ -2,7 +2,7 @@ use std::{fs, io::Cursor, path::Path};
 
 use anyhow::{Context as _, Result, bail};
 
-use super::{image_fit::ImageFit, image_size::ImageSize};
+use crate::core::upload::{ImageFit, ImageSize};
 
 /// Resize an image according to the given size definition and fit mode.
 pub(super) fn resize_image(img: &image::DynamicImage, size: &ImageSize) -> image::DynamicImage {

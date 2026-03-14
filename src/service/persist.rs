@@ -1,0 +1,125 @@
+//! DB write phase functions for collection CRUD operations.
+//!
+//! Each `persist_*` function handles the database-level work for a single operation:
+//! insert/update rows, join table data, passwords, and version snapshots.
+
+use std::collections::HashMap;
+
+use anyhow::{Result, anyhow};
+
+use serde_json::Value;
+
+use crate::{
+    core::{CollectionDefinition, document::Document},
+    db::query::{self, LocaleContext},
+};
+
+use super::{PersistOptions, versions};
+
+/// Persist the DB write phase of a create operation.
+/// Performs: insert → join data → password → version snapshot.
+pub fn persist_create(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    def: &CollectionDefinition,
+    final_data: &HashMap<String, String>,
+    hook_data: &HashMap<String, Value>,
+    opts: &PersistOptions<'_>,
+) -> Result<Document> {
+    let status = if opts.is_draft { "draft" } else { "published" };
+    let doc = query::create(conn, slug, def, final_data, opts.locale_ctx)?;
+    query::save_join_table_data(conn, slug, &def.fields, &doc.id, hook_data, opts.locale_ctx)?;
+
+    if let Some(pw) = opts.password
+        && !pw.is_empty()
+    {
+        query::update_password(conn, slug, &doc.id, pw)?;
+    }
+
+    if def.has_versions() {
+        let ctx = versions::VersionSnapshotCtx::builder(slug, &doc.id)
+            .fields(&def.fields)
+            .versions(def.versions.as_ref())
+            .has_drafts(def.has_drafts())
+            .build();
+        versions::create_version_snapshot(conn, &ctx, status, &doc)?;
+    }
+
+    query::fts::fts_upsert(conn, slug, &doc, Some(def))?;
+    Ok(doc)
+}
+
+/// Persist the DB write phase of a normal (non-draft) update operation.
+/// Performs: update → join data → password → version snapshot (published).
+pub fn persist_update(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    id: &str,
+    def: &CollectionDefinition,
+    final_data: &HashMap<String, String>,
+    hook_data: &HashMap<String, Value>,
+    opts: &PersistOptions<'_>,
+) -> Result<Document> {
+    let doc = query::update(conn, slug, def, id, final_data, opts.locale_ctx)?;
+    query::save_join_table_data(conn, slug, &def.fields, &doc.id, hook_data, opts.locale_ctx)?;
+
+    if let Some(pw) = opts.password
+        && !pw.is_empty()
+    {
+        query::update_password(conn, slug, &doc.id, pw)?;
+    }
+
+    if def.has_versions() {
+        let ctx = versions::VersionSnapshotCtx::builder(slug, &doc.id)
+            .fields(&def.fields)
+            .versions(def.versions.as_ref())
+            .has_drafts(def.has_drafts())
+            .build();
+        versions::create_version_snapshot(conn, &ctx, "published", &doc)?;
+    }
+
+    query::fts::fts_upsert(conn, slug, &doc, Some(def))?;
+    Ok(doc)
+}
+
+/// Persist a draft-only version save: find existing doc, merge incoming data,
+/// create a draft version snapshot. Main table is NOT modified.
+pub fn persist_draft_version(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    id: &str,
+    def: &CollectionDefinition,
+    hook_data: &HashMap<String, Value>,
+    locale_ctx: Option<&LocaleContext>,
+) -> Result<Document> {
+    let existing_doc = query::find_by_id_raw(conn, slug, def, id, locale_ctx)?
+        .ok_or_else(|| anyhow!("Document {} not found in {}", id, slug))?;
+
+    versions::save_draft_version(
+        conn,
+        slug,
+        id,
+        &def.fields,
+        def.versions.as_ref(),
+        &existing_doc,
+        hook_data,
+    )?;
+
+    Ok(existing_doc)
+}
+
+/// Persist an unpublish operation: find existing doc, set status to draft,
+/// create a draft version snapshot. Returns the existing doc.
+pub fn persist_unpublish(
+    conn: &rusqlite::Connection,
+    slug: &str,
+    id: &str,
+    def: &CollectionDefinition,
+) -> Result<Document> {
+    let doc = query::find_by_id_raw(conn, slug, def, id, None)?
+        .ok_or_else(|| anyhow!("Document {} not found in {}", id, slug))?;
+
+    versions::unpublish_with_snapshot(conn, slug, id, &def.fields, def.versions.as_ref(), &doc)?;
+
+    Ok(doc)
+}

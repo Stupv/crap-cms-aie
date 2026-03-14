@@ -4,8 +4,9 @@ use anyhow::{Context as _, Result};
 
 use crate::{config::LocaleConfig, core::collection::GlobalDefinition};
 
-use super::helpers::{
-    get_table_columns, sanitize_locale, sync_join_tables, sync_versions_table, table_exists,
+use crate::db::migrate::helpers::{
+    collect_column_specs, get_table_columns, sanitize_locale, sync_join_tables,
+    sync_versions_table, table_exists,
 };
 
 pub(super) fn sync_global_table(
@@ -20,7 +21,7 @@ pub(super) fn sync_global_table(
     if !exists {
         let mut columns = vec!["id TEXT PRIMARY KEY".to_string()];
 
-        for spec in &super::helpers::collect_column_specs(&def.fields, locale_config) {
+        for spec in &collect_column_specs(&def.fields, locale_config) {
             if spec.is_localized {
                 for locale in &locale_config.locales {
                     let col = format!(
@@ -63,7 +64,7 @@ pub(super) fn sync_global_table(
         // ALTER TABLE: add columns for new scalar/group fields
         let existing_columns = get_table_columns(conn, &table_name)?;
 
-        for spec in &super::helpers::collect_column_specs(&def.fields, locale_config) {
+        for spec in &collect_column_specs(&def.fields, locale_config) {
             if spec.is_localized {
                 for locale in &locale_config.locales {
                     let col_name = format!("{}__{}", spec.col_name, sanitize_locale(locale));

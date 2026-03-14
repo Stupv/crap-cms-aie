@@ -1,4 +1,4 @@
-use super::uploaded_file::UploadedFile;
+use crate::core::upload::UploadedFile;
 
 /// Builder for [`UploadedFile`].
 ///

@@ -4,10 +4,8 @@ use anyhow::Result;
 use serde_json::Value;
 use std::collections::HashSet;
 
-use super::{
-    super::{PopulateCache, PopulateContext, PopulateOpts, document_to_json},
-    populate_relationships_cached,
-};
+use super::populate_relationships_cached;
+use crate::db::query::populate::{PopulateCache, PopulateContext, PopulateOpts, document_to_json};
 use crate::{
     core::{Document, field::FieldType, upload},
     db::query::{Filter, FilterClause, FilterOp, FindQuery, hydrate_document, read::find},

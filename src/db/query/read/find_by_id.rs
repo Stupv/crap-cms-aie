@@ -3,7 +3,7 @@
 use anyhow::{Context as _, Result};
 use rusqlite::params_from_iter;
 
-use super::super::{
+use crate::db::query::{
     LocaleContext, LocaleMode, get_column_names, get_locale_select_columns, group_locale_fields,
 };
 use crate::{

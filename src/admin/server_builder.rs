@@ -9,7 +9,7 @@ use crate::{
     hooks::lifecycle::HookRunner,
 };
 
-use super::server::AdminStartParams;
+use crate::admin::server::AdminStartParams;
 
 /// Builder for [`AdminStartParams`]. Created via [`AdminStartParams::builder`].
 pub struct AdminStartParamsBuilder {

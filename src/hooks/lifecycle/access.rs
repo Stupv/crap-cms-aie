@@ -8,13 +8,14 @@ use std::collections::HashMap;
 use crate::{
     core::{Document, field::FieldDefinition},
     db::query::{AccessResult, Filter, FilterClause, FilterOp},
-    hooks::api,
-};
-
-use super::{
-    DefaultDeny,
-    converters::{document_to_lua_table, lua_parse_filter_op},
-    execution::resolve_hook_function,
+    hooks::{
+        api,
+        lifecycle::{
+            DefaultDeny,
+            converters::{document_to_lua_table, lua_parse_filter_op},
+            execution::resolve_hook_function,
+        },
+    },
 };
 
 /// Check collection-level access using an already-held `&Lua` reference.

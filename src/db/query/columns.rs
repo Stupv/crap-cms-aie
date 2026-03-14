@@ -7,7 +7,7 @@ use crate::core::{
     field::{FieldDefinition, FieldType},
 };
 
-use super::locale::LocaleContext;
+use crate::db::query::LocaleContext;
 
 /// Get column names for a collection (id + field columns + timestamps).
 pub fn get_column_names(def: &CollectionDefinition) -> Vec<String> {

@@ -1,6 +1,6 @@
 //! Builders for `crate::core::richtext::RichtextNodeDef` and `NodeAttr`.
 
-use super::{NodeAttr, RichtextNodeDef};
+use crate::core::richtext::{NodeAttr, RichtextNodeDef};
 
 /// Builder for [`RichtextNodeDef`].
 ///

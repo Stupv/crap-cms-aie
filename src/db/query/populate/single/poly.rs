@@ -4,9 +4,9 @@ use anyhow::Result;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
-use super::{
-    super::{PopulateContext, PopulateCtx, PopulateOpts, document_to_json, parse_poly_ref},
-    populate_relationships_cached,
+use super::populate_relationships_cached;
+use crate::db::query::populate::{
+    PopulateContext, PopulateCtx, PopulateOpts, document_to_json, parse_poly_ref,
 };
 use crate::{
     core::{Document, upload},

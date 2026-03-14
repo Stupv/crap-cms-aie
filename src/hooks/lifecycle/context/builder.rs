@@ -4,9 +4,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::core::Document;
-
-use super::HookContext;
+use crate::{core::Document, hooks::lifecycle::HookContext};
 
 /// Builder for `HookContext`. Created via [`HookContext::builder`].
 pub struct HookContextBuilder {

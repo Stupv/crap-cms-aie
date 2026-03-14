@@ -13,10 +13,11 @@ use crate::{
         Document,
         field::{FieldDefinition, FieldType},
     },
-    hooks::{api, lifecycle::converters::document_to_lua_table},
+    hooks::{
+        api,
+        lifecycle::{HookDepth, converters::document_to_lua_table},
+    },
 };
-
-use super::HookDepth;
 
 /// Context passed to hook functions.
 #[derive(Debug, Clone)]

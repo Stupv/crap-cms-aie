@@ -7,15 +7,12 @@ use std::{
 use anyhow::{Context as _, Result, bail};
 
 use super::{
-    collection_upload::CollectionUpload,
-    format::FormatResult,
-    processed_upload::ProcessedUpload,
-    processed_upload_builder::ProcessedUploadBuilder,
-    queued_conversion_builder::QueuedConversionBuilder,
     resize::{resize_image, save_avif, save_webp},
-    size_result_builder::SizeResultBuilder,
-    uploaded_file::UploadedFile,
     validate::{format_filesize, mime_matches, sanitize_filename, validate_mime_type},
+};
+use crate::core::upload::{
+    CollectionUpload, FormatResult, ProcessedUpload, ProcessedUploadBuilder,
+    QueuedConversionBuilder, SizeResultBuilder, UploadedFile,
 };
 
 /// RAII guard that deletes written files if the upload process fails.

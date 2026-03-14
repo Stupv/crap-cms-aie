@@ -24,6 +24,8 @@ use crate::{
     },
 };
 
+use super::publish_event_input_builder::PublishEventInputBuilder;
+
 /// Bundled parameters for a mutation event to publish.
 pub struct PublishEventInput {
     pub target: EventTarget,
@@ -41,61 +43,7 @@ impl PublishEventInput {
     }
 }
 
-/// Builder for [`PublishEventInput`]. Created via [`PublishEventInput::builder`].
-pub struct PublishEventInputBuilder {
-    target: EventTarget,
-    operation: EventOperation,
-    collection: Option<String>,
-    document_id: Option<String>,
-    data: HashMap<String, JsonValue>,
-    edited_by: Option<EventUser>,
-}
-
-impl PublishEventInputBuilder {
-    fn new(target: EventTarget, operation: EventOperation) -> Self {
-        Self {
-            target,
-            operation,
-            collection: None,
-            document_id: None,
-            data: HashMap::new(),
-            edited_by: None,
-        }
-    }
-
-    pub fn collection(mut self, collection: impl Into<String>) -> Self {
-        self.collection = Some(collection.into());
-        self
-    }
-
-    pub fn document_id(mut self, document_id: impl Into<String>) -> Self {
-        self.document_id = Some(document_id.into());
-        self
-    }
-
-    pub fn data(mut self, data: HashMap<String, JsonValue>) -> Self {
-        self.data = data;
-        self
-    }
-
-    pub fn edited_by(mut self, edited_by: Option<EventUser>) -> Self {
-        self.edited_by = edited_by;
-        self
-    }
-
-    pub fn build(self) -> PublishEventInput {
-        PublishEventInput {
-            target: self.target,
-            operation: self.operation,
-            collection: self.collection.expect("collection is required"),
-            document_id: self.document_id.expect("document_id is required"),
-            data: self.data,
-            edited_by: self.edited_by,
-        }
-    }
-}
-
-use super::HookRunner;
+use crate::hooks::lifecycle::HookRunner;
 
 impl HookRunner {
     /// Run before_broadcast hooks. Returns Ok(Some(data)) to broadcast (possibly

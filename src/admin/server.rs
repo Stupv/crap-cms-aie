@@ -20,16 +20,16 @@ use subtle::ConstantTimeEq;
 use tokio_util::sync::CancellationToken;
 use tower_http::{compression::CompressionLayer, trace::TraceLayer};
 
-use super::{
-    AdminState,
-    context::ContextBuilder,
-    handlers::{
-        auth as auth_handlers, collections, dashboard, events, globals, static_assets, uploads,
-    },
-    templates,
-    translations::Translations,
-};
 use crate::{
+    admin::{
+        AdminState,
+        context::ContextBuilder,
+        handlers::{
+            auth as auth_handlers, collections, dashboard, events, globals, static_assets, uploads,
+        },
+        templates,
+        translations::Translations,
+    },
     api::upload::upload_router,
     config::{CompressionMode, CrapConfig, LocaleConfig},
     core::{
@@ -60,8 +60,8 @@ pub struct AdminStartParams {
 
 impl AdminStartParams {
     /// Create a builder for `AdminStartParams`.
-    pub fn builder() -> super::server_builder::AdminStartParamsBuilder {
-        super::server_builder::AdminStartParamsBuilder::new()
+    pub fn builder() -> crate::admin::server_builder::AdminStartParamsBuilder {
+        crate::admin::server_builder::AdminStartParamsBuilder::new()
     }
 }
 

@@ -22,7 +22,7 @@ use crate::{
     },
 };
 
-use super::HookRunner;
+use crate::hooks::lifecycle::HookRunner;
 
 impl HookRunner {
     /// Run a custom auth strategy function. Takes a strategy function ref and

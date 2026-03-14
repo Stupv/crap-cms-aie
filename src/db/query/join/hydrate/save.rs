@@ -6,14 +6,16 @@ use std::collections::HashMap;
 
 use super::{
     super::{
-        super::LocaleContext,
         arrays::set_array_rows,
         blocks::set_block_rows,
         relationships::{set_polymorphic_related, set_related_ids},
     },
-    resolve_join_locale,
+    locale::resolve_join_locale,
 };
-use crate::core::field::{FieldDefinition, FieldType};
+use crate::{
+    core::field::{FieldDefinition, FieldType},
+    db::query::LocaleContext,
+};
 
 /// Parse polymorphic relationship values from form data.
 /// Accepts "collection/id" composite strings from either a JSON array or comma-separated string.

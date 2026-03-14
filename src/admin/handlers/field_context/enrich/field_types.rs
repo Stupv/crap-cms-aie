@@ -2,7 +2,9 @@
 //!
 //! Top-level enrichment helpers that require DB access live in `enrich_types.rs`.
 
-use super::{build_enriched_children_from_data, build_enriched_sub_field_context};
+use super::{
+    children::build_enriched_children_from_data, nested::build_enriched_sub_field_context,
+};
 use crate::{
     admin::handlers::{
         field_context::{

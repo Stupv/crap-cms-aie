@@ -1,6 +1,9 @@
 use super::super::builder::build_field_contexts;
 use super::*;
-use crate::core::field::{BlockDefinition, FieldDefinition, LocalizedString, SelectOption};
+use crate::{
+    admin::handlers::field_context::MAX_FIELD_DEPTH,
+    core::field::{BlockDefinition, FieldDefinition, LocalizedString, SelectOption},
+};
 
 fn make_field(name: &str, ft: FieldType) -> FieldDefinition {
     FieldDefinition::builder(name, ft).build()

@@ -20,7 +20,7 @@ use crate::{
     },
 };
 
-use super::HookRunner;
+use crate::hooks::lifecycle::HookRunner;
 
 impl HookRunner {
     /// Fire before_read hooks. Returns error to abort the read.

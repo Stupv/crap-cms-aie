@@ -2,7 +2,7 @@
 
 use serde_json::{Map, Value, json};
 
-use super::{
+use crate::mcp::{
     protocol::{ResourceContent, ResourceDefinition},
     schema::{CrudOp, collection_input_schema, global_input_schema},
     tools::should_include,

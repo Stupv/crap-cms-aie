@@ -12,7 +12,7 @@ pub use tracking::{
 
 use anyhow::{Context as _, Result, anyhow};
 
-use super::DbPool;
+use crate::db::DbPool;
 use crate::{config::LocaleConfig, core::SharedRegistry};
 
 /// Sync all collection tables with their Lua definitions.

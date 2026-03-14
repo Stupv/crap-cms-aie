@@ -8,12 +8,10 @@ use crate::{
     core::{collection::GlobalDefinition, document::Document},
     db::{DbPool, query},
     hooks::lifecycle::{HookContext, HookRunner, ValidationCtx},
+    service::{AfterChangeInput, WriteInput, WriteResult, build_hook_data, run_after_change_hooks},
 };
 
-use super::{
-    AfterChangeInput, WriteInput, WriteResult, build_hook_data, run_after_change_hooks,
-    versions::{self, VersionSnapshotCtx},
-};
+use super::versions::{self, VersionSnapshotCtx};
 
 /// Update a global document within a single transaction: before-hooks → update → after-hooks.
 /// When `draft` is true and the global has drafts enabled, creates a version-only save.

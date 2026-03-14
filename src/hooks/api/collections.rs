@@ -3,8 +3,9 @@
 use anyhow::Result;
 use mlua::{Lua, Table, Value};
 
-use super::{parse::parse_collection_definition, serializers::collection_config_to_lua};
-use crate::core::SharedRegistry;
+use super::serializers::collection_config_to_lua;
+
+use crate::{core::SharedRegistry, hooks::api::parse::parse_collection_definition};
 
 pub(super) fn register_collections(
     lua: &Lua,

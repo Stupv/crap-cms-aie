@@ -11,7 +11,7 @@ use crate::{
     db::query::get_column_names,
 };
 
-use super::{is_optional, rel_has_many, to_pascal_case};
+use crate::typegen::{is_optional, rel_has_many, to_pascal_case};
 
 /// Render all Lua type definitions.
 pub(super) fn render(registry: &Registry) -> String {

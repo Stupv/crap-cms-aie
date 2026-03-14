@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use super::{node_attr::NodeAttr, richtext_node_def_builder::RichtextNodeDefBuilder};
+use crate::core::richtext::{
+    node_attr::NodeAttr, richtext_node_def_builder::RichtextNodeDefBuilder,
+};
 
 /// A registered custom ProseMirror node type.
 #[derive(Debug, Clone, Serialize, Deserialize)]

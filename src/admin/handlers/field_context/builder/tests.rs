@@ -1,6 +1,9 @@
+use super::super::{MAX_FIELD_DEPTH, safe_template_id};
 use super::*;
 
-use crate::core::field::{BlockDefinition, FieldDefinition, LocalizedString, SelectOption};
+use crate::core::field::{
+    BlockDefinition, FieldDefinition, FieldType, LocalizedString, SelectOption,
+};
 
 fn make_field(name: &str, ft: FieldType) -> FieldDefinition {
     FieldDefinition::builder(name, ft).build()

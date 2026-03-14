@@ -3,8 +3,8 @@
 use anyhow::{Context as _, Result};
 use std::collections::HashSet;
 
-use super::helpers::table_exists;
 use crate::db::DbPool;
+use crate::db::migrate::helpers::table_exists;
 
 /// List all `*.lua` files in the migrations directory, sorted by filename (chronological).
 pub fn list_migration_files(migrations_dir: &std::path::Path) -> Result<Vec<String>> {

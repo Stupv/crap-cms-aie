@@ -3,12 +3,15 @@ use std::collections::HashMap;
 use mlua::Lua;
 use serde_json::Value;
 
-use crate::core::{
-    field::{FieldDefinition, FieldType},
-    validate::FieldError,
+use crate::{
+    core::{
+        field::{FieldDefinition, FieldType},
+        validate::FieldError,
+    },
+    hooks::lifecycle::ValidationCtx,
 };
 
-use super::{ValidationCtx, checks, sub_fields::validate_sub_fields_inner};
+use super::{checks, sub_fields::validate_sub_fields_inner};
 
 /// Recursive validation with prefix support for arbitrary nesting.
 /// Group accumulates prefix (`group__`), Row/Collapsible/Tabs pass through.

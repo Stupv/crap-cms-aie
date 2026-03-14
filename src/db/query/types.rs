@@ -1,6 +1,6 @@
 //! Query types: filters, find query, access result.
 
-use super::cursor;
+use crate::db::query::cursor;
 
 /// Result of an access control check.
 #[derive(Debug, Clone)]

@@ -1,100 +1,27 @@
 //! Document hydration and join table save orchestration.
 
+mod group;
+mod locale;
 mod save;
 
 pub use save::save_join_table_data;
 
 use anyhow::Result;
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 use super::{
-    super::{LocaleContext, LocaleMode},
     arrays::find_array_rows,
     blocks::find_block_rows,
     relationships::{find_polymorphic_related, find_related_ids},
 };
-use crate::core::{
-    Document,
-    field::{FieldDefinition, FieldType},
+use crate::{
+    core::{
+        Document,
+        field::{FieldDefinition, FieldType},
+    },
+    db::query::LocaleContext,
 };
-
-/// Resolve the effective locale string for a join table operation.
-/// Returns Some("en") when the field is localized and locale is enabled,
-/// None otherwise (same pattern as locale_write_column for regular columns).
-pub(super) fn resolve_join_locale(
-    field: &FieldDefinition,
-    locale_ctx: Option<&LocaleContext>,
-) -> Option<String> {
-    let ctx = locale_ctx?;
-
-    if !field.localized || !ctx.config.is_enabled() {
-        return None;
-    }
-    let locale = match &ctx.mode {
-        LocaleMode::Single(l) => l.as_str(),
-        _ => ctx.config.default_locale.as_str(),
-    };
-    Some(locale.to_string())
-}
-
-/// When fallback is enabled and we're querying a non-default locale,
-/// returns the default locale to fall back to if the primary query returns empty.
-pub(super) fn resolve_join_fallback_locale(
-    field: &FieldDefinition,
-    locale_ctx: Option<&LocaleContext>,
-) -> Option<String> {
-    let ctx = locale_ctx?;
-
-    if !field.localized || !ctx.config.is_enabled() || !ctx.config.fallback {
-        return None;
-    }
-    match &ctx.mode {
-        LocaleMode::Single(l) if l != &ctx.config.default_locale => {
-            Some(ctx.config.default_locale.clone())
-        }
-        _ => None,
-    }
-}
-
-/// Recursively extract prefixed columns from `doc.fields` into a nested Group object.
-/// Handles Group→Row, Group→Collapsible, Group→Tabs, and Group→Group nesting.
-fn reconstruct_group_fields(
-    fields: &[FieldDefinition],
-    prefix: &str,
-    doc: &mut Document,
-    group_obj: &mut Map<String, Value>,
-) {
-    for sub in fields {
-        match sub.field_type {
-            FieldType::Group => {
-                // Nested group: collect sub-group's fields into a nested object
-                let new_prefix = format!("{}__{}", prefix, sub.name);
-                let mut sub_obj = Map::new();
-                reconstruct_group_fields(&sub.fields, &new_prefix, doc, &mut sub_obj);
-
-                if !sub_obj.is_empty() {
-                    group_obj.insert(sub.name.clone(), Value::Object(sub_obj));
-                }
-            }
-            FieldType::Row | FieldType::Collapsible => {
-                // Layout fields are transparent — promote sub-fields to same level
-                reconstruct_group_fields(&sub.fields, prefix, doc, group_obj);
-            }
-            FieldType::Tabs => {
-                for tab in &sub.tabs {
-                    reconstruct_group_fields(&tab.fields, prefix, doc, group_obj);
-                }
-            }
-            _ => {
-                let col_name = format!("{}__{}", prefix, sub.name);
-
-                if let Some(val) = doc.fields.remove(&col_name) {
-                    group_obj.insert(sub.name.clone(), val);
-                }
-            }
-        }
-    }
-}
+use group::reconstruct_group_fields;
 
 /// Hydrate a document with join table data (has-many relationships and arrays).
 /// Populates `doc.fields` with JSON arrays for each join-table field.
@@ -115,9 +42,9 @@ pub fn hydrate_document(
         {
             continue;
         }
-        let locale = resolve_join_locale(field, locale_ctx);
+        let locale = locale::resolve_join_locale(field, locale_ctx);
         let locale_ref = locale.as_deref();
-        let fallback_locale = resolve_join_fallback_locale(field, locale_ctx);
+        let fallback_locale = locale::resolve_join_fallback_locale(field, locale_ctx);
         let fallback_ref = fallback_locale.as_deref();
         match field.field_type {
             FieldType::Relationship | FieldType::Upload => {
@@ -174,7 +101,7 @@ pub fn hydrate_document(
             }
             FieldType::Group => {
                 // Reconstruct nested object from prefixed columns: seo__title → { seo: { title: val } }
-                let mut group_obj = Map::new();
+                let mut group_obj = serde_json::Map::new();
                 let prefix = &field.name;
                 reconstruct_group_fields(&field.fields, prefix, doc, &mut group_obj);
 
@@ -208,8 +135,7 @@ pub fn hydrate_document(
 
 #[cfg(test)]
 pub(super) mod test_helpers {
-    use crate::core::collection::*;
-    use crate::core::field::*;
+    use crate::core::{collection::*, field::*};
     use rusqlite::Connection;
 
     pub fn setup_join_db() -> Connection {
@@ -273,16 +199,21 @@ pub(super) mod test_helpers {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use serde_json::json;
 
-    use super::super::arrays::{find_array_rows, set_array_rows};
-    use super::super::blocks::{find_block_rows, set_block_rows};
-    use super::super::relationships::{set_polymorphic_related, set_related_ids};
-    use super::test_helpers::{array_sub_fields, posts_def_with_joins, setup_join_db};
-    use super::*;
+    use super::{
+        super::{
+            arrays::{find_array_rows, set_array_rows},
+            blocks::{find_block_rows, set_block_rows},
+            relationships::{set_polymorphic_related, set_related_ids},
+        },
+        test_helpers::{array_sub_fields, posts_def_with_joins, setup_join_db},
+        *,
+    };
     use crate::core::{Document, field::*};
     use rusqlite::Connection;
-    use std::collections::HashMap;
 
     // ── hydrate_document ─────────────────────────────────────────────────────
 
@@ -363,174 +294,6 @@ mod tests {
         assert!(
             !doc.fields.contains_key("content"),
             "content should NOT be hydrated (not in select)"
-        );
-    }
-
-    // ── Group field hydration ───────────────────────────────────────────────
-
-    #[test]
-    fn hydrate_group_fields() {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE posts (
-                id TEXT PRIMARY KEY,
-                title TEXT,
-                seo__meta_title TEXT,
-                seo__meta_desc TEXT,
-                created_at TEXT,
-                updated_at TEXT
-            );
-            INSERT INTO posts VALUES ('p1', 'Test', 'SEO Title', 'SEO Desc', '2024-01-01', '2024-01-01');",
-        ).unwrap();
-
-        let fields = vec![
-            FieldDefinition::builder("title", FieldType::Text).build(),
-            FieldDefinition::builder("seo", FieldType::Group)
-                .fields(vec![
-                    FieldDefinition::builder("meta_title", FieldType::Text).build(),
-                    FieldDefinition::builder("meta_desc", FieldType::Text).build(),
-                ])
-                .build(),
-        ];
-
-        let mut doc = Document::new("p1".to_string());
-        doc.fields.insert("title".to_string(), json!("Test"));
-        doc.fields
-            .insert("seo__meta_title".to_string(), json!("SEO Title"));
-        doc.fields
-            .insert("seo__meta_desc".to_string(), json!("SEO Desc"));
-
-        hydrate_document(&conn, "posts", &fields, &mut doc, None, None).unwrap();
-
-        let seo = doc.fields.get("seo").expect("seo group should exist");
-        assert_eq!(
-            seo.get("meta_title").and_then(|v| v.as_str()),
-            Some("SEO Title")
-        );
-        assert_eq!(
-            seo.get("meta_desc").and_then(|v| v.as_str()),
-            Some("SEO Desc")
-        );
-        assert!(!doc.fields.contains_key("seo__meta_title"));
-        assert!(!doc.fields.contains_key("seo__meta_desc"));
-    }
-
-    #[test]
-    fn hydrate_nested_group_fields() {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE posts (
-                id TEXT PRIMARY KEY,
-                seo__social__og_title TEXT
-            );
-            INSERT INTO posts VALUES ('p1', 'OG Title Value');",
-        )
-        .unwrap();
-
-        let inner_group = FieldDefinition::builder("social", FieldType::Group)
-            .fields(vec![
-                FieldDefinition::builder("og_title", FieldType::Text).build(),
-            ])
-            .build();
-        let outer_group = FieldDefinition::builder("seo", FieldType::Group)
-            .fields(vec![inner_group])
-            .build();
-
-        let mut doc = Document::new("p1".to_string());
-        doc.fields
-            .insert("seo__social__og_title".to_string(), json!("OG Title Value"));
-
-        hydrate_document(&conn, "posts", &[outer_group], &mut doc, None, None).unwrap();
-
-        let seo = doc.fields.get("seo").expect("seo group should exist");
-        let social = seo.get("social").expect("nested social group should exist");
-        assert_eq!(
-            social.get("og_title").and_then(|v| v.as_str()),
-            Some("OG Title Value")
-        );
-    }
-
-    #[test]
-    fn hydrate_group_with_row_sub_fields() {
-        // A Row inside a Group is transparent — its sub-fields are promoted to the group level
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE posts (id TEXT PRIMARY KEY);
-             INSERT INTO posts (id) VALUES ('p1');",
-        )
-        .unwrap();
-
-        let row_wrapper = FieldDefinition::builder("layout_row", FieldType::Row)
-            .fields(vec![
-                FieldDefinition::builder("col_a", FieldType::Text).build(),
-                FieldDefinition::builder("col_b", FieldType::Text).build(),
-            ])
-            .build();
-        let outer_group = FieldDefinition::builder("layout", FieldType::Group)
-            .fields(vec![row_wrapper])
-            .build();
-
-        let mut doc = Document::new("p1".to_string());
-        doc.fields.insert("layout__col_a".to_string(), json!("A"));
-        doc.fields.insert("layout__col_b".to_string(), json!("B"));
-
-        hydrate_document(&conn, "posts", &[outer_group], &mut doc, None, None).unwrap();
-
-        let layout = doc.fields.get("layout").expect("layout group should exist");
-        assert_eq!(layout.get("col_a").and_then(|v| v.as_str()), Some("A"));
-        assert_eq!(layout.get("col_b").and_then(|v| v.as_str()), Some("B"));
-        assert!(
-            layout.get("layout_row").is_none(),
-            "Row wrapper should be transparent"
-        );
-    }
-
-    #[test]
-    fn hydrate_group_with_tabs_sub_fields() {
-        use crate::core::field::FieldTab;
-
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE posts (id TEXT PRIMARY KEY);
-             INSERT INTO posts (id) VALUES ('p1');",
-        )
-        .unwrap();
-
-        let tabs_wrapper = FieldDefinition::builder("tabs", FieldType::Tabs)
-            .tabs(vec![
-                FieldTab::new(
-                    "Tab A",
-                    vec![FieldDefinition::builder("field_a", FieldType::Text).build()],
-                ),
-                FieldTab::new(
-                    "Tab B",
-                    vec![FieldDefinition::builder("field_b", FieldType::Text).build()],
-                ),
-            ])
-            .build();
-        let outer_group = FieldDefinition::builder("settings", FieldType::Group)
-            .fields(vec![tabs_wrapper])
-            .build();
-
-        let mut doc = Document::new("p1".to_string());
-        doc.fields
-            .insert("settings__field_a".to_string(), json!("val_a"));
-        doc.fields
-            .insert("settings__field_b".to_string(), json!("val_b"));
-
-        hydrate_document(&conn, "posts", &[outer_group], &mut doc, None, None).unwrap();
-
-        let settings = doc
-            .fields
-            .get("settings")
-            .expect("settings group should exist");
-        assert_eq!(
-            settings.get("field_a").and_then(|v| v.as_str()),
-            Some("val_a")
-        );
-        assert_eq!(
-            settings.get("field_b").and_then(|v| v.as_str()),
-            Some("val_b")
         );
     }
 
@@ -707,289 +470,5 @@ mod tests {
         let arr = content.as_array().unwrap();
         assert_eq!(arr.len(), 1);
         assert_eq!(arr[0]["_block_type"], "cta");
-    }
-
-    // ── Locale fallback tests ─────────────────────────────────────────────
-
-    #[test]
-    fn hydrate_fallback_locale_for_has_many() {
-        use crate::config::LocaleConfig;
-
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE posts (id TEXT PRIMARY KEY);
-             CREATE TABLE posts_tags (
-                 parent_id TEXT,
-                 related_id TEXT,
-                 _order INTEGER,
-                 _locale TEXT
-             );
-             INSERT INTO posts (id) VALUES ('p1');
-             -- Only 'en' locale data exists, no 'de'
-             INSERT INTO posts_tags (parent_id, related_id, _order, _locale) VALUES ('p1', 't1', 0, 'en');",
-        ).unwrap();
-
-        let tags_field = FieldDefinition::builder("tags", FieldType::Relationship)
-            .localized(true)
-            .relationship(RelationshipConfig::new("tags", true))
-            .build();
-
-        let locale_config = LocaleConfig {
-            default_locale: "en".to_string(),
-            locales: vec!["en".to_string(), "de".to_string()],
-            fallback: true,
-        };
-        let locale_ctx = LocaleContext {
-            mode: LocaleMode::Single("de".to_string()),
-            config: locale_config,
-        };
-
-        let mut doc = Document::new("p1".to_string());
-        hydrate_document(
-            &conn,
-            "posts",
-            &[tags_field],
-            &mut doc,
-            None,
-            Some(&locale_ctx),
-        )
-        .unwrap();
-
-        let tags = doc
-            .fields
-            .get("tags")
-            .expect("tags should be hydrated via fallback");
-        let arr = tags.as_array().expect("should be array");
-        assert_eq!(arr.len(), 1, "should fall back to 'en' when 'de' is empty");
-        assert_eq!(arr[0].as_str(), Some("t1"));
-    }
-
-    #[test]
-    fn hydrate_fallback_locale_for_arrays() {
-        use crate::config::LocaleConfig;
-
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE posts (id TEXT PRIMARY KEY);
-             CREATE TABLE posts_items (
-                 id TEXT PRIMARY KEY,
-                 parent_id TEXT,
-                 _order INTEGER,
-                 label TEXT,
-                 _locale TEXT
-             );
-             INSERT INTO posts (id) VALUES ('p1');
-             INSERT INTO posts_items (id, parent_id, _order, label, _locale) VALUES ('i1', 'p1', 0, 'EN Item', 'en');",
-        ).unwrap();
-
-        let items_field = FieldDefinition::builder("items", FieldType::Array)
-            .localized(true)
-            .fields(vec![
-                FieldDefinition::builder("label", FieldType::Text).build(),
-            ])
-            .build();
-
-        let locale_config = LocaleConfig {
-            default_locale: "en".to_string(),
-            locales: vec!["en".to_string(), "de".to_string()],
-            fallback: true,
-        };
-        let locale_ctx = LocaleContext {
-            mode: LocaleMode::Single("de".to_string()),
-            config: locale_config,
-        };
-
-        let mut doc = Document::new("p1".to_string());
-        hydrate_document(
-            &conn,
-            "posts",
-            &[items_field],
-            &mut doc,
-            None,
-            Some(&locale_ctx),
-        )
-        .unwrap();
-
-        let items = doc
-            .fields
-            .get("items")
-            .expect("items should be hydrated via fallback");
-        let arr = items.as_array().expect("should be array");
-        assert_eq!(
-            arr.len(),
-            1,
-            "should fall back to 'en' items when 'de' is empty"
-        );
-        assert_eq!(arr[0]["label"], "EN Item");
-    }
-
-    #[test]
-    fn hydrate_fallback_locale_for_blocks() {
-        use crate::config::LocaleConfig;
-
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE posts (id TEXT PRIMARY KEY);
-             CREATE TABLE posts_content (
-                 id TEXT PRIMARY KEY,
-                 parent_id TEXT,
-                 _order INTEGER,
-                 _block_type TEXT,
-                 data TEXT,
-                 _locale TEXT
-             );
-             INSERT INTO posts (id) VALUES ('p1');
-             INSERT INTO posts_content (id, parent_id, _order, _block_type, data, _locale)
-                 VALUES ('b1', 'p1', 0, 'text', '{\"body\":\"EN Content\"}', 'en');",
-        )
-        .unwrap();
-
-        let content_field = FieldDefinition::builder("content", FieldType::Blocks)
-            .localized(true)
-            .build();
-
-        let locale_config = LocaleConfig {
-            default_locale: "en".to_string(),
-            locales: vec!["en".to_string(), "de".to_string()],
-            fallback: true,
-        };
-        let locale_ctx = LocaleContext {
-            mode: LocaleMode::Single("de".to_string()),
-            config: locale_config,
-        };
-
-        let mut doc = Document::new("p1".to_string());
-        hydrate_document(
-            &conn,
-            "posts",
-            &[content_field],
-            &mut doc,
-            None,
-            Some(&locale_ctx),
-        )
-        .unwrap();
-
-        let content = doc
-            .fields
-            .get("content")
-            .expect("content should be hydrated via fallback");
-        let arr = content.as_array().expect("should be array");
-        assert_eq!(
-            arr.len(),
-            1,
-            "should fall back to 'en' blocks when 'de' is empty"
-        );
-        assert_eq!(arr[0]["_block_type"], "text");
-    }
-
-    #[test]
-    fn hydrate_fallback_not_triggered_when_data_exists() {
-        use crate::config::LocaleConfig;
-
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE posts (id TEXT PRIMARY KEY);
-             CREATE TABLE posts_tags (
-                 parent_id TEXT,
-                 related_id TEXT,
-                 _order INTEGER,
-                 _locale TEXT
-             );
-             INSERT INTO posts (id) VALUES ('p1');
-             INSERT INTO posts_tags (parent_id, related_id, _order, _locale) VALUES ('p1', 'de_tag1', 0, 'de');
-             INSERT INTO posts_tags (parent_id, related_id, _order, _locale) VALUES ('p1', 'en_tag1', 0, 'en');",
-        ).unwrap();
-
-        let tags_field = FieldDefinition::builder("tags", FieldType::Relationship)
-            .localized(true)
-            .relationship(RelationshipConfig::new("tags", true))
-            .build();
-
-        let locale_config = LocaleConfig {
-            default_locale: "en".to_string(),
-            locales: vec!["en".to_string(), "de".to_string()],
-            fallback: true,
-        };
-        let locale_ctx = LocaleContext {
-            mode: LocaleMode::Single("de".to_string()),
-            config: locale_config,
-        };
-
-        let mut doc = Document::new("p1".to_string());
-        hydrate_document(
-            &conn,
-            "posts",
-            &[tags_field],
-            &mut doc,
-            None,
-            Some(&locale_ctx),
-        )
-        .unwrap();
-
-        let tags = doc.fields.get("tags").unwrap();
-        let arr = tags.as_array().unwrap();
-        assert_eq!(arr.len(), 1);
-        assert_eq!(
-            arr[0].as_str(),
-            Some("de_tag1"),
-            "should use de data, not fall back to en"
-        );
-    }
-
-    #[test]
-    fn hydrate_fallback_locale_for_polymorphic_has_many() {
-        use crate::config::LocaleConfig;
-
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE posts (id TEXT PRIMARY KEY);
-             CREATE TABLE posts_refs (
-                 parent_id TEXT,
-                 related_id TEXT,
-                 related_collection TEXT NOT NULL DEFAULT '',
-                 _order INTEGER,
-                 _locale TEXT
-             );
-             INSERT INTO posts (id) VALUES ('p1');
-             INSERT INTO posts_refs (parent_id, related_id, related_collection, _order, _locale)
-                 VALUES ('p1', 'a1', 'articles', 0, 'en');",
-        )
-        .unwrap();
-
-        let mut refs_rel = RelationshipConfig::new("articles", true);
-        refs_rel.polymorphic = vec!["articles".to_string(), "pages".to_string()];
-        let refs_field = FieldDefinition::builder("refs", FieldType::Relationship)
-            .localized(true)
-            .relationship(refs_rel)
-            .build();
-
-        let locale_config = LocaleConfig {
-            default_locale: "en".to_string(),
-            locales: vec!["en".to_string(), "de".to_string()],
-            fallback: true,
-        };
-        let locale_ctx = LocaleContext {
-            mode: LocaleMode::Single("de".to_string()),
-            config: locale_config,
-        };
-
-        let mut doc = Document::new("p1".to_string());
-        hydrate_document(
-            &conn,
-            "posts",
-            &[refs_field],
-            &mut doc,
-            None,
-            Some(&locale_ctx),
-        )
-        .unwrap();
-
-        let refs = doc
-            .fields
-            .get("refs")
-            .expect("refs should be hydrated via fallback");
-        let arr = refs.as_array().expect("should be array");
-        assert_eq!(arr.len(), 1);
-        assert_eq!(arr[0].as_str(), Some("articles/a1"));
     }
 }

@@ -11,9 +11,9 @@ use serde_json::{Value, json};
 
 use crate::{config::McpConfig, core::Registry};
 
-use super::{
-    super::schema::{CrudOp, collection_input_schema, global_input_schema},
-    should_include,
+use crate::mcp::{
+    schema::{CrudOp, collection_input_schema, global_input_schema},
+    tools::should_include,
 };
 
 pub(super) fn exec_list_collections(registry: &Registry, mcp_config: &McpConfig) -> Result<String> {

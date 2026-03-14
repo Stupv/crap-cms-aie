@@ -4,11 +4,11 @@ use anyhow::{Context as _, Result, anyhow};
 use rusqlite::params_from_iter;
 use std::collections::HashMap;
 
-use super::super::{LocaleContext, coerce_value, locale_write_column, read::find_by_id_raw};
 use crate::core::{
     CollectionDefinition, Document,
     field::{FieldDefinition, FieldType},
 };
+use crate::db::query::{LocaleContext, coerce_value, locale_write_column, read::find_by_id_raw};
 
 /// Update a document by ID. Returns the updated document.
 pub fn update(

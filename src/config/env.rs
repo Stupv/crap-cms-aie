@@ -5,7 +5,7 @@ use regex::Regex;
 
 /// Recursively walk a TOML `Value` tree and substitute `${VAR}` / `${VAR:-default}`
 /// in all `String` nodes. Tables and arrays are descended into; other types are untouched.
-pub(super) fn substitute_in_value(value: &mut toml::Value) -> Result<()> {
+pub(crate) fn substitute_in_value(value: &mut toml::Value) -> Result<()> {
     match value {
         toml::Value::String(s) => {
             *s = substitute_env_vars(s)?;

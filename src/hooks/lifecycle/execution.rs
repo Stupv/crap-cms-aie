@@ -12,13 +12,13 @@ use crate::{
         document::DocumentBuilder,
         field::{FieldDefinition, FieldHooks},
     },
-    hooks::api,
-};
-
-use super::{
-    context::HookContext,
-    types::{DisplayConditionResult, FieldHookEvent, HookEvent},
-    validation::evaluate_condition_table,
+    hooks::{
+        api,
+        lifecycle::{
+            DisplayConditionResult, FieldHookEvent, HookEvent, context::HookContext,
+            evaluate_condition_table,
+        },
+    },
 };
 
 /// Context for after-read hook execution, bundling the shared parameters.

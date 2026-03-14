@@ -1,4 +1,4 @@
-use super::uploaded_file_builder::UploadedFileBuilder;
+use crate::core::upload::UploadedFileBuilder;
 
 /// Raw uploaded file before processing.
 pub struct UploadedFile {

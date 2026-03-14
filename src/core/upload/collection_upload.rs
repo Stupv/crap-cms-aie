@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{format::FormatOptions, image_size::ImageSize};
+use crate::core::upload::{FormatOptions, ImageSize};
 
 /// Per-collection upload configuration (MIME filtering, image sizes, format options).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

@@ -18,9 +18,8 @@ use crate::{
         query::{self, LocaleContext},
     },
     hooks::lifecycle::{HookContext, HookEvent, HookRunner, ValidationCtx},
+    service::{AfterChangeInput, WriteInput, WriteResult, build_hook_data, run_after_change_hooks},
 };
-
-use super::{AfterChangeInput, WriteInput, WriteResult, build_hook_data, run_after_change_hooks};
 
 /// Create a document within a single transaction: before-hooks → insert → after-hooks → commit.
 /// When `draft` is true and the collection has drafts enabled, the document is created with
@@ -58,12 +57,19 @@ pub fn create_document(
         .build();
     let final_ctx = runner.run_before_write(&def.hooks, &def.fields, hook_ctx, &val_ctx)?;
     let final_data = final_ctx.to_string_map(&def.fields);
-    let persist_opts = super::PersistOptions::builder()
+    let persist_opts = crate::service::PersistOptions::builder()
         .password(input.password)
         .locale_ctx(input.locale_ctx)
         .draft(is_draft)
         .build();
-    let doc = super::persist_create(&tx, slug, def, &final_data, &final_ctx.data, &persist_opts)?;
+    let doc = crate::service::persist_create(
+        &tx,
+        slug,
+        def,
+        &final_data,
+        &final_ctx.data,
+        &persist_opts,
+    )?;
 
     let ctx = run_after_change_hooks(
         runner,
@@ -124,16 +130,23 @@ pub fn update_document(
     let final_data = final_ctx.to_string_map(&def.fields);
 
     let doc = if is_draft && def.has_versions() {
-        super::persist_draft_version(&tx, slug, id, def, &final_ctx.data, input.locale_ctx)?
+        crate::service::persist_draft_version(
+            &tx,
+            slug,
+            id,
+            def,
+            &final_ctx.data,
+            input.locale_ctx,
+        )?
     } else {
-        super::persist_update(
+        crate::service::persist_update(
             &tx,
             slug,
             id,
             def,
             &final_data,
             &final_ctx.data,
-            &super::PersistOptions::builder()
+            &crate::service::PersistOptions::builder()
                 .password(input.password)
                 .locale_ctx(input.locale_ctx)
                 .build(),
@@ -187,7 +200,7 @@ pub fn unpublish_document(
     let final_ctx =
         runner.run_hooks_with_conn(&def.hooks, HookEvent::BeforeChange, hook_ctx, &tx)?;
 
-    super::persist_unpublish(&tx, slug, id, def)?;
+    crate::service::persist_unpublish(&tx, slug, id, def)?;
 
     run_after_change_hooks(
         runner,

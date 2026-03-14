@@ -4,7 +4,7 @@ use anyhow::{Context as _, Result, bail};
 use rusqlite::params_from_iter;
 use serde_json::Value;
 
-use super::super::{
+use crate::db::query::{
     FindQuery, LocaleContext, LocaleMode,
     filter::{build_where_clause, resolve_filter_column, resolve_filters},
     get_column_names, get_locale_select_columns, group_locale_fields, validate_query_fields,

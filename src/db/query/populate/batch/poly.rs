@@ -4,11 +4,13 @@ use anyhow::Result;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
-use super::populate_relationships_batch_cached;
 use crate::{
     core::{Document, upload},
     db::query::{
-        populate::{PopulateContext, PopulateCtx, PopulateOpts, document_to_json, parse_poly_ref},
+        populate::{
+            PopulateContext, PopulateCtx, PopulateOpts, document_to_json, parse_poly_ref,
+            populate_relationships_batch_cached,
+        },
         read::find_by_ids,
     },
 };

@@ -3,7 +3,7 @@
 use anyhow::Result;
 use mlua::{Lua, Table};
 
-use super::VmLabel;
+use crate::hooks::api::VmLabel;
 
 /// Log messages include the VM label (e.g. `[lua:init]`, `[lua:vm-1]`).
 pub(super) fn register_log(lua: &Lua, crap: &Table) -> Result<()> {

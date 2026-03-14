@@ -1,7 +1,9 @@
 //! Global definitions — single-document collections.
 
-use super::{Access, Hooks, Labels, LiveSetting, McpConfig, VersionsConfig};
-use crate::core::field::FieldDefinition;
+use crate::core::{
+    collection::{Access, Hooks, Labels, LiveSetting, McpConfig, VersionsConfig},
+    field::FieldDefinition,
+};
 use serde::{Deserialize, Serialize};
 
 /// Global definitions are simpler — single-document collections.

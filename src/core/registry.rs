@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use super::{
+use crate::core::{
     collection::{CollectionDefinition, GlobalDefinition},
     job::JobDefinition,
     richtext::RichtextNodeDef,

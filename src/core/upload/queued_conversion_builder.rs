@@ -1,4 +1,4 @@
-use super::queued_conversion::QueuedConversion;
+use crate::core::upload::QueuedConversion;
 
 /// Builder for [`QueuedConversion`].
 ///

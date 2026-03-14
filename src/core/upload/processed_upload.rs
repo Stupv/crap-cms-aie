@@ -1,9 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use super::{
-    processed_upload_builder::ProcessedUploadBuilder, queued_conversion::QueuedConversion,
-    size_result::SizeResult,
-};
+use crate::core::upload::{ProcessedUploadBuilder, QueuedConversion, SizeResult};
 
 /// Result of processing an upload (original + generated sizes/formats).
 #[derive(Debug)]

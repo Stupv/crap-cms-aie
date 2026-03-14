@@ -2,11 +2,14 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{
-    Access, AdminConfig, Auth, Hooks, IndexDefinition, Labels, LiveSetting, McpConfig,
-    VersionsConfig,
+use crate::core::{
+    collection::{
+        Access, AdminConfig, Auth, Hooks, IndexDefinition, Labels, LiveSetting, McpConfig,
+        VersionsConfig,
+    },
+    field::FieldDefinition,
+    upload::CollectionUpload,
 };
-use crate::core::{field::FieldDefinition, upload::CollectionUpload};
 
 fn default_true() -> bool {
     true

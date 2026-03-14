@@ -3,9 +3,7 @@
 use anyhow::Result;
 use mlua::{Lua, Table};
 
-use crate::core::SharedRegistry;
-
-use super::parse;
+use crate::{core::SharedRegistry, hooks::api::parse};
 
 /// Register `crap.jobs` — job definition.
 pub(super) fn register_jobs(lua: &Lua, crap: &Table, registry: SharedRegistry) -> Result<()> {

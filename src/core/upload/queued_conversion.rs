@@ -1,4 +1,4 @@
-use super::queued_conversion_builder::QueuedConversionBuilder;
+use crate::core::upload::QueuedConversionBuilder;
 
 /// A deferred format conversion to be inserted into the image processing queue.
 #[derive(Debug, Clone)]

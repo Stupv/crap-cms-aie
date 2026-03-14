@@ -8,9 +8,7 @@ mod write;
 use anyhow::Result;
 use mlua::Lua;
 
-use crate::{config::LocaleConfig, core::SharedRegistry};
-
-use super::TxContext;
+use crate::{config::LocaleConfig, core::SharedRegistry, hooks::lifecycle::TxContext};
 
 /// Get the active transaction connection from Lua app_data.
 /// Returns an error if called outside of `run_hooks_with_conn`.

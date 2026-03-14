@@ -3,8 +3,9 @@
 use anyhow::Result;
 use mlua::{Lua, Table, Value};
 
-use super::{parse::parse_global_definition, serializers::global_config_to_lua};
-use crate::core::SharedRegistry;
+use super::serializers::global_config_to_lua;
+
+use crate::{core::SharedRegistry, hooks::api::parse::parse_global_definition};
 
 pub(super) fn register_globals(lua: &Lua, crap: &Table, registry: SharedRegistry) -> Result<()> {
     let globals_table = lua.create_table()?;

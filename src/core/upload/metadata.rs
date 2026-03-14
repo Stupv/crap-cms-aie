@@ -3,12 +3,11 @@ use std::{collections::HashMap, fs, path::Path};
 use anyhow::Result;
 use serde_json::{Map, Value, json};
 
-use super::{
-    collection_upload::CollectionUpload, processed_upload::ProcessedUpload,
-    queued_conversion::QueuedConversion,
-};
 use crate::{
-    core::Document,
+    core::{
+        Document,
+        upload::{CollectionUpload, ProcessedUpload, QueuedConversion},
+    },
     db::query::images::{NewImageEntry, insert_image_queue_entry},
 };
 

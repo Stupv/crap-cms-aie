@@ -6,7 +6,7 @@ use anyhow::{Context as _, Result};
 
 use crate::hooks::lifecycle::types::{TxContext, UserContext};
 
-use super::HookRunner;
+use crate::hooks::lifecycle::HookRunner;
 
 impl HookRunner {
     /// Run a migration file (up or down direction) within a transaction.

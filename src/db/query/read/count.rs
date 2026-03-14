@@ -3,12 +3,12 @@
 use anyhow::{Context as _, Result, bail};
 use rusqlite::params_from_iter;
 
-use super::super::{
+use crate::core::CollectionDefinition;
+use crate::db::query::{
     FilterClause, LocaleContext,
     filter::{build_where_clause, resolve_filters},
     is_valid_identifier,
 };
-use crate::core::CollectionDefinition;
 
 /// Count documents in a collection.
 pub fn count(

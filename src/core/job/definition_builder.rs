@@ -1,6 +1,6 @@
 //! Builders for `crate::core::job::JobDefinition` and `crate::core::job::JobRun`.
 
-use super::{JobDefinition, JobLabels, JobRun, JobStatus};
+use crate::core::job::{JobDefinition, JobLabels, JobRun, JobStatus};
 
 /// Builder for [`JobDefinition`].
 ///

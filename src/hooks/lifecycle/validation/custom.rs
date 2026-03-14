@@ -4,10 +4,12 @@ use anyhow::Result;
 use mlua::{Lua, Value};
 use serde_json::Value as JsonValue;
 
-use super::super::execution::resolve_hook_function;
 use crate::hooks::{
     api,
-    lifecycle::{UiLocaleContext, UserContext, converters::document_to_lua_table},
+    lifecycle::{
+        UiLocaleContext, UserContext, converters::document_to_lua_table,
+        execution::resolve_hook_function,
+    },
 };
 
 /// Inner implementation of `run_validate_function` — operates on a locked `&Lua`.

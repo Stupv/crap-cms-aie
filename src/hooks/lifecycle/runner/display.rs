@@ -13,7 +13,7 @@ use crate::hooks::{
     },
 };
 
-use super::HookRunner;
+use crate::hooks::lifecycle::HookRunner;
 
 impl HookRunner {
     /// Call a Lua function to compute a row label for an array/blocks row.

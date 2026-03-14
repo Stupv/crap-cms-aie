@@ -4,8 +4,8 @@ use anyhow::Result;
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
-use super::super::coerce_value;
 use crate::core::field::{FieldDefinition, FieldType, flatten_array_sub_fields};
+use crate::db::query::coerce_value;
 
 /// Set array rows for an array field join table.
 /// Deletes all existing rows for the parent and inserts new ones with nanoid + _order.

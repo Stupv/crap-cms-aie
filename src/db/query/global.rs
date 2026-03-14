@@ -4,7 +4,9 @@ use anyhow::{Context as _, Result};
 use rusqlite::params_from_iter;
 use std::collections::HashMap;
 
-use super::{LocaleContext, LocaleMode, coerce_value, group_locale_fields, locale_write_column};
+use crate::db::query::{
+    LocaleContext, LocaleMode, coerce_value, group_locale_fields, locale_write_column,
+};
 use crate::{
     core::{
         Document,

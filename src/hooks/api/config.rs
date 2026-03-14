@@ -3,9 +3,7 @@
 use anyhow::{Result, anyhow};
 use mlua::{Lua, Table, Value};
 
-use crate::config::CrapConfig;
-
-use super::json_to_lua;
+use crate::{config::CrapConfig, hooks::api::json_to_lua};
 
 /// Register `crap.config` — read-only config access with dot notation.
 pub(super) fn register_config(lua: &Lua, crap: &Table, config: &CrapConfig) -> Result<()> {

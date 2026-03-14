@@ -8,7 +8,7 @@ use anyhow::{Context as _, Result};
 use handlebars::Handlebars;
 use include_dir::{Dir, include_dir};
 
-use super::translations::Translations;
+use crate::admin::translations::Translations;
 
 static TEMPLATES_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates");
 

@@ -1,11 +1,14 @@
 //! Admin UI: Axum server, Handlebars templates, and HTMX-powered handlers.
 
 pub mod context;
+pub mod context_builder;
 pub mod handlers;
 pub mod server;
 pub mod server_builder;
 pub mod templates;
 pub mod translations;
+
+pub use context_builder::ContextBuilder;
 
 use std::{path::PathBuf, sync::Arc};
 

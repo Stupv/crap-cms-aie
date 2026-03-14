@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 
 use crate::{config::McpConfig, core::Registry, db::DbPool, hooks::lifecycle::HookRunner};
 
-use super::{
+use crate::mcp::{
     protocol::ToolDefinition,
     schema::{CrudOp, collection_input_schema, global_input_schema},
 };

@@ -2,7 +2,7 @@
 
 use serde_json::Value;
 
-use super::{
+use crate::core::field::{
     BlockDefinition, FieldAccess, FieldAdmin, FieldDefinition, FieldHooks, FieldTab, FieldType,
     JoinConfig, McpFieldConfig, RelationshipConfig, SelectOption,
 };

@@ -8,7 +8,7 @@ use anyhow::Result;
 
 use crate::{config::LocaleConfig, core::CollectionDefinition, db::query::fts};
 
-use super::helpers::{sync_join_tables, sync_versions_table, table_exists};
+use crate::db::migrate::helpers::{sync_join_tables, sync_versions_table, table_exists};
 
 #[cfg(test)]
 pub(super) use create::create_collection_table;

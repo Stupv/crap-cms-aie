@@ -3,9 +3,10 @@ use std::collections::HashMap;
 use mlua::Lua;
 use serde_json::Value;
 
-use crate::core::{field::FieldDefinition, validate::FieldError};
-
-use super::super::custom::run_validate_function_inner;
+use crate::{
+    core::{field::FieldDefinition, validate::FieldError},
+    hooks::lifecycle::validation::custom::run_validate_function_inner,
+};
 
 /// Run custom Lua validate function on a field value.
 pub(crate) fn check_custom_validate(

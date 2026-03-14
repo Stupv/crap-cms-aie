@@ -19,7 +19,9 @@ use crate::{
     },
 };
 
-use super::{HookRunner, vm_pool::VmPool};
+use super::vm_pool::VmPool;
+
+use crate::hooks::lifecycle::HookRunner;
 
 /// Builder for [`HookRunner`]. Created via [`HookRunner::builder`].
 pub struct HookRunnerBuilder<'a> {

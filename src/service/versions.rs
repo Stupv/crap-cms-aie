@@ -10,6 +10,8 @@ use crate::{
     db::query,
 };
 
+use super::version_snapshot_ctx_builder::VersionSnapshotCtxBuilder;
+
 /// Context for creating a version snapshot, bundling the table/document metadata.
 pub(crate) struct VersionSnapshotCtx<'a> {
     pub table: &'a str,
@@ -23,52 +25,6 @@ impl<'a> VersionSnapshotCtx<'a> {
     /// Create a builder with the required table and parent_id fields.
     pub fn builder(table: &'a str, parent_id: &'a str) -> VersionSnapshotCtxBuilder<'a> {
         VersionSnapshotCtxBuilder::new(table, parent_id)
-    }
-}
-
-/// Builder for [`VersionSnapshotCtx`]. Created via [`VersionSnapshotCtx::builder`].
-pub(crate) struct VersionSnapshotCtxBuilder<'a> {
-    table: &'a str,
-    parent_id: &'a str,
-    fields: &'a [FieldDefinition],
-    versions: Option<&'a VersionsConfig>,
-    has_drafts: bool,
-}
-
-impl<'a> VersionSnapshotCtxBuilder<'a> {
-    fn new(table: &'a str, parent_id: &'a str) -> Self {
-        Self {
-            table,
-            parent_id,
-            fields: &[],
-            versions: None,
-            has_drafts: false,
-        }
-    }
-
-    pub fn fields(mut self, fields: &'a [FieldDefinition]) -> Self {
-        self.fields = fields;
-        self
-    }
-
-    pub fn versions(mut self, versions: Option<&'a VersionsConfig>) -> Self {
-        self.versions = versions;
-        self
-    }
-
-    pub fn has_drafts(mut self, has_drafts: bool) -> Self {
-        self.has_drafts = has_drafts;
-        self
-    }
-
-    pub fn build(self) -> VersionSnapshotCtx<'a> {
-        VersionSnapshotCtx {
-            table: self.table,
-            parent_id: self.parent_id,
-            fields: self.fields,
-            versions: self.versions,
-            has_drafts: self.has_drafts,
-        }
     }
 }
 

@@ -1,4 +1,4 @@
-use super::{definition_builder::JobDefinitionBuilder, labels::JobLabels};
+use crate::core::job::{JobDefinitionBuilder, JobLabels};
 
 /// A job definition registered via `crap.jobs.define()` in Lua.
 #[derive(Debug, Clone)]

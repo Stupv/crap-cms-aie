@@ -34,7 +34,7 @@ use crate::{
 };
 
 // Re-export field context functions from the dedicated module.
-pub(super) use super::field_context::{
+pub(super) use crate::admin::handlers::field_context::{
     EnrichOptions, apply_display_conditions, build_field_contexts, enrich_field_contexts,
     split_sidebar_fields,
 };

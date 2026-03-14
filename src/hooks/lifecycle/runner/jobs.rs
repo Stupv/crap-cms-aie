@@ -14,7 +14,7 @@ use crate::{
     },
 };
 
-use super::HookRunner;
+use crate::hooks::lifecycle::HookRunner;
 
 impl HookRunner {
     /// Execute a job handler function with CRUD access via TxContext.

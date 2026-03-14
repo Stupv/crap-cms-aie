@@ -1,8 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use super::{
-    processed_upload::ProcessedUpload, queued_conversion::QueuedConversion, size_result::SizeResult,
-};
+use crate::core::upload::{ProcessedUpload, QueuedConversion, SizeResult};
 
 /// Builder for [`ProcessedUpload`].
 ///

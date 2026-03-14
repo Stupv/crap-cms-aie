@@ -2,10 +2,9 @@
 
 use anyhow::{Context as _, Result};
 
-use super::get_column_names;
 use crate::{
     core::{CollectionDefinition, Document, auth::hash_password},
-    db::document::row_to_document,
+    db::{document::row_to_document, query::get_column_names},
 };
 
 /// Find a document by email in an auth collection.

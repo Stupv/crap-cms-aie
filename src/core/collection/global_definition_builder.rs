@@ -1,7 +1,9 @@
 //! Builder for [`GlobalDefinition`](super::GlobalDefinition).
 
-use super::{Access, GlobalDefinition, Hooks, Labels, LiveSetting, McpConfig, VersionsConfig};
-use crate::core::field::FieldDefinition;
+use crate::core::{
+    collection::{Access, GlobalDefinition, Hooks, Labels, LiveSetting, McpConfig, VersionsConfig},
+    field::FieldDefinition,
+};
 
 /// Builder for [`GlobalDefinition`].
 ///

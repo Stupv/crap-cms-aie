@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::node_attr_builder::NodeAttrBuilder;
-use crate::core::field::SelectOption;
+use crate::core::{field::SelectOption, richtext::node_attr_builder::NodeAttrBuilder};
 
 /// Attribute type for custom node attributes (maps to form input type in admin).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -53,5 +52,23 @@ pub struct NodeAttr {
 impl NodeAttr {
     pub fn builder(name: impl Into<String>, label: impl Into<String>) -> NodeAttrBuilder {
         NodeAttrBuilder::new(name, label)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn node_attr_type_roundtrip() {
+        for t in &[
+            NodeAttrType::Text,
+            NodeAttrType::Number,
+            NodeAttrType::Select,
+            NodeAttrType::Checkbox,
+            NodeAttrType::Textarea,
+        ] {
+            assert_eq!(NodeAttrType::from_name(t.as_str()), *t);
+        }
     }
 }

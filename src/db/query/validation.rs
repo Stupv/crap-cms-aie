@@ -6,11 +6,8 @@ use anyhow::{Result, bail};
 
 use crate::core::{CollectionDefinition, field::FieldType};
 
-use super::{
-    columns::get_valid_filter_columns,
-    locale::LocaleContext,
-    types::{FilterClause, FindQuery},
-};
+use super::columns::get_valid_filter_columns;
+use crate::db::query::{FilterClause, FindQuery, LocaleContext};
 
 /// Check that a string is a safe SQL identifier (alphanumeric + underscore).
 pub fn is_valid_identifier(s: &str) -> bool {

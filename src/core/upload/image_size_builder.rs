@@ -1,4 +1,4 @@
-use super::{image_fit::ImageFit, image_size::ImageSize};
+use crate::core::upload::{ImageFit, ImageSize};
 
 /// Builder for [`ImageSize`].
 ///
