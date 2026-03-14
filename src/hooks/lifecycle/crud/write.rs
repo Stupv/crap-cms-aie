@@ -13,7 +13,7 @@ use crate::{
     hooks::{
         HookContext, HookEvent, ValidationCtx,
         lifecycle::{
-            FieldHookEvent, HookDepth, MaxHookDepth, UiLocaleContext, UserContext,
+            FieldHookEvent, HookDepth, HookDepthGuard, MaxHookDepth, UiLocaleContext, UserContext,
             access::{check_access_with_lua, check_field_write_access_with_lua},
             converters::*,
             execution::{run_field_hooks_inner, run_hooks_inner},
@@ -67,9 +67,13 @@ fn handle_unpublish(
     let max_depth = lua.app_data_ref::<MaxHookDepth>().map(|d| d.0).unwrap_or(3);
     let hooks_enabled = ctx.run_hooks && current_depth < max_depth;
 
-    if hooks_enabled {
-        lua.set_app_data(HookDepth(current_depth + 1));
+    let _depth_guard = if hooks_enabled {
+        Some(HookDepthGuard::increment(lua, current_depth))
+    } else {
+        None
+    };
 
+    if hooks_enabled {
         let before_ctx = HookContext::builder(ctx.collection, "update")
             .data(existing_doc.fields.clone())
             .draft(false)
@@ -94,8 +98,6 @@ fn handle_unpublish(
             .build();
         run_hooks_inner(lua, &ctx.def.hooks, HookEvent::AfterChange, after_ctx)
             .map_err(|e| mlua::Error::RuntimeError(format!("after_change hook error: {}", e)))?;
-
-        lua.set_app_data(HookDepth(current_depth));
     }
 
     document_to_lua_table(lua, &existing_doc)
@@ -227,9 +229,13 @@ pub(super) fn register_create(
                 }
             }
 
-            if hooks_enabled {
-                lua.set_app_data(HookDepth(current_depth + 1));
+            let _depth_guard = if hooks_enabled {
+                Some(HookDepthGuard::increment(lua, current_depth))
+            } else {
+                None
+            };
 
+            if hooks_enabled {
                 // Field-level before_validate
                 run_field_hooks_inner(
                     lua,
@@ -343,8 +349,6 @@ pub(super) fn register_create(
                 run_hooks_inner(lua, &def.hooks, HookEvent::AfterChange, after_ctx).map_err(
                     |e| mlua::Error::RuntimeError(format!("after_change hook error: {}", e)),
                 )?;
-
-                lua.set_app_data(HookDepth(current_depth));
             }
 
             // Hydrate join-table fields before returning
@@ -517,9 +521,13 @@ pub(super) fn register_update(
                 }
             }
 
-            if hooks_enabled {
-                lua.set_app_data(HookDepth(current_depth + 1));
+            let _depth_guard = if hooks_enabled {
+                Some(HookDepthGuard::increment(lua, current_depth))
+            } else {
+                None
+            };
 
+            if hooks_enabled {
                 run_field_hooks_inner(
                     lua,
                     &def.fields,
@@ -610,7 +618,6 @@ pub(super) fn register_update(
                     run_hooks_inner(lua, &def.hooks, HookEvent::AfterChange, after_ctx).map_err(
                         |e| mlua::Error::RuntimeError(format!("after_change hook error: {}", e)),
                     )?;
-                    lua.set_app_data(HookDepth(current_depth));
                 }
 
                 let mut existing_doc = existing_doc;
@@ -664,7 +671,6 @@ pub(super) fn register_update(
                     run_hooks_inner(lua, &def.hooks, HookEvent::AfterChange, after_ctx).map_err(
                         |e| mlua::Error::RuntimeError(format!("after_change hook error: {}", e)),
                     )?;
-                    lua.set_app_data(HookDepth(current_depth));
                 }
 
                 let mut doc = doc;

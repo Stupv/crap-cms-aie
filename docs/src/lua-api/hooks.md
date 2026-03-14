@@ -50,3 +50,22 @@ crap.hooks.remove("before_change", my_hook)
 |-----------|------|-------------|
 | `event` | string | Lifecycle event name |
 | `fn` | function | The exact function reference to remove |
+
+## crap.hooks.list(event)
+
+Return the list of registered hook functions for an event. Useful for debugging or introspection.
+
+```lua
+local hooks = crap.hooks.list("before_change")
+print(#hooks)  -- number of registered before_change hooks
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `event` | string | Lifecycle event name |
+
+### Returns
+
+A Lua table (array) of the registered hook functions. Empty table if none are registered.

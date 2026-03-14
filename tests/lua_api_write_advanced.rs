@@ -660,14 +660,14 @@ fn lua_hooks_remove_function_not_in_list() {
         local function fn2(ctx) return ctx end
         -- Count hooks before registering
         local before_count = 0
-        if _crap_event_hooks["before_change"] then
-            before_count = #_crap_event_hooks["before_change"]
+        if crap.hooks.list("before_change") then
+            before_count = #crap.hooks.list("before_change")
         end
         crap.hooks.register("before_change", fn1)
         -- fn2 is not registered, removing it should be fine
         crap.hooks.remove("before_change", fn2)
         -- fn1 should still be there (count should be before_count + 1)
-        local hooks = _crap_event_hooks["before_change"]
+        local hooks = crap.hooks.list("before_change")
         local expected = before_count + 1
         if #hooks ~= expected then return "WRONG_COUNT:" .. tostring(#hooks) .. " expected:" .. tostring(expected) end
         return "ok"

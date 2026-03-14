@@ -153,8 +153,7 @@ pub(crate) fn get_hook_refs<'a>(hooks: &'a Hooks, event: &HookEvent) -> &'a [Str
 
 /// Check if any globally registered hooks exist for the given event.
 pub(crate) fn has_registered_hooks(lua: &Lua, event: &str) -> bool {
-    let globals = lua.globals();
-    let event_hooks: mlua::Table = match globals.get("_crap_event_hooks") {
+    let event_hooks: mlua::Table = match lua.named_registry_value("_crap_event_hooks") {
         Ok(t) => t,
         Err(_) => return false,
     };
@@ -206,8 +205,7 @@ pub(crate) fn has_field_hooks_for_event(
 /// that have at least one registered handler. Called once during HookRunner::new().
 pub(crate) fn scan_registered_events(lua: &Lua) -> HashSet<String> {
     let mut events = HashSet::new();
-    let globals = lua.globals();
-    let event_hooks: mlua::Table = match globals.get("_crap_event_hooks") {
+    let event_hooks: mlua::Table = match lua.named_registry_value("_crap_event_hooks") {
         Ok(t) => t,
         Err(_) => return events,
     };
@@ -260,8 +258,7 @@ pub(crate) fn call_registered_before_broadcast(
     lua: &Lua,
     mut context: HookContext,
 ) -> Result<Option<HookContext>> {
-    let globals = lua.globals();
-    let event_hooks: mlua::Table = match globals.get("_crap_event_hooks") {
+    let event_hooks: mlua::Table = match lua.named_registry_value("_crap_event_hooks") {
         Ok(t) => t,
         Err(_) => return Ok(Some(context)),
     };
@@ -318,8 +315,7 @@ pub(crate) fn call_registered_hooks(
     event: &HookEvent,
     mut context: HookContext,
 ) -> Result<HookContext> {
-    let globals = lua.globals();
-    let event_hooks: mlua::Table = match globals.get("_crap_event_hooks") {
+    let event_hooks: mlua::Table = match lua.named_registry_value("_crap_event_hooks") {
         Ok(t) => t,
         Err(_) => return Ok(context),
     };
@@ -547,7 +543,8 @@ mod tests {
     #[test]
     fn apply_after_read_no_hooks_returns_unchanged() {
         let lua = mlua::Lua::new();
-        lua.load("_crap_event_hooks = {}").exec().unwrap();
+        lua.set_named_registry_value("_crap_event_hooks", lua.create_table().unwrap())
+            .unwrap();
         let hooks = Hooks::default();
         let fields = vec![FieldDefinition::builder("title", FieldType::Text).build()];
         let mut doc = Document::new("doc1".to_string());
@@ -571,22 +568,21 @@ mod tests {
     #[test]
     fn has_registered_hooks_empty() {
         let lua = mlua::Lua::new();
-        lua.load("_crap_event_hooks = {}").exec().unwrap();
+        lua.set_named_registry_value("_crap_event_hooks", lua.create_table().unwrap())
+            .unwrap();
         assert!(!has_registered_hooks(&lua, "after_read"));
     }
 
     #[test]
     fn has_registered_hooks_with_hooks() {
         let lua = mlua::Lua::new();
-        lua.load(
-            r#"
-            _crap_event_hooks = {
-                after_read = { function() end }
-            }
-        "#,
-        )
-        .exec()
-        .unwrap();
+        let event_hooks = lua.create_table().unwrap();
+        let after_read_list = lua.create_table().unwrap();
+        let noop_fn = lua.create_function(|_, ()| Ok(())).unwrap();
+        after_read_list.set(1, noop_fn).unwrap();
+        event_hooks.set("after_read", after_read_list).unwrap();
+        lua.set_named_registry_value("_crap_event_hooks", event_hooks)
+            .unwrap();
         assert!(has_registered_hooks(&lua, "after_read"));
         assert!(!has_registered_hooks(&lua, "before_change"));
     }

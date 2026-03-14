@@ -11,10 +11,10 @@ pub(super) fn register_config(lua: &Lua, crap: &Table, config: &CrapConfig) -> R
     let config_json =
         serde_json::to_value(config).map_err(|e| anyhow!("Failed to serialize config: {}", e))?;
     let config_lua = json_to_lua(lua, &config_json)?;
-    lua.globals().set("_crap_config", config_lua)?;
+    lua.set_named_registry_value("_crap_config", config_lua)?;
 
     let config_get_fn = lua.create_function(|lua, key: String| -> mlua::Result<Value> {
-        let config_val: Value = lua.globals().get("_crap_config")?;
+        let config_val: Value = lua.named_registry_value("_crap_config")?;
         let mut current = config_val;
         for part in key.split('.') {
             match current {
@@ -263,6 +263,19 @@ mod tests {
         let result: bool = lua.load("return crap.locale.is_enabled()").eval().unwrap();
 
         assert!(!result, "expected false when no locales are configured");
+    }
+
+    #[test]
+    fn config_not_accessible_from_lua_globals() {
+        let config = CrapConfig::default();
+        let (lua, _crap) = setup_lua(&config);
+
+        let result: mlua::Value = lua.load("return _crap_config").eval().unwrap();
+
+        assert!(
+            matches!(result, mlua::Value::Nil),
+            "expected _crap_config to be nil in Lua globals (stored in registry)"
+        );
     }
 
     #[test]

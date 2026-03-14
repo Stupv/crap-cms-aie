@@ -19,9 +19,9 @@ use crate::core::{
 /// - `crap.richtext.register_node(name, spec)` — registers a custom node type
 /// - `crap.richtext.render(content_string)` — renders custom nodes to HTML
 pub fn register_richtext(lua: &Lua, crap: &Table, registry: SharedRegistry) -> Result<()> {
-    // Lua-side storage for node specs (including render functions)
+    // Node specs stored in Lua registry (invisible to Lua code)
     let nodes_storage = lua.create_table()?;
-    lua.globals().set("_crap_richtext_nodes", nodes_storage)?;
+    lua.set_named_registry_value("_crap_richtext_nodes", nodes_storage)?;
 
     let richtext_table = lua.create_table()?;
 
@@ -61,9 +61,8 @@ pub fn register_richtext(lua: &Lua, crap: &Table, registry: SharedRegistry) -> R
             .map(|v| matches!(v, Value::Function(_)))
             .unwrap_or(false);
 
-        // Store the full spec in Lua globals (including render function)
-        let globals = lua.globals();
-        let storage: Table = globals.get("_crap_richtext_nodes")?;
+        // Store the full spec in Lua registry (including render function)
+        let storage: Table = lua.named_registry_value("_crap_richtext_nodes")?;
         let node_entry = lua.create_table()?;
         node_entry.set("label", label.as_str())?;
         node_entry.set("inline", inline)?;
@@ -97,8 +96,7 @@ pub fn register_richtext(lua: &Lua, crap: &Table, registry: SharedRegistry) -> R
             return Ok(String::new());
         }
 
-        let globals = lua.globals();
-        let storage: Table = globals.get("_crap_richtext_nodes")?;
+        let storage: Table = lua.named_registry_value("_crap_richtext_nodes")?;
 
         // Build the custom renderer closure that calls Lua render functions
         let render_custom = |node_type: &str, attrs: &JsonValue| -> Option<String> {

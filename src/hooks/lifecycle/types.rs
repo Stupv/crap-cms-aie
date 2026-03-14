@@ -1,5 +1,6 @@
 //! Core types used across the lifecycle module.
 
+use mlua::Lua;
 use serde_json::Value;
 
 use crate::core::Document;
@@ -87,9 +88,34 @@ pub(crate) struct MaxHookDepth(pub(crate) u32);
 /// Stored in Lua `app_data` so access checks can read it without signature changes.
 pub(crate) struct DefaultDeny(pub(crate) bool);
 
+/// RAII guard that restores `HookDepth` to its original value on drop.
+/// Prevents depth leaks when hooks return errors via `?`.
+pub(crate) struct HookDepthGuard<'a> {
+    lua: &'a Lua,
+    original: u32,
+}
+
+impl<'a> HookDepthGuard<'a> {
+    /// Increment the hook depth and return a guard that restores it on drop.
+    pub(crate) fn increment(lua: &'a Lua, current: u32) -> Self {
+        lua.set_app_data(HookDepth(current + 1));
+        Self {
+            lua,
+            original: current,
+        }
+    }
+}
+
+impl Drop for HookDepthGuard<'_> {
+    fn drop(&mut self) {
+        self.lua.set_app_data(HookDepth(self.original));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mlua::Lua;
 
     #[test]
     fn hook_event_names() {
@@ -102,5 +128,35 @@ mod tests {
         assert_eq!(HookEvent::AfterDelete.as_str(), "after_delete");
         assert_eq!(HookEvent::BeforeBroadcast.as_str(), "before_broadcast");
         assert_eq!(HookEvent::BeforeRender.as_str(), "before_render");
+    }
+
+    #[test]
+    fn hook_depth_guard_restores_on_drop() {
+        let lua = Lua::new();
+        lua.set_app_data(HookDepth(0));
+
+        {
+            let _guard = HookDepthGuard::increment(&lua, 0);
+            assert_eq!(lua.app_data_ref::<HookDepth>().unwrap().0, 1);
+        }
+
+        assert_eq!(lua.app_data_ref::<HookDepth>().unwrap().0, 0);
+    }
+
+    #[test]
+    fn hook_depth_guard_restores_on_early_exit() {
+        let lua = Lua::new();
+        lua.set_app_data(HookDepth(2));
+
+        let result: Result<(), &str> = (|| {
+            let _guard = HookDepthGuard::increment(&lua, 2);
+            assert_eq!(lua.app_data_ref::<HookDepth>().unwrap().0, 3);
+            Err("simulated error")?;
+            #[allow(unreachable_code)]
+            Ok(())
+        })();
+
+        assert!(result.is_err());
+        assert_eq!(lua.app_data_ref::<HookDepth>().unwrap().0, 2);
     }
 }

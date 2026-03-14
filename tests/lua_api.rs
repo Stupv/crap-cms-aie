@@ -324,7 +324,7 @@ fn lua_hooks_remove() {
         crap.hooks.register("before_change", my_hook)
 
         -- Verify it's in the table
-        local hooks = _crap_event_hooks["before_change"]
+        local hooks = crap.hooks.list("before_change")
         local found = false
         for i = 1, #hooks do
             if rawequal(hooks[i], my_hook) then
@@ -339,7 +339,7 @@ fn lua_hooks_remove() {
 
         -- Verify it's gone
         local still_found = false
-        hooks = _crap_event_hooks["before_change"]
+        hooks = crap.hooks.list("before_change")
         for i = 1, #hooks do
             if rawequal(hooks[i], my_hook) then
                 still_found = true

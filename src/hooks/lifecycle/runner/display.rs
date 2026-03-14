@@ -87,8 +87,7 @@ impl HookRunner {
 
         // Get the registered hooks table
         let hooks_table: mlua::Table = match lua
-            .globals()
-            .get::<mlua::Table>("_crap_event_hooks")
+            .named_registry_value::<mlua::Table>("_crap_event_hooks")
             .and_then(|t| t.get::<mlua::Table>("before_render"))
         {
             Ok(t) => t,

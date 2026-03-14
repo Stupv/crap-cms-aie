@@ -66,3 +66,24 @@ vm_pool_size = 4  # default: min(available_parallelism, 8)
 ```
 
 Each VM is fully initialized at startup with the same configuration (package paths, API registration, CRUD functions, `init.lua` execution). When a request needs to execute a hook, it acquires a VM from the pool and returns it when done. This prevents hook execution from serializing under concurrent load.
+
+## State & Module Caching
+
+Lua's `require` function caches modules in `package.loaded`. This means module-level variables persist across requests on the same VM:
+
+```lua
+-- hooks/posts.lua
+local M = {}
+local counter = 0  -- persists across requests!
+
+function M.before_change(ctx)
+    counter = counter + 1  -- increments forever on this VM
+    return ctx
+end
+
+return M
+```
+
+To avoid cross-request state leaks, keep hook functions stateless — use the `ctx` table for input/output, and `crap.collections.*` for persistent storage. If you need request-scoped state, store it in `ctx.data` fields, not module-level locals.
+
+Module-level constants and utility functions are fine — only mutable state is the concern.

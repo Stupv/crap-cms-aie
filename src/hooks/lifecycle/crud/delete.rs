@@ -14,8 +14,8 @@ use crate::{
     hooks::{
         HookContext, HookEvent,
         lifecycle::{
-            HookDepth, MaxHookDepth, UiLocaleContext, UserContext, access::check_access_with_lua,
-            converters::*, execution::run_hooks_inner,
+            HookDepth, HookDepthGuard, MaxHookDepth, UiLocaleContext, UserContext,
+            access::check_access_with_lua, converters::*, execution::run_hooks_inner,
         },
     },
 };
@@ -94,9 +94,13 @@ pub(super) fn register_delete(
                 );
             }
 
-            if hooks_enabled {
-                lua.set_app_data(HookDepth(current_depth + 1));
+            let _depth_guard = if hooks_enabled {
+                Some(HookDepthGuard::increment(lua, current_depth))
+            } else {
+                None
+            };
 
+            if hooks_enabled {
                 let hook_ctx = HookContext::builder(&collection, "delete")
                     .data([("id".to_string(), Value::String(id.clone()))].into())
                     .user(hook_user.as_ref())
@@ -123,8 +127,6 @@ pub(super) fn register_delete(
                 run_hooks_inner(lua, &def.hooks, HookEvent::AfterDelete, after_ctx).map_err(
                     |e| mlua::Error::RuntimeError(format!("after_delete hook error: {}", e)),
                 )?;
-
-                lua.set_app_data(HookDepth(current_depth));
             }
 
             Ok(true)
