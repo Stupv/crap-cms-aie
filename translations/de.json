@@ -206,5 +206,13 @@
   "validation.has_many_max_length": "{{field}}: '{{value}}' darf höchstens {{max}} Zeichen lang sein",
   "validation.has_many_min_value": "{{field}}: {{value}} muss mindestens {{min}} betragen",
   "validation.has_many_max_value": "{{field}}: {{value}} darf höchstens {{max}} betragen",
-  "validation.server_error": "Serverfehler bei der Validierung."
+  "validation.server_error": "Serverfehler bei der Validierung.",
+
+  "link_url": "URL",
+  "link_title": "Titel",
+  "link_open_new_tab": "In neuem Tab öffnen",
+  "link_nofollow": "Nofollow",
+  "insert_link": "Link einfügen",
+  "edit_link": "Link bearbeiten",
+  "remove_link": "Link entfernen"
 }

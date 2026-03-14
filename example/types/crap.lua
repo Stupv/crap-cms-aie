@@ -801,6 +801,11 @@ function crap.hooks.register(event, fn) end
 --- @param fn    fun(context: crap.HookContext): crap.HookContext  The function to remove.
 function crap.hooks.remove(event, fn) end
 
+--- List all registered hook functions for an event.
+--- @param event crap.HookEvent  The lifecycle event.
+--- @return fun(context: crap.HookContext): crap.HookContext[]  Array of hook functions.
+function crap.hooks.list(event) end
+
 
 -- ── crap.richtext ────────────────────────────────────────────
 

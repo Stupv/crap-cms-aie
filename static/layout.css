@@ -91,7 +91,6 @@
 .main {
   grid-area: main;
   flex-grow: 1;
-
   padding: var(--space-lg);
 }
 

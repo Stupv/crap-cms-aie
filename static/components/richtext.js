@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 /**
  * <crap-richtext> — ProseMirror-based WYSIWYG editor.
  *
@@ -104,8 +106,35 @@ class CrapRichtext extends HTMLElement {
     if (has('code') && baseMarks.get('code')) {
       marksObj.code = baseMarks.get('code');
     }
-    if (has('link') && baseMarks.get('link')) {
-      marksObj.link = baseMarks.get('link');
+    if (has('link')) {
+      marksObj.link = {
+        attrs: {
+          href: { default: '' },
+          title: { default: null },
+          target: { default: null },
+          rel: { default: null },
+        },
+        inclusive: false,
+        parseDOM: [{
+          tag: 'a[href]',
+          getAttrs(dom) {
+            return {
+              href: dom.getAttribute('href'),
+              title: dom.getAttribute('title'),
+              target: dom.getAttribute('target'),
+              rel: dom.getAttribute('rel'),
+            };
+          },
+        }],
+        toDOM(node) {
+          const { href, title, target, rel } = node.attrs;
+          const attrs = { href };
+          if (title) attrs.title = title;
+          if (target) attrs.target = target;
+          if (rel) attrs.rel = rel;
+          return ['a', attrs, 0];
+        },
+      };
     }
 
     // Parse custom nodes from data-nodes attribute
@@ -330,14 +359,12 @@ class CrapRichtext extends HTMLElement {
     }
     if (has('link') && schema.marks.link) {
       commands.link = () => {
-        const { state, dispatch } = this._view;
-        if (this._markActive(state, schema.marks.link)) {
-          PM.toggleMark(schema.marks.link)(state, dispatch);
+        const { state } = this._view;
+        const markType = schema.marks.link;
+        if (this._markActive(state, markType)) {
+          this._openLinkModal(schema, this._getMarkAttrs(state, markType));
         } else {
-          const href = prompt('Link URL:');
-          if (href) {
-            PM.toggleMark(schema.marks.link, { href })(state, dispatch);
-          }
+          this._openLinkModal(schema, {});
         }
       };
     }
@@ -404,6 +431,121 @@ class CrapRichtext extends HTMLElement {
     const { from, $from, to, empty } = state.selection;
     if (empty) return !!markType.isInSet(state.storedMarks || $from.marks());
     return state.doc.rangeHasMark(from, to, markType);
+  }
+
+  /**
+   * Extract attrs from the active mark at cursor position.
+   * @param {any} state - ProseMirror editor state
+   * @param {any} markType - ProseMirror mark type
+   * @returns {object} mark attrs or empty object
+   */
+  _getMarkAttrs(state, markType) {
+    const marks = state.storedMarks || state.selection.$from.marks();
+    const mark = markType.isInSet(marks);
+    return mark ? { ...mark.attrs } : {};
+  }
+
+  /**
+   * Open a modal for inserting or editing a link.
+   * @param {any} schema - ProseMirror schema
+   * @param {object} attrs - current link attrs (empty for insert mode)
+   */
+  _openLinkModal(schema, attrs) {
+    const PM = /** @type {any} */ (window).ProseMirror;
+    const existing = this.shadowRoot.querySelector('.crap-node-modal');
+    if (existing) existing.remove();
+
+    const isEdit = !!attrs.href;
+    const savedSelection = this._view.state.selection;
+
+    const modal = document.createElement('div');
+    modal.className = 'crap-node-modal';
+
+    modal.innerHTML = `
+      <div class="crap-node-modal__backdrop"></div>
+      <div class="crap-node-modal__dialog">
+        <div class="crap-node-modal__header">${isEdit ? t('edit_link') : t('insert_link')}</div>
+        <div class="crap-node-modal__body">
+          <div class="crap-node-modal__field">
+            <label class="crap-node-modal__label">${t('link_url')} *</label>
+            <input type="url" class="crap-node-modal__input" data-field="href" value="${attrs.href || ''}" required>
+          </div>
+          <div class="crap-node-modal__field">
+            <label class="crap-node-modal__label">${t('link_title')}</label>
+            <input type="text" class="crap-node-modal__input" data-field="title" value="${attrs.title || ''}">
+          </div>
+          <div class="crap-node-modal__field">
+            <label class="crap-node-modal__checkbox">
+              <input type="checkbox" data-field="target" ${attrs.target === '_blank' ? 'checked' : ''}>
+              ${t('link_open_new_tab')}
+            </label>
+          </div>
+          <div class="crap-node-modal__field">
+            <label class="crap-node-modal__checkbox">
+              <input type="checkbox" data-field="rel" ${attrs.rel === 'nofollow' ? 'checked' : ''}>
+              ${t('link_nofollow')}
+            </label>
+          </div>
+        </div>
+        <div class="crap-node-modal__footer${isEdit ? ' crap-node-modal__footer--with-remove' : ''}">
+          ${isEdit ? `<button type="button" class="crap-node-modal__btn crap-node-modal__btn--danger">${t('remove_link')}</button>` : ''}
+          <button type="button" class="crap-node-modal__btn crap-node-modal__btn--cancel">${t('cancel')}</button>
+          <button type="button" class="crap-node-modal__btn crap-node-modal__btn--ok">${t('apply')}</button>
+        </div>
+      </div>
+    `;
+
+    this.shadowRoot.appendChild(modal);
+
+    const hrefInput = modal.querySelector('[data-field="href"]');
+    if (hrefInput) hrefInput.focus();
+
+    const close = () => modal.remove();
+
+    const applyLink = () => {
+      const href = modal.querySelector('[data-field="href"]').value.trim();
+      if (!href) return;
+
+      const title = modal.querySelector('[data-field="title"]').value.trim() || null;
+      const target = modal.querySelector('[data-field="target"]').checked ? '_blank' : null;
+      const rel = modal.querySelector('[data-field="rel"]').checked ? 'nofollow' : null;
+
+      const markType = schema.marks.link;
+      let { tr } = this._view.state;
+      tr = tr.setSelection(savedSelection);
+
+      const { from, to } = savedSelection;
+      if (isEdit) {
+        tr = tr.removeMark(from, to, markType);
+      }
+      tr = tr.addMark(from, to, markType.create({ href, title, target, rel }));
+
+      this._view.dispatch(tr);
+      close();
+      this._view.focus();
+    };
+
+    const removeLink = () => {
+      const markType = schema.marks.link;
+      let { tr } = this._view.state;
+      tr = tr.setSelection(savedSelection);
+      const { from, to } = savedSelection;
+      tr = tr.removeMark(from, to, markType);
+      this._view.dispatch(tr);
+      close();
+      this._view.focus();
+    };
+
+    modal.querySelector('.crap-node-modal__backdrop').addEventListener('click', close);
+    modal.querySelector('.crap-node-modal__btn--cancel').addEventListener('click', close);
+    modal.querySelector('.crap-node-modal__btn--ok').addEventListener('click', applyLink);
+
+    const dangerBtn = modal.querySelector('.crap-node-modal__btn--danger');
+    if (dangerBtn) dangerBtn.addEventListener('click', removeLink);
+
+    hrefInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); applyLink(); }
+    });
   }
 
   /**
@@ -978,6 +1120,22 @@ class CrapRichtext extends HTMLElement {
 
       .crap-node-modal__btn--ok:hover {
         opacity: 0.9;
+      }
+
+      .crap-node-modal__footer--with-remove {
+        justify-content: flex-start;
+      }
+
+      .crap-node-modal__footer--with-remove .crap-node-modal__btn--cancel {
+        margin-left: auto;
+      }
+
+      .crap-node-modal__btn--danger {
+        color: var(--color-danger, #dc3545);
+      }
+
+      .crap-node-modal__btn--danger:hover {
+        background: rgba(220, 53, 69, 0.08);
       }
     `;
   }
