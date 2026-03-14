@@ -114,6 +114,25 @@ pub fn build_enriched_sub_field_context(
             field_types::sub_row_collapsible(&mut sub_ctx, sf, raw_value, &indexed_name, opts)
         }
         FieldType::Tabs => field_types::sub_tabs(&mut sub_ctx, sf, raw_value, &indexed_name, opts),
+        FieldType::Textarea => {
+            sub_ctx["rows"] = json!(sf.admin.rows.unwrap_or(8));
+            sub_ctx["resizable"] = json!(sf.admin.resizable);
+        }
+        FieldType::Richtext => {
+            sub_ctx["resizable"] = json!(sf.admin.resizable);
+
+            if !sf.admin.features.is_empty() {
+                sub_ctx["features"] = json!(sf.admin.features);
+            }
+
+            let fmt = sf.admin.richtext_format.as_deref().unwrap_or("html");
+
+            sub_ctx["richtext_format"] = json!(fmt);
+
+            if !sf.admin.nodes.is_empty() {
+                sub_ctx["_node_names"] = json!(sf.admin.nodes);
+            }
+        }
         FieldType::Text | FieldType::Number if sf.has_many => {
             field_types::sub_has_many_tags(&mut sub_ctx, &val)
         }

@@ -88,6 +88,7 @@ fn build_base_field_context(
     }
     if field.field_type == FieldType::Textarea {
         ctx["rows"] = json!(field.admin.rows.unwrap_or(8));
+        ctx["resizable"] = json!(field.admin.resizable);
     }
     if field.field_type == FieldType::Date {
         if let Some(ref md) = field.min_date {
@@ -437,6 +438,8 @@ pub fn build_single_field_context(
             ctx["value"] = json!(tags.join(","));
         }
         FieldType::Richtext => {
+            ctx["resizable"] = json!(field.admin.resizable);
+
             if !field.admin.features.is_empty() {
                 ctx["features"] = json!(field.admin.features);
             }

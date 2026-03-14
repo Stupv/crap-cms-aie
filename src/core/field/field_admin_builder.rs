@@ -143,6 +143,12 @@ impl FieldAdminBuilder {
         self
     }
 
+    /// Set whether the field allows vertical resizing (textarea/richtext).
+    pub fn resizable(mut self, v: bool) -> Self {
+        self.inner.resizable = v;
+        self
+    }
+
     /// Build the final `FieldAdmin`.
     pub fn build(self) -> FieldAdmin {
         self.inner
@@ -161,6 +167,7 @@ mod tests {
         assert!(!admin.readonly);
         assert!(admin.collapsed);
         assert!(admin.features.is_empty());
+        assert!(admin.resizable);
     }
 
     #[test]
@@ -173,6 +180,7 @@ mod tests {
             .collapsed(false)
             .position("sidebar")
             .rows(12)
+            .resizable(false)
             .build();
         assert!(admin.label.is_some());
         assert!(admin.hidden);
@@ -181,6 +189,7 @@ mod tests {
         assert!(!admin.collapsed);
         assert_eq!(admin.position.as_deref(), Some("sidebar"));
         assert_eq!(admin.rows, Some(12));
+        assert!(!admin.resizable);
     }
 
     #[test]

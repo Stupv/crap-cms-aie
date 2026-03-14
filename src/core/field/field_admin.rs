@@ -79,6 +79,9 @@ pub struct FieldAdmin {
     /// Node names must be registered via `crap.richtext.register_node()`.
     #[serde(default)]
     pub nodes: Vec<String>,
+    /// Allow vertical resize on textarea/richtext fields (default: true).
+    #[serde(default = "default_true")]
+    pub resizable: bool,
 }
 
 impl FieldAdmin {
@@ -111,6 +114,7 @@ impl Default for FieldAdmin {
             picker: None,
             richtext_format: None,
             nodes: Vec::new(),
+            resizable: true,
         }
     }
 }
@@ -123,5 +127,11 @@ mod tests {
     fn richtext_format_default_is_none() {
         let admin = FieldAdmin::default();
         assert!(admin.richtext_format.is_none());
+    }
+
+    #[test]
+    fn resizable_defaults_to_true() {
+        let admin = FieldAdmin::default();
+        assert!(admin.resizable);
     }
 }

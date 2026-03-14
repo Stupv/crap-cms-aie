@@ -252,7 +252,7 @@ class CrapRichtext extends HTMLElement {
     // Render Shadow DOM
     this.shadowRoot.innerHTML = `
       <style>${CrapRichtext._styles()}</style>
-      <div class="richtext">
+      <div class="richtext${this.hasAttribute('data-no-resize') ? ' richtext--no-resize' : ''}">
         ${isReadonly ? '' : `<div class="richtext__toolbar">${CrapRichtext._toolbarHTML(has, customNodes)}</div>`}
         <div class="richtext__editor"></div>
       </div>
@@ -617,6 +617,14 @@ class CrapRichtext extends HTMLElement {
         background: var(--input-bg, #fff);
         box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,0.04));
         overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        resize: vertical;
+      }
+
+      .richtext--no-resize {
+        resize: none;
+        max-height: 600px;
       }
 
       .richtext:focus-within {
@@ -682,8 +690,8 @@ class CrapRichtext extends HTMLElement {
 
       .richtext__editor {
         min-height: 200px;
-        max-height: 600px;
         overflow-y: auto;
+        flex: 1;
       }
 
       .richtext__editor .ProseMirror {

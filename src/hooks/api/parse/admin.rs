@@ -19,7 +19,8 @@ pub(super) fn parse_field_admin(admin_tbl: &Table) -> mlua::Result<FieldAdmin> {
     let mut builder = FieldAdmin::builder()
         .collapsed(get_bool(admin_tbl, "collapsed", true))
         .hidden(get_bool(admin_tbl, "hidden", false))
-        .readonly(get_bool(admin_tbl, "readonly", false));
+        .readonly(get_bool(admin_tbl, "readonly", false))
+        .resizable(get_bool(admin_tbl, "resizable", true));
 
     if let Some(v) = get_localized_string(admin_tbl, "label") {
         builder = builder.label(v);
@@ -116,5 +117,15 @@ mod tests {
         assert_eq!(admin.richtext_format.as_deref(), Some("lexical"));
         assert_eq!(admin.language.as_deref(), Some("en"));
         assert_eq!(admin.rows, Some(5));
+        assert!(admin.resizable);
+    }
+
+    #[test]
+    fn test_parse_field_admin_resizable_false() {
+        let lua = Lua::new();
+        let admin_tbl = lua.create_table().unwrap();
+        admin_tbl.set("resizable", false).unwrap();
+        let admin = parse_field_admin(&admin_tbl).unwrap();
+        assert!(!admin.resizable);
     }
 }

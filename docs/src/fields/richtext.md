@@ -169,6 +169,20 @@ end
 Custom node attributes listed in `searchable_attrs` are automatically extracted
 for full-text search when the field uses JSON format.
 
+## Resize Behavior
+
+By default, the richtext editor is vertically resizable (no max-height constraint). Set
+`admin.resizable = false` to lock it to a fixed height range (200–600px):
+
+```lua
+crap.fields.richtext({
+    name = "content",
+    admin = {
+        resizable = false,
+    },
+})
+```
+
 ## Admin Rendering
 
 Renders as a ProseMirror-based rich text editor with a configurable toolbar. When

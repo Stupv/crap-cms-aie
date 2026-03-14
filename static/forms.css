@@ -40,6 +40,8 @@ textarea {
   resize: vertical;
 }
 
+
+
 input:focus,
 select:focus,
 textarea:focus {
@@ -514,7 +516,6 @@ input[type="checkbox"]:disabled {
   background: var(--input-bg);
   border: 1px solid var(--border-color-hover);
   border-radius: var(--radius-md);
-  overflow: hidden;
 }
 
 .form__array-row-header {
@@ -522,6 +523,7 @@ input[type="checkbox"]:disabled {
   align-items: center;
   gap: var(--space-xs);
   padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
   cursor: pointer;
   user-select: none;
 }
@@ -639,25 +641,25 @@ input[type="checkbox"]:disabled {
 }
 
 /* Block type selector + add button */
-.form__blocks-add {
+crap-block-picker {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--space-md);
   margin-top: var(--space-sm);
 }
 
-.form__blocks-add select {
+crap-block-picker select {
   width: auto;
   min-width: 140px;
 }
 
 /* When visual picker is present, hide the select + add button */
-.form__blocks-add--has-picker {
+crap-block-picker.form__blocks-add--has-picker {
   flex-wrap: wrap;
 }
 
-.form__blocks-add--has-picker > .form__blocks-select,
-.form__blocks-add--has-picker > .button {
+crap-block-picker.form__blocks-add--has-picker > .form__blocks-select,
+crap-block-picker.form__blocks-add--has-picker > .button {
   display: none;
 }
 

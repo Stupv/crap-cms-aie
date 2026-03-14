@@ -75,6 +75,7 @@ crap = {}
 --- @field format?      string   Storage format for richtext fields: "html" (default) or "json" (ProseMirror JSON). FTS extracts plain text from JSON automatically.
 --- @field nodes?       string[] Custom ProseMirror node types for richtext fields. Names must match nodes registered via `crap.richtext.register_node()`.
 --- @field picker?      string   Picker UI style. For blocks fields: "select" (default) uses a dropdown, "card" uses a visual card grid. For upload fields: "drawer" (default) adds a browse button with thumbnail grid, "none" disables it. For relationship fields: "drawer" adds a browse button with searchable list.
+--- @field resizable?   boolean  Allow vertical resize on textarea/richtext fields (default: true).
 
 --- Custom validation function type.
 --- Return nil or true if valid, return a string error message if invalid.

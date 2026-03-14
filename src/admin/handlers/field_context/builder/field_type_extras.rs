@@ -108,6 +108,23 @@ pub fn apply_field_type_extras(
     if sf.field_type == FieldType::Textarea {
         let rows = sf.admin.rows.unwrap_or(8);
         sub_ctx["rows"] = json!(rows);
+        sub_ctx["resizable"] = json!(sf.admin.resizable);
+    }
+
+    if sf.field_type == FieldType::Richtext {
+        sub_ctx["resizable"] = json!(sf.admin.resizable);
+
+        if !sf.admin.features.is_empty() {
+            sub_ctx["features"] = json!(sf.admin.features);
+        }
+
+        let fmt = sf.admin.richtext_format.as_deref().unwrap_or("html");
+
+        sub_ctx["richtext_format"] = json!(fmt);
+
+        if !sf.admin.nodes.is_empty() {
+            sub_ctx["_node_names"] = json!(sf.admin.nodes);
+        }
     }
 
     if sf.field_type == FieldType::Date {
