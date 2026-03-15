@@ -368,8 +368,8 @@ mod tests {
 
     #[test]
     fn json_to_db_value_float() {
-        let val = json_to_db_value(&json!(3.14), &FieldType::Text);
-        assert!(matches!(val, Some(DbValue::Real(v)) if (v - 3.14).abs() < f64::EPSILON));
+        let val = json_to_db_value(&json!(2.5), &FieldType::Text);
+        assert!(matches!(val, Some(DbValue::Real(v)) if (v - 2.5).abs() < f64::EPSILON));
     }
 
     #[test]

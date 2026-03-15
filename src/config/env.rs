@@ -219,9 +219,9 @@ mod tests {
         substitute_in_value(&mut val).unwrap();
         assert_eq!(val.as_integer().unwrap(), 99);
 
-        let mut val = toml::Value::Float(3.14);
+        let mut val = toml::Value::Float(2.5);
         substitute_in_value(&mut val).unwrap();
-        assert!((val.as_float().unwrap() - 3.14).abs() < f64::EPSILON);
+        assert!((val.as_float().unwrap() - 2.5).abs() < f64::EPSILON);
 
         let mut val = toml::Value::Boolean(true);
         substitute_in_value(&mut val).unwrap();

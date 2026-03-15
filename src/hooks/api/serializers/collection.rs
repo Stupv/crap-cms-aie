@@ -246,7 +246,7 @@ mod tests {
         let labels: mlua::Table = tbl.get("labels").unwrap();
         let singular: String = labels.get("singular").unwrap();
         assert_eq!(singular, "Post");
-        assert_eq!(tbl.get::<bool>("timestamps").unwrap(), true);
+        assert!(tbl.get::<bool>("timestamps").unwrap());
 
         let fields: mlua::Table = tbl.get("fields").unwrap();
         let f1: mlua::Table = fields.get(1).unwrap();
@@ -261,13 +261,13 @@ mod tests {
         // live = None -> true
         let def_none_live = CollectionDefinition::new("t");
         let tbl = collection_config_to_lua(&lua, &def_none_live).unwrap();
-        assert_eq!(tbl.get::<bool>("live").unwrap(), true);
+        assert!(tbl.get::<bool>("live").unwrap());
 
         // live = Disabled -> false
         let mut def_disabled = CollectionDefinition::new("t");
         def_disabled.live = Some(LiveSetting::Disabled);
         let tbl = collection_config_to_lua(&lua, &def_disabled).unwrap();
-        assert_eq!(tbl.get::<bool>("live").unwrap(), false);
+        assert!(!tbl.get::<bool>("live").unwrap());
 
         // live = Function -> string
         let mut def_func = CollectionDefinition::new("t");
@@ -284,14 +284,14 @@ mod tests {
         let mut def = CollectionDefinition::new("t");
         def.versions = Some(VersionsConfig::new(true, 0));
         let tbl = collection_config_to_lua(&lua, &def).unwrap();
-        assert_eq!(tbl.get::<bool>("versions").unwrap(), true);
+        assert!(tbl.get::<bool>("versions").unwrap());
 
         // versions table
         let mut def2 = CollectionDefinition::new("t");
         def2.versions = Some(VersionsConfig::new(false, 100));
         let tbl = collection_config_to_lua(&lua, &def2).unwrap();
         let v: mlua::Table = tbl.get("versions").unwrap();
-        assert_eq!(v.get::<bool>("drafts").unwrap(), false);
+        assert!(!v.get::<bool>("drafts").unwrap());
         assert_eq!(v.get::<u32>("max_versions").unwrap(), 100);
     }
 
@@ -323,7 +323,7 @@ mod tests {
         };
         def.live = Some(LiveSetting::Disabled);
         let tbl = global_config_to_lua(&lua, &def).unwrap();
-        assert_eq!(tbl.get::<bool>("live").unwrap(), false);
+        assert!(!tbl.get::<bool>("live").unwrap());
         let access: mlua::Table = tbl.get("access").unwrap();
         assert_eq!(access.get::<String>("read").unwrap(), "hooks.access.allow");
     }
@@ -368,7 +368,7 @@ mod tests {
         let admin: mlua::Table = tbl.get("admin").unwrap();
         assert_eq!(admin.get::<String>("use_as_title").unwrap(), "title");
         assert_eq!(admin.get::<String>("default_sort").unwrap(), "-created_at");
-        assert_eq!(admin.get::<bool>("hidden").unwrap(), true);
+        assert!(admin.get::<bool>("hidden").unwrap());
         let lsf: mlua::Table = admin.get("list_searchable_fields").unwrap();
         assert_eq!(lsf.raw_len(), 2);
     }

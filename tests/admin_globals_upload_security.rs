@@ -91,7 +91,6 @@ fn setup_app_with_config(
     config: CrapConfig,
 ) -> TestApp {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let config = config;
 
     let db_pool = pool::create_pool(tmp.path(), &config).expect("create pool");
 

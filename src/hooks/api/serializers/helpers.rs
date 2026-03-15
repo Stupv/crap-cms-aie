@@ -150,8 +150,8 @@ mod tests {
     #[test]
     fn test_lua_to_json_number() {
         let lua = Lua::new();
-        let result = lua_to_json(&lua, &Value::Number(3.14)).unwrap();
-        assert_eq!(result, json!(3.14));
+        let result = lua_to_json(&lua, &Value::Number(3.15)).unwrap();
+        assert_eq!(result, json!(3.15));
     }
 
     #[test]
@@ -216,9 +216,9 @@ mod tests {
     #[test]
     fn test_json_to_lua_float() {
         let lua = Lua::new();
-        let result = json_to_lua(&lua, &json!(3.14)).unwrap();
+        let result = json_to_lua(&lua, &json!(3.15)).unwrap();
         match result {
-            Value::Number(n) => assert!((n - 3.14).abs() < f64::EPSILON),
+            Value::Number(n) => assert!((n - 3.15).abs() < f64::EPSILON),
             _ => panic!("Expected Number"),
         }
     }

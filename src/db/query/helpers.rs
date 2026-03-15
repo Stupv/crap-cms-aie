@@ -324,11 +324,11 @@ mod tests {
 
     #[test]
     fn coerce_json_float_for_non_number_field() {
-        let val = serde_json::json!(3.14);
+        let val = serde_json::json!(3.15);
         // Non-number field, but value has no i64 representation: falls back to Real
         assert_eq!(
             coerce_json_value(&FieldType::Text, &val),
-            DbValue::Real(3.14)
+            DbValue::Real(3.15)
         );
     }
 

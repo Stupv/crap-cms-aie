@@ -31,13 +31,17 @@ fn make_posts_def() -> CollectionDefinition {
         plural: Some(LocalizedString::Plain("Posts".to_string())),
     };
     def.timestamps = true;
-    let mut title = FieldDefinition::default();
-    title.name = "title".to_string();
-    title.required = true;
-    let mut status = FieldDefinition::default();
-    status.name = "status".to_string();
-    status.field_type = FieldType::Select;
-    status.default_value = Some(serde_json::json!("draft"));
+    let title = FieldDefinition {
+        name: "title".to_string(),
+        required: true,
+        ..Default::default()
+    };
+    let status = FieldDefinition {
+        name: "status".to_string(),
+        field_type: FieldType::Select,
+        default_value: Some(serde_json::json!("draft")),
+        ..Default::default()
+    };
     def.fields = vec![title, status];
     def
 }
@@ -138,9 +142,11 @@ fn make_categories_def() -> CollectionDefinition {
         plural: Some(LocalizedString::Plain("Categories".to_string())),
     };
     def.timestamps = true;
-    let mut name = FieldDefinition::default();
-    name.name = "name".to_string();
-    name.required = true;
+    let name = FieldDefinition {
+        name: "name".to_string(),
+        required: true,
+        ..Default::default()
+    };
     def.fields = vec![name];
     def
 }
@@ -152,13 +158,17 @@ fn make_posts_with_relationship() -> CollectionDefinition {
         plural: Some(LocalizedString::Plain("Posts".to_string())),
     };
     def.timestamps = true;
-    let mut title = FieldDefinition::default();
-    title.name = "title".to_string();
-    title.required = true;
-    let mut category = FieldDefinition::default();
-    category.name = "category".to_string();
-    category.field_type = FieldType::Relationship;
-    category.relationship = Some(RelationshipConfig::new("categories", false));
+    let title = FieldDefinition {
+        name: "title".to_string(),
+        required: true,
+        ..Default::default()
+    };
+    let category = FieldDefinition {
+        name: "category".to_string(),
+        field_type: FieldType::Relationship,
+        relationship: Some(RelationshipConfig::new("categories", false)),
+        ..Default::default()
+    };
     def.fields = vec![title, category];
     def
 }
@@ -170,14 +180,20 @@ fn make_numbered_posts_def() -> CollectionDefinition {
         plural: Some(LocalizedString::Plain("Items".to_string())),
     };
     def.timestamps = true;
-    let mut name = FieldDefinition::default();
-    name.name = "name".to_string();
-    name.required = true;
-    let mut score = FieldDefinition::default();
-    score.name = "score".to_string();
-    score.field_type = FieldType::Number;
-    let mut tag = FieldDefinition::default();
-    tag.name = "tag".to_string();
+    let name = FieldDefinition {
+        name: "name".to_string(),
+        required: true,
+        ..Default::default()
+    };
+    let score = FieldDefinition {
+        name: "score".to_string(),
+        field_type: FieldType::Number,
+        ..Default::default()
+    };
+    let tag = FieldDefinition {
+        name: "tag".to_string(),
+        ..Default::default()
+    };
     def.fields = vec![name, score, tag];
     def
 }
@@ -193,12 +209,16 @@ fn make_posts_with_unique_slug() -> CollectionDefinition {
         plural: Some(LocalizedString::Plain("Articles".to_string())),
     };
     def.timestamps = true;
-    let mut title = FieldDefinition::default();
-    title.name = "title".to_string();
-    title.required = true;
-    let mut slug = FieldDefinition::default();
-    slug.name = "slug".to_string();
-    slug.unique = true;
+    let title = FieldDefinition {
+        name: "title".to_string(),
+        required: true,
+        ..Default::default()
+    };
+    let slug = FieldDefinition {
+        name: "slug".to_string(),
+        unique: true,
+        ..Default::default()
+    };
     def.fields = vec![title, slug];
     def
 }
@@ -496,12 +516,16 @@ return M
         plural: Some(LocalizedString::Plain("Scored".to_string())),
     };
     def.timestamps = true;
-    let mut name_f = FieldDefinition::default();
-    name_f.name = "name".to_string();
-    name_f.required = true;
-    let mut score_f = FieldDefinition::default();
-    score_f.name = "score".to_string();
-    score_f.validate = Some("hooks.score_validator.check".to_string());
+    let name_f = FieldDefinition {
+        name: "name".to_string(),
+        required: true,
+        ..Default::default()
+    };
+    let score_f = FieldDefinition {
+        name: "score".to_string(),
+        validate: Some("hooks.score_validator.check".to_string()),
+        ..Default::default()
+    };
     def.fields = vec![name_f, score_f];
 
     let db_pool = pool::create_pool(tmp.path(), &config).expect("create pool");
@@ -609,12 +633,19 @@ return M
         plural: Some(LocalizedString::Plain("Pages".to_string())),
     };
     def.timestamps = true;
-    let mut name_f = FieldDefinition::default();
-    name_f.name = "name".to_string();
-    name_f.required = true;
-    let mut slug_f = FieldDefinition::default();
-    slug_f.name = "slug".to_string();
-    slug_f.hooks.before_change = vec!["hooks.slug_gen.auto_slug".to_string()];
+    let name_f = FieldDefinition {
+        name: "name".to_string(),
+        required: true,
+        ..Default::default()
+    };
+    let slug_f = FieldDefinition {
+        name: "slug".to_string(),
+        hooks: FieldHooks {
+            before_change: vec!["hooks.slug_gen.auto_slug".to_string()],
+            ..Default::default()
+        },
+        ..Default::default()
+    };
     def.fields = vec![name_f, slug_f];
 
     let db_pool = pool::create_pool(tmp.path(), &config).expect("create pool");
@@ -707,10 +738,15 @@ return M
         plural: Some(LocalizedString::Plain("Entries".to_string())),
     };
     def.timestamps = true;
-    let mut name_f = FieldDefinition::default();
-    name_f.name = "name".to_string();
-    name_f.required = true;
-    name_f.hooks.after_read = vec!["hooks.transform.uppercase_on_read".to_string()];
+    let name_f = FieldDefinition {
+        name: "name".to_string(),
+        required: true,
+        hooks: FieldHooks {
+            after_read: vec!["hooks.transform.uppercase_on_read".to_string()],
+            ..Default::default()
+        },
+        ..Default::default()
+    };
     def.fields = vec![name_f];
 
     let db_pool = pool::create_pool(tmp.path(), &config).expect("create pool");
@@ -813,11 +849,15 @@ return M
         plural: Some(LocalizedString::Plain("Notes".to_string())),
     };
     def.timestamps = true;
-    let mut title_f = FieldDefinition::default();
-    title_f.name = "title".to_string();
-    title_f.required = true;
-    let mut computed_f = FieldDefinition::default();
-    computed_f.name = "computed".to_string();
+    let title_f = FieldDefinition {
+        name: "title".to_string(),
+        required: true,
+        ..Default::default()
+    };
+    let computed_f = FieldDefinition {
+        name: "computed".to_string(),
+        ..Default::default()
+    };
     def.fields = vec![title_f, computed_f];
     def.hooks.after_read = vec!["hooks.note_hooks.add_computed".to_string()];
 
@@ -918,9 +958,11 @@ return M
         plural: Some(LocalizedString::Plain("Moderated".to_string())),
     };
     def.timestamps = true;
-    let mut title_f = FieldDefinition::default();
-    title_f.name = "title".to_string();
-    title_f.required = true;
+    let title_f = FieldDefinition {
+        name: "title".to_string(),
+        required: true,
+        ..Default::default()
+    };
     def.fields = vec![title_f];
     def.hooks.before_validate = vec!["hooks.moderator.reject_forbidden".to_string()];
 

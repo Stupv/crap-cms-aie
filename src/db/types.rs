@@ -242,7 +242,7 @@ mod tests {
     fn dbvalue_to_json() {
         assert_eq!(DbValue::Null.to_json(), Value::Null);
         assert_eq!(DbValue::Integer(42).to_json(), serde_json::json!(42));
-        assert_eq!(DbValue::Real(3.14).to_json(), serde_json::json!(3.14));
+        assert_eq!(DbValue::Real(3.15).to_json(), serde_json::json!(3.15));
         assert_eq!(
             DbValue::Text("hi".into()).to_json(),
             Value::String("hi".into())

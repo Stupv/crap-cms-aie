@@ -525,7 +525,7 @@ fn backup_manifest_valid() {
     assert!(parsed.get("timestamp").is_some());
     assert!(parsed.get("db_size").is_some());
     assert_eq!(parsed["db_size"].as_u64().unwrap(), 12345);
-    assert_eq!(parsed["include_uploads"].as_bool().unwrap(), false);
+    assert!(!parsed["include_uploads"].as_bool().unwrap());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

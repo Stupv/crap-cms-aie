@@ -547,9 +547,10 @@ async fn verify_email_invalid_token() {
 async fn login_unverified_email() {
     let app = setup_app(vec![make_verify_users_def()], vec![]);
 
-    let reg = app.registry.read().unwrap();
-    let def = reg.get_collection("vusers").unwrap().clone();
-    drop(reg);
+    let def = {
+        let reg = app.registry.read().unwrap();
+        reg.get_collection("vusers").unwrap().clone()
+    };
 
     let mut conn = app.pool.get().unwrap();
     let tx = conn.transaction().unwrap();
@@ -595,9 +596,10 @@ async fn login_unverified_email() {
 async fn verify_email_with_valid_token() {
     let app = setup_app(vec![make_verify_users_def()], vec![]);
 
-    let reg = app.registry.read().unwrap();
-    let def = reg.get_collection("vusers").unwrap().clone();
-    drop(reg);
+    let def = {
+        let reg = app.registry.read().unwrap();
+        reg.get_collection("vusers").unwrap().clone()
+    };
 
     let mut conn = app.pool.get().unwrap();
     let tx = conn.transaction().unwrap();

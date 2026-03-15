@@ -387,6 +387,7 @@ mod tests {
         (dir, conn)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn entry<'a>(
         collection: &'a str,
         document_id: &'a str,

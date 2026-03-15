@@ -84,9 +84,9 @@ mod tests {
         let tbl = collection_config_to_lua(&lua, &def).unwrap();
         let auth_tbl: mlua::Table = tbl.get("auth").unwrap();
         assert_eq!(auth_tbl.get::<u64>("token_expiry").unwrap(), 3600);
-        assert_eq!(auth_tbl.get::<bool>("disable_local").unwrap(), true);
-        assert_eq!(auth_tbl.get::<bool>("verify_email").unwrap(), true);
-        assert_eq!(auth_tbl.get::<bool>("forgot_password").unwrap(), false);
+        assert!(auth_tbl.get::<bool>("disable_local").unwrap());
+        assert!(auth_tbl.get::<bool>("verify_email").unwrap());
+        assert!(!auth_tbl.get::<bool>("forgot_password").unwrap());
         let strats: mlua::Table = auth_tbl.get("strategies").unwrap();
         let s1: mlua::Table = strats.get(1).unwrap();
         let sname: String = s1.get("name").unwrap();

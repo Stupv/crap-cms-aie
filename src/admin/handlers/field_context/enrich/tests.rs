@@ -561,9 +561,11 @@ fn enrich_nested_fields_upload_gets_options() {
         make_field("mime_type", FieldType::Text),
         make_field("url", FieldType::Text),
     ];
-    let mut upload_config = crate::core::upload::CollectionUpload::default();
-    upload_config.enabled = true;
-    upload_config.mime_types = vec!["image/*".to_string()];
+    let upload_config = crate::core::upload::CollectionUpload {
+        enabled: true,
+        mime_types: vec!["image/*".to_string()],
+        ..Default::default()
+    };
     media_def.upload = Some(upload_config);
 
     let mut registry = crate::core::Registry::new();
@@ -725,8 +727,10 @@ fn enrich_nested_fields_blocks_template_gets_upload_options() {
         make_field("mime_type", FieldType::Text),
         make_field("url", FieldType::Text),
     ];
-    let mut upload_config = crate::core::upload::CollectionUpload::default();
-    upload_config.enabled = true;
+    let upload_config = crate::core::upload::CollectionUpload {
+        enabled: true,
+        ..Default::default()
+    };
     media_def.upload = Some(upload_config);
 
     let mut registry = crate::core::Registry::new();
@@ -798,8 +802,10 @@ fn enrich_nested_fields_array_template_gets_upload_options() {
         make_field("mime_type", FieldType::Text),
         make_field("url", FieldType::Text),
     ];
-    let mut upload_config = crate::core::upload::CollectionUpload::default();
-    upload_config.enabled = true;
+    let upload_config = crate::core::upload::CollectionUpload {
+        enabled: true,
+        ..Default::default()
+    };
     media_def.upload = Some(upload_config);
 
     let mut registry = crate::core::Registry::new();

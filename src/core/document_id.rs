@@ -149,7 +149,7 @@ mod tests {
     #[test]
     fn partial_eq_string() {
         let id = DocumentId::new("abc123");
-        assert!(id == "abc123".to_string());
+        assert!(id == "abc123");
     }
 
     #[test]

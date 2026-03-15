@@ -82,7 +82,6 @@ fn setup_app_with_config(
     config: CrapConfig,
 ) -> TestApp {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let config = config;
 
     let db_pool = pool::create_pool(tmp.path(), &config).expect("create pool");
 
@@ -454,15 +453,15 @@ async fn update_localized_collection_redirects_with_locale() {
         "Localized update should succeed, got {}",
         status
     );
-    if status == StatusCode::OK {
-        if let Some(hx_redir) = resp.headers().get("HX-Redirect") {
-            let redir = hx_redir.to_str().unwrap_or("");
-            assert!(
-                !redir.contains("locale="),
-                "HX-Redirect should not contain locale= (cookie-based now), got {}",
-                redir
-            );
-        }
+    if status == StatusCode::OK
+        && let Some(hx_redir) = resp.headers().get("HX-Redirect")
+    {
+        let redir = hx_redir.to_str().unwrap_or("");
+        assert!(
+            !redir.contains("locale="),
+            "HX-Redirect should not contain locale= (cookie-based now), got {}",
+            redir
+        );
     }
 }
 
@@ -949,7 +948,7 @@ async fn update_action_with_locale() {
                 .header("cookie", auth_and_csrf(&cookie))
                 .header("X-CSRF-Token", TEST_CSRF)
                 .header("content-type", "application/x-www-form-urlencoded")
-                .body(Body::from(format!("title=Updated+DE&_locale=de")))
+                .body(Body::from("title=Updated+DE&_locale=de".to_string()))
                 .unwrap(),
         )
         .await
@@ -1218,7 +1217,7 @@ async fn upload_api_update_replaces_file() {
         .router
         .clone()
         .oneshot(
-            Request::patch(&format!("/api/upload/media/{}", doc_id))
+            Request::patch(format!("/api/upload/media/{}", doc_id))
                 .header("content-type", ct2)
                 .header("authorization", &bearer)
                 .header("Cookie", csrf_cookie())
@@ -1273,7 +1272,7 @@ async fn upload_api_delete_returns_success() {
         .router
         .clone()
         .oneshot(
-            Request::delete(&format!("/api/upload/media/{}", doc_id))
+            Request::delete(format!("/api/upload/media/{}", doc_id))
                 .header("authorization", &bearer)
                 .header("Cookie", csrf_cookie())
                 .header("X-CSRF-Token", TEST_CSRF)

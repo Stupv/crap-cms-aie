@@ -1149,13 +1149,12 @@ fn import_basic() {
         let mut parent_cols = vec!["id".to_string()];
         let mut parent_vals = vec![id.to_string()];
         for field in &def.fields {
-            if field.has_parent_column() {
-                if let Some(val) = doc_obj.get(&field.name) {
-                    if let Some(s) = val.as_str() {
-                        parent_cols.push(field.name.clone());
-                        parent_vals.push(s.to_string());
-                    }
-                }
+            if field.has_parent_column()
+                && let Some(val) = doc_obj.get(&field.name)
+                && let Some(s) = val.as_str()
+            {
+                parent_cols.push(field.name.clone());
+                parent_vals.push(s.to_string());
             }
         }
         let placeholders: Vec<String> = (0..parent_cols.len())

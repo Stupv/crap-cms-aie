@@ -23,9 +23,11 @@ fn make_field(name: &str, field_type: FieldType) -> FieldDefinition {
 fn make_localized_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("localized_pages");
     def.timestamps = true;
-    let mut title = FieldDefinition::default();
-    title.name = "title".to_string();
-    title.localized = true;
+    let title = FieldDefinition {
+        name: "title".to_string(),
+        localized: true,
+        ..Default::default()
+    };
     def.fields = vec![title, make_field("slug_field", FieldType::Text)];
     def
 }
@@ -249,34 +251,42 @@ fn filter_on_localized_field() {
 fn make_localized_join_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("l10n_articles");
     def.timestamps = true;
-    let mut tags_field = FieldDefinition::default();
-    tags_field.name = "tags".to_string();
-    tags_field.field_type = FieldType::Relationship;
-    tags_field.localized = true;
-    tags_field.relationship = Some(RelationshipConfig::new("tags", true));
-    let mut links_field = FieldDefinition::default();
-    links_field.name = "links".to_string();
-    links_field.field_type = FieldType::Array;
-    links_field.localized = true;
-    links_field.fields = vec![
-        make_field("url", FieldType::Text),
-        make_field("label", FieldType::Text),
-    ];
-    let mut content_field = FieldDefinition::default();
-    content_field.name = "content".to_string();
-    content_field.field_type = FieldType::Blocks;
-    content_field.localized = true;
-    content_field.blocks = vec![BlockDefinition::new(
-        "paragraph",
-        vec![make_field("text", FieldType::Textarea)],
-    )];
-    let mut meta_field = FieldDefinition::default();
-    meta_field.name = "meta".to_string();
-    meta_field.field_type = FieldType::Blocks;
-    meta_field.blocks = vec![BlockDefinition::new(
-        "kv",
-        vec![make_field("key", FieldType::Text)],
-    )];
+    let tags_field = FieldDefinition {
+        name: "tags".to_string(),
+        field_type: FieldType::Relationship,
+        localized: true,
+        relationship: Some(RelationshipConfig::new("tags", true)),
+        ..Default::default()
+    };
+    let links_field = FieldDefinition {
+        name: "links".to_string(),
+        field_type: FieldType::Array,
+        localized: true,
+        fields: vec![
+            make_field("url", FieldType::Text),
+            make_field("label", FieldType::Text),
+        ],
+        ..Default::default()
+    };
+    let content_field = FieldDefinition {
+        name: "content".to_string(),
+        field_type: FieldType::Blocks,
+        localized: true,
+        blocks: vec![BlockDefinition::new(
+            "paragraph",
+            vec![make_field("text", FieldType::Textarea)],
+        )],
+        ..Default::default()
+    };
+    let meta_field = FieldDefinition {
+        name: "meta".to_string(),
+        field_type: FieldType::Blocks,
+        blocks: vec![BlockDefinition::new(
+            "kv",
+            vec![make_field("key", FieldType::Text)],
+        )],
+        ..Default::default()
+    };
     def.fields = vec![
         make_field("slug_field", FieldType::Text),
         tags_field,
@@ -1542,16 +1552,22 @@ fn join_fallback_default_locale_no_fallback_needed() {
 fn make_localized_group_def() -> CollectionDefinition {
     let mut def = CollectionDefinition::new("pages_l10n");
     def.timestamps = true;
-    let mut meta_title = FieldDefinition::default();
-    meta_title.name = "meta_title".to_string();
-    meta_title.localized = true;
-    let mut meta_description = FieldDefinition::default();
-    meta_description.name = "meta_description".to_string();
-    meta_description.localized = true;
-    let mut seo = FieldDefinition::default();
-    seo.name = "seo".to_string();
-    seo.field_type = FieldType::Group;
-    seo.fields = vec![meta_title, meta_description];
+    let meta_title = FieldDefinition {
+        name: "meta_title".to_string(),
+        localized: true,
+        ..Default::default()
+    };
+    let meta_description = FieldDefinition {
+        name: "meta_description".to_string(),
+        localized: true,
+        ..Default::default()
+    };
+    let seo = FieldDefinition {
+        name: "seo".to_string(),
+        field_type: FieldType::Group,
+        fields: vec![meta_title, meta_description],
+        ..Default::default()
+    };
     def.fields = vec![make_field("title", FieldType::Text), seo];
     def
 }
@@ -1679,16 +1695,22 @@ fn collection_localized_group_write_and_read() {
 
 fn make_global_with_localized_group() -> GlobalDefinition {
     let mut def = GlobalDefinition::new("site_l10n");
-    let mut meta_title = FieldDefinition::default();
-    meta_title.name = "meta_title".to_string();
-    meta_title.localized = true;
-    let mut meta_description = FieldDefinition::default();
-    meta_description.name = "meta_description".to_string();
-    meta_description.localized = true;
-    let mut seo = FieldDefinition::default();
-    seo.name = "seo".to_string();
-    seo.field_type = FieldType::Group;
-    seo.fields = vec![meta_title, meta_description];
+    let meta_title = FieldDefinition {
+        name: "meta_title".to_string(),
+        localized: true,
+        ..Default::default()
+    };
+    let meta_description = FieldDefinition {
+        name: "meta_description".to_string(),
+        localized: true,
+        ..Default::default()
+    };
+    let seo = FieldDefinition {
+        name: "seo".to_string(),
+        field_type: FieldType::Group,
+        fields: vec![meta_title, meta_description],
+        ..Default::default()
+    };
     def.fields = vec![make_field("site_name", FieldType::Text), seo];
     def
 }

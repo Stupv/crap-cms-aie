@@ -63,7 +63,7 @@ mod tests {
         let result: Table = factory.call(config).unwrap();
         assert_eq!(result.get::<String>("type").unwrap(), "text");
         assert_eq!(result.get::<String>("name").unwrap(), "title");
-        assert_eq!(result.get::<bool>("required").unwrap(), true);
+        assert!(result.get::<bool>("required").unwrap());
     }
 
     #[test]

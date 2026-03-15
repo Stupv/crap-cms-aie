@@ -133,6 +133,6 @@ mod tests {
         assert!(result.is_some());
         let tbl = result.unwrap();
         assert_eq!(tbl.get::<String>("label").unwrap(), "Title");
-        assert_eq!(tbl.get::<bool>("hidden").unwrap(), true);
+        assert!(tbl.get::<bool>("hidden").unwrap());
     }
 }

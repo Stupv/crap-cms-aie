@@ -66,8 +66,8 @@ mod tests {
 
     #[test]
     fn dbvalue_to_json_float() {
-        let val = DbValue::Real(3.14).to_json();
-        assert!(val.as_f64().unwrap() > 3.13 && val.as_f64().unwrap() < 3.15);
+        let val = DbValue::Real(3.15).to_json();
+        assert!(val.as_f64().unwrap() > 3.1 && val.as_f64().unwrap() < 3.2);
     }
 
     #[test]

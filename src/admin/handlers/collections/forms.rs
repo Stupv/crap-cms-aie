@@ -260,6 +260,50 @@ fn parse_composite_form_data(
         .collect()
 }
 
+/// Parse a multipart form request, extracting form fields and an optional file upload.
+pub(crate) async fn parse_multipart_form(
+    request: axum::extract::Request,
+    state: &AdminState,
+) -> Result<(HashMap<String, String>, Option<UploadedFile>), anyhow::Error> {
+    let mut multipart = Multipart::from_request(request, state)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to parse multipart: {}", e))?;
+
+    let mut form_data = HashMap::new();
+    let mut file: Option<UploadedFile> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to read multipart field: {}", e))?
+    {
+        let name = field.name().unwrap_or("").to_string();
+        if name == "_file" && field.file_name().is_some() {
+            let filename = field.file_name().unwrap_or("").to_string();
+            let content_type = field
+                .content_type()
+                .unwrap_or("application/octet-stream")
+                .to_string();
+            let data = field
+                .bytes()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to read file data: {}", e))?;
+            if !data.is_empty() {
+                file = Some(
+                    UploadedFileBuilder::new(filename, content_type)
+                        .data(data.to_vec())
+                        .build(),
+                );
+            }
+        } else {
+            let text = field.text().await.unwrap_or_default();
+            form_data.insert(name, text);
+        }
+    }
+
+    Ok((form_data, file))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -693,48 +737,4 @@ mod tests {
         assert_eq!(result[0]["x"], "10");
         assert_eq!(result[0]["y"], "20");
     }
-}
-
-/// Parse a multipart form request, extracting form fields and an optional file upload.
-pub(crate) async fn parse_multipart_form(
-    request: axum::extract::Request,
-    state: &AdminState,
-) -> Result<(HashMap<String, String>, Option<UploadedFile>), anyhow::Error> {
-    let mut multipart = Multipart::from_request(request, state)
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to parse multipart: {}", e))?;
-
-    let mut form_data = HashMap::new();
-    let mut file: Option<UploadedFile> = None;
-
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to read multipart field: {}", e))?
-    {
-        let name = field.name().unwrap_or("").to_string();
-        if name == "_file" && field.file_name().is_some() {
-            let filename = field.file_name().unwrap_or("").to_string();
-            let content_type = field
-                .content_type()
-                .unwrap_or("application/octet-stream")
-                .to_string();
-            let data = field
-                .bytes()
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to read file data: {}", e))?;
-            if !data.is_empty() {
-                file = Some(
-                    UploadedFileBuilder::new(filename, content_type)
-                        .data(data.to_vec())
-                        .build(),
-                );
-            }
-        } else {
-            let text = field.text().await.unwrap_or_default();
-            form_data.insert(name, text);
-        }
-    }
-
-    Ok((form_data, file))
 }

@@ -183,7 +183,7 @@ mod tests {
 
         // At depth=0, join field should not be populated
         assert!(
-            doc.fields.get("posts").is_none(),
+            !doc.fields.contains_key("posts"),
             "depth=0 should not add join field"
         );
     }
@@ -266,7 +266,7 @@ mod tests {
 
         // Join field should be skipped because it's not in select
         assert!(
-            doc.fields.get("posts").is_none(),
+            !doc.fields.contains_key("posts"),
             "join field not in select should be skipped"
         );
     }

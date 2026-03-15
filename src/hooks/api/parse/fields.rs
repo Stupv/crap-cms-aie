@@ -318,7 +318,7 @@ mod tests {
         let field = lua.create_table().unwrap();
         field.set("name", "ratio").unwrap();
         field.set("type", "number").unwrap();
-        field.set("default_value", 3.14f64).unwrap();
+        field.set("default_value", 3.15f64).unwrap();
         fields_tbl.set(1, field).unwrap();
         let fields = parse_fields(&fields_tbl).unwrap();
         let dv = fields[0].default_value.as_ref().unwrap();

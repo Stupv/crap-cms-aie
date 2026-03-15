@@ -15,13 +15,17 @@ fn make_posts_def() -> CollectionDefinition {
         plural: Some(LocalizedString::Plain("Posts".to_string())),
     };
     def.timestamps = true;
-    let mut title = FieldDefinition::default();
-    title.name = "title".to_string();
-    title.required = true;
-    let mut status = FieldDefinition::default();
-    status.name = "status".to_string();
-    status.field_type = FieldType::Select;
-    status.default_value = Some(serde_json::json!("draft"));
+    let title = FieldDefinition {
+        name: "title".to_string(),
+        required: true,
+        ..Default::default()
+    };
+    let status = FieldDefinition {
+        name: "status".to_string(),
+        field_type: FieldType::Select,
+        default_value: Some(serde_json::json!("draft")),
+        ..Default::default()
+    };
     def.fields = vec![title, status];
     def
 }
@@ -46,33 +50,43 @@ fn make_global_with_join_fields() -> GlobalDefinition {
         singular: Some(LocalizedString::Plain("Homepage".to_string())),
         plural: None,
     };
-    let mut title = FieldDefinition::default();
-    title.name = "title".to_string();
-    let mut seo = FieldDefinition::default();
-    seo.name = "seo".to_string();
-    seo.field_type = FieldType::Group;
-    seo.fields = vec![
-        make_field("meta_title", FieldType::Text),
-        make_field("meta_description", FieldType::Textarea),
-    ];
-    let mut links = FieldDefinition::default();
-    links.name = "links".to_string();
-    links.field_type = FieldType::Array;
-    links.fields = vec![
-        make_field("url", FieldType::Text),
-        make_field("label", FieldType::Text),
-    ];
-    let mut content = FieldDefinition::default();
-    content.name = "content".to_string();
-    content.field_type = FieldType::Blocks;
-    content.blocks = vec![
-        BlockDefinition::new("paragraph", vec![make_field("text", FieldType::Textarea)]),
-        BlockDefinition::new("image", vec![make_field("url", FieldType::Text)]),
-    ];
-    let mut featured_posts = FieldDefinition::default();
-    featured_posts.name = "featured_posts".to_string();
-    featured_posts.field_type = FieldType::Relationship;
-    featured_posts.relationship = Some(RelationshipConfig::new("posts", true));
+    let title = FieldDefinition {
+        name: "title".to_string(),
+        ..Default::default()
+    };
+    let seo = FieldDefinition {
+        name: "seo".to_string(),
+        field_type: FieldType::Group,
+        fields: vec![
+            make_field("meta_title", FieldType::Text),
+            make_field("meta_description", FieldType::Textarea),
+        ],
+        ..Default::default()
+    };
+    let links = FieldDefinition {
+        name: "links".to_string(),
+        field_type: FieldType::Array,
+        fields: vec![
+            make_field("url", FieldType::Text),
+            make_field("label", FieldType::Text),
+        ],
+        ..Default::default()
+    };
+    let content = FieldDefinition {
+        name: "content".to_string(),
+        field_type: FieldType::Blocks,
+        blocks: vec![
+            BlockDefinition::new("paragraph", vec![make_field("text", FieldType::Textarea)]),
+            BlockDefinition::new("image", vec![make_field("url", FieldType::Text)]),
+        ],
+        ..Default::default()
+    };
+    let featured_posts = FieldDefinition {
+        name: "featured_posts".to_string(),
+        field_type: FieldType::Relationship,
+        relationship: Some(RelationshipConfig::new("posts", true)),
+        ..Default::default()
+    };
     def.fields = vec![title, seo, links, content, featured_posts];
     def
 }
@@ -596,10 +610,12 @@ fn global_alter_table_adds_join_tables() {
 
     // Second sync: add array field
     let mut def_v2 = GlobalDefinition::new("growing");
-    let mut items_field = FieldDefinition::default();
-    items_field.name = "items".to_string();
-    items_field.field_type = FieldType::Array;
-    items_field.fields = vec![make_field("label", FieldType::Text)];
+    let items_field = FieldDefinition {
+        name: "items".to_string(),
+        field_type: FieldType::Array,
+        fields: vec![make_field("label", FieldType::Text)],
+        ..Default::default()
+    };
     def_v2.fields = vec![make_field("title", FieldType::Text), items_field];
     {
         let mut reg = registry.write().unwrap();
@@ -893,13 +909,15 @@ fn global_alter_adds_group_sub_columns() {
 
     // Second sync: add a group field
     let mut def_v2 = GlobalDefinition::new("settings");
-    let mut seo_v2 = FieldDefinition::default();
-    seo_v2.name = "seo".to_string();
-    seo_v2.field_type = FieldType::Group;
-    seo_v2.fields = vec![
-        make_field("meta_title", FieldType::Text),
-        make_field("og_image", FieldType::Text),
-    ];
+    let seo_v2 = FieldDefinition {
+        name: "seo".to_string(),
+        field_type: FieldType::Group,
+        fields: vec![
+            make_field("meta_title", FieldType::Text),
+            make_field("og_image", FieldType::Text),
+        ],
+        ..Default::default()
+    };
     def_v2.fields = vec![make_field("site_name", FieldType::Text), seo_v2];
     {
         let mut reg = registry.write().unwrap();
@@ -970,10 +988,12 @@ fn collection_alter_adds_localized_group_columns() {
     };
 
     // First sync: collection with non-localized group
-    let mut seo_field = FieldDefinition::default();
-    seo_field.name = "seo".to_string();
-    seo_field.field_type = FieldType::Group;
-    seo_field.fields = vec![make_field("meta_title", FieldType::Text)];
+    let seo_field = FieldDefinition {
+        name: "seo".to_string(),
+        field_type: FieldType::Group,
+        fields: vec![make_field("meta_title", FieldType::Text)],
+        ..Default::default()
+    };
     let mut def = CollectionDefinition::new("pages_alter");
     def.timestamps = true;
     def.fields = vec![make_field("title", FieldType::Text), seo_field];

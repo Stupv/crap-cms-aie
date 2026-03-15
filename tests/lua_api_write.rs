@@ -656,7 +656,7 @@ fn lua_config_get_dot_notation() {
     // The test verifies that dot notation works and doesn't error.
     // An empty string is the default.
     assert!(
-        result == "" || result == "nil" || !result.is_empty(),
+        result.is_empty() || result == "nil" || !result.is_empty(),
         "crap.config.get('auth.secret') should return a value or nil, got: {}",
         result
     );

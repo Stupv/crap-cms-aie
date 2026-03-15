@@ -149,7 +149,7 @@ mod tests {
     #[test]
     fn partial_eq_string() {
         let slug = Slug::new("posts");
-        assert!(slug == "posts".to_string());
+        assert!(slug == "posts");
     }
 
     #[test]

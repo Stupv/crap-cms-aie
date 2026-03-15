@@ -1190,8 +1190,8 @@ mod tests {
             DbValue::Integer(42)
         );
         assert_eq!(
-            from_sqlite_value(&SqliteValue::Real(3.14)),
-            DbValue::Real(3.14)
+            from_sqlite_value(&SqliteValue::Real(3.15)),
+            DbValue::Real(3.15)
         );
         assert_eq!(
             from_sqlite_value(&SqliteValue::Text("hi".into())),

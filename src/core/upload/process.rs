@@ -280,8 +280,10 @@ mod tests {
         let file = UploadedFileBuilder::new("image.png", "image/png")
             .data(png_header.to_vec())
             .build();
-        let mut upload_config = CollectionUpload::default();
-        upload_config.mime_types = vec!["image/*".into()];
+        let upload_config = CollectionUpload {
+            mime_types: vec!["image/*".into()],
+            ..Default::default()
+        };
         let tmp = tempfile::tempdir().unwrap();
         // Won't fully succeed (no valid full PNG) but passes the MIME check
         let result = process_upload(file, &upload_config, tmp.path(), "test", 10_000_000);
@@ -325,9 +327,11 @@ mod tests {
         let file = UploadedFileBuilder::new("test.txt", "text/plain")
             .data(b"hello".to_vec())
             .build();
-        let mut config = CollectionUpload::default();
-        config.enabled = true;
-        config.mime_types = vec!["image/*".into()];
+        let config = CollectionUpload {
+            enabled: true,
+            mime_types: vec!["image/*".into()],
+            ..Default::default()
+        };
         let result = process_upload(file, &config, tmp.path(), "posts", 50 * 1024 * 1024);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -343,9 +347,11 @@ mod tests {
         let file = UploadedFileBuilder::new("big.bin", "application/octet-stream")
             .data(vec![0u8; 1024]) // 1KB
             .build();
-        let mut config = CollectionUpload::default();
-        config.enabled = true;
-        config.max_file_size = Some(512); // only allow 512 bytes
+        let config = CollectionUpload {
+            enabled: true,
+            max_file_size: Some(512), // only allow 512 bytes
+            ..Default::default()
+        };
         let result = process_upload(file, &config, tmp.path(), "posts", 50 * 1024 * 1024);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -361,8 +367,10 @@ mod tests {
         let file = UploadedFileBuilder::new("big.bin", "application/octet-stream")
             .data(vec![0u8; 1024]) // 1KB
             .build();
-        let mut config = CollectionUpload::default();
-        config.enabled = true;
+        let config = CollectionUpload {
+            enabled: true,
+            ..Default::default()
+        };
         // Global max is 512 bytes
         let result = process_upload(file, &config, tmp.path(), "posts", 512);
         assert!(result.is_err());
@@ -375,8 +383,10 @@ mod tests {
         let file = UploadedFileBuilder::new("document.pdf", "application/pdf")
             .data(b"%PDF-1.4 test content".to_vec())
             .build();
-        let mut config = CollectionUpload::default();
-        config.enabled = true;
+        let config = CollectionUpload {
+            enabled: true,
+            ..Default::default()
+        };
         let result = process_upload(file, &config, tmp.path(), "docs", 50 * 1024 * 1024)
             .expect("should succeed for non-image");
         assert!(result.url.starts_with("/uploads/docs/"));
@@ -398,8 +408,10 @@ mod tests {
         let file = UploadedFileBuilder::new("photo.png", "image/png")
             .data(png_data)
             .build();
-        let mut config = CollectionUpload::default();
-        config.enabled = true;
+        let config = CollectionUpload {
+            enabled: true,
+            ..Default::default()
+        };
         let result = process_upload(file, &config, tmp.path(), "media", 50 * 1024 * 1024)
             .expect("should succeed for image");
         assert_eq!(result.mime_type, "image/png");
@@ -418,15 +430,17 @@ mod tests {
         let file = UploadedFileBuilder::new("photo.png", "image/png")
             .data(png_data)
             .build();
-        let mut config = CollectionUpload::default();
-        config.enabled = true;
-        config.image_sizes = vec![
-            ImageSizeBuilder::new("thumb")
-                .width(50)
-                .height(50)
-                .fit(ImageFit::Cover)
-                .build(),
-        ];
+        let config = CollectionUpload {
+            enabled: true,
+            image_sizes: vec![
+                ImageSizeBuilder::new("thumb")
+                    .width(50)
+                    .height(50)
+                    .fit(ImageFit::Cover)
+                    .build(),
+            ],
+            ..Default::default()
+        };
         let result = process_upload(file, &config, tmp.path(), "media", 50 * 1024 * 1024)
             .expect("should succeed");
         assert_eq!(result.width, Some(200));
@@ -449,18 +463,20 @@ mod tests {
         let file = UploadedFileBuilder::new("photo.png", "image/png")
             .data(png_data)
             .build();
-        let mut config = CollectionUpload::default();
-        config.enabled = true;
-        config.image_sizes = vec![
-            ImageSizeBuilder::new("small")
-                .width(30)
-                .height(30)
-                .fit(ImageFit::Cover)
-                .build(),
-        ];
-        config.format_options = FormatOptions {
-            webp: Some(FormatQuality::new(80, false)),
-            avif: None,
+        let config = CollectionUpload {
+            enabled: true,
+            image_sizes: vec![
+                ImageSizeBuilder::new("small")
+                    .width(30)
+                    .height(30)
+                    .fit(ImageFit::Cover)
+                    .build(),
+            ],
+            format_options: FormatOptions {
+                webp: Some(FormatQuality::new(80, false)),
+                avif: None,
+            },
+            ..Default::default()
         };
         let result = process_upload(file, &config, tmp.path(), "media", 50 * 1024 * 1024)
             .expect("should succeed");
@@ -480,18 +496,20 @@ mod tests {
         let file = UploadedFileBuilder::new("photo.png", "image/png")
             .data(png_data)
             .build();
-        let mut config = CollectionUpload::default();
-        config.enabled = true;
-        config.image_sizes = vec![
-            ImageSizeBuilder::new("small")
-                .width(30)
-                .height(30)
-                .fit(ImageFit::Cover)
-                .build(),
-        ];
-        config.format_options = FormatOptions {
-            webp: None,
-            avif: Some(FormatQuality::new(50, false)),
+        let config = CollectionUpload {
+            enabled: true,
+            image_sizes: vec![
+                ImageSizeBuilder::new("small")
+                    .width(30)
+                    .height(30)
+                    .fit(ImageFit::Cover)
+                    .build(),
+            ],
+            format_options: FormatOptions {
+                webp: None,
+                avif: Some(FormatQuality::new(50, false)),
+            },
+            ..Default::default()
         };
         let result = process_upload(file, &config, tmp.path(), "media", 50 * 1024 * 1024)
             .expect("should succeed");
@@ -511,18 +529,20 @@ mod tests {
         let file = UploadedFileBuilder::new("photo.png", "image/png")
             .data(png_data)
             .build();
-        let mut config = CollectionUpload::default();
-        config.enabled = true;
-        config.image_sizes = vec![
-            ImageSizeBuilder::new("icon")
-                .width(20)
-                .height(20)
-                .fit(ImageFit::Fill)
-                .build(),
-        ];
-        config.format_options = FormatOptions {
-            webp: Some(FormatQuality::new(80, false)),
-            avif: Some(FormatQuality::new(50, false)),
+        let config = CollectionUpload {
+            enabled: true,
+            image_sizes: vec![
+                ImageSizeBuilder::new("icon")
+                    .width(20)
+                    .height(20)
+                    .fit(ImageFit::Fill)
+                    .build(),
+            ],
+            format_options: FormatOptions {
+                webp: Some(FormatQuality::new(80, false)),
+                avif: Some(FormatQuality::new(50, false)),
+            },
+            ..Default::default()
         };
         let result = process_upload(file, &config, tmp.path(), "media", 50 * 1024 * 1024)
             .expect("should succeed");
@@ -538,8 +558,10 @@ mod tests {
         let file = UploadedFileBuilder::new("noext", "application/octet-stream")
             .data(b"binary data".to_vec())
             .build();
-        let mut config = CollectionUpload::default();
-        config.enabled = true;
+        let config = CollectionUpload {
+            enabled: true,
+            ..Default::default()
+        };
         let result = process_upload(file, &config, tmp.path(), "media", 50 * 1024 * 1024)
             .expect("should succeed even without extension");
         // The filename should have the nanoid prefix and sanitized name
@@ -556,15 +578,17 @@ mod tests {
         let file = UploadedFileBuilder::new("test.png", "image/png")
             .data(png_data)
             .build();
-        let mut config = CollectionUpload::default();
-        config.enabled = true;
-        config.image_sizes = vec![
-            ImageSizeBuilder::new("thumb")
-                .width(30)
-                .height(30)
-                .fit(ImageFit::Cover)
-                .build(),
-        ];
+        let config = CollectionUpload {
+            enabled: true,
+            image_sizes: vec![
+                ImageSizeBuilder::new("thumb")
+                    .width(30)
+                    .height(30)
+                    .fit(ImageFit::Cover)
+                    .build(),
+            ],
+            ..Default::default()
+        };
         let result = process_upload(file, &config, tmp.path(), "media", 50 * 1024 * 1024)
             .expect("should succeed");
         let thumb = &result.sizes["thumb"];
@@ -582,18 +606,20 @@ mod tests {
         let file = UploadedFileBuilder::new("photo.png", "image/png")
             .data(png_data)
             .build();
-        let mut config = CollectionUpload::default();
-        config.enabled = true;
-        config.image_sizes = vec![
-            ImageSizeBuilder::new("small")
-                .width(30)
-                .height(30)
-                .fit(ImageFit::Cover)
-                .build(),
-        ];
-        config.format_options = FormatOptions {
-            webp: Some(FormatQuality::new(80, true)),
-            avif: Some(FormatQuality::new(50, true)),
+        let config = CollectionUpload {
+            enabled: true,
+            image_sizes: vec![
+                ImageSizeBuilder::new("small")
+                    .width(30)
+                    .height(30)
+                    .fit(ImageFit::Cover)
+                    .build(),
+            ],
+            format_options: FormatOptions {
+                webp: Some(FormatQuality::new(80, true)),
+                avif: Some(FormatQuality::new(50, true)),
+            },
+            ..Default::default()
         };
         let result = process_upload(file, &config, tmp.path(), "media", 50 * 1024 * 1024)
             .expect("should succeed");

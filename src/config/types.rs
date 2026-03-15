@@ -378,8 +378,10 @@ dev_mode = false
 
     #[test]
     fn check_version_from_struct_with_value() {
-        let mut config = CrapConfig::default();
-        config.crap_version = Some(env!("CARGO_PKG_VERSION").to_string());
+        let config = CrapConfig {
+            crap_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            ..Default::default()
+        };
         assert!(config.check_version().is_none());
     }
 

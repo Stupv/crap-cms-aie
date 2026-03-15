@@ -230,8 +230,8 @@ mod tests {
         let tbl = field_config_to_lua(&lua, &f).unwrap();
         assert_eq!(tbl.get::<String>("name").unwrap(), "title");
         assert_eq!(tbl.get::<String>("type").unwrap(), "text");
-        assert_eq!(tbl.get::<bool>("required").unwrap(), true);
-        assert_eq!(tbl.get::<bool>("unique").unwrap(), true);
+        assert!(tbl.get::<bool>("required").unwrap());
+        assert!(tbl.get::<bool>("unique").unwrap());
         assert_eq!(
             tbl.get::<String>("validate").unwrap(),
             "hooks.validate.title_check"
@@ -252,7 +252,7 @@ mod tests {
         let tbl = field_config_to_lua(&lua, &f).unwrap();
         let rel: mlua::Table = tbl.get("relationship").unwrap();
         assert_eq!(rel.get::<String>("collection").unwrap(), "users");
-        assert_eq!(rel.get::<bool>("has_many").unwrap(), true);
+        assert!(rel.get::<bool>("has_many").unwrap());
         assert_eq!(rel.get::<i32>("max_depth").unwrap(), 2);
     }
 
@@ -353,10 +353,10 @@ mod tests {
 
         let admin: mlua::Table = tbl.get("admin").unwrap();
         assert_eq!(admin.get::<String>("label").unwrap(), "Title");
-        assert_eq!(admin.get::<bool>("hidden").unwrap(), true);
-        assert_eq!(admin.get::<bool>("readonly").unwrap(), true);
+        assert!(admin.get::<bool>("hidden").unwrap());
+        assert!(admin.get::<bool>("readonly").unwrap());
         assert_eq!(admin.get::<String>("width").unwrap(), "50%");
-        assert_eq!(admin.get::<bool>("collapsed").unwrap(), false);
+        assert!(!admin.get::<bool>("collapsed").unwrap());
 
         let hooks: mlua::Table = tbl.get("hooks").unwrap();
         let bv: mlua::Table = hooks.get("before_validate").unwrap();
@@ -417,7 +417,7 @@ mod tests {
             "Main content area"
         );
         assert_eq!(admin.get::<String>("width").unwrap(), "full");
-        assert_eq!(admin.get::<bool>("collapsed").unwrap(), false);
+        assert!(!admin.get::<bool>("collapsed").unwrap());
         assert_eq!(admin.get::<String>("label_field").unwrap(), "heading");
         assert_eq!(
             admin.get::<String>("row_label").unwrap(),
@@ -452,7 +452,7 @@ mod tests {
             .default_value(json!(true))
             .build();
         let tbl = field_config_to_lua(&lua, &f_bool).unwrap();
-        assert_eq!(tbl.get::<bool>("default_value").unwrap(), true);
+        assert!(tbl.get::<bool>("default_value").unwrap());
 
         // Integer default
         let f_int = FieldDefinition::builder("count", FieldType::Text)
@@ -463,11 +463,11 @@ mod tests {
 
         // Float default
         let f_float = FieldDefinition::builder("price", FieldType::Text)
-            .default_value(json!(3.14))
+            .default_value(json!(3.15))
             .build();
         let tbl = field_config_to_lua(&lua, &f_float).unwrap();
         let val: f64 = tbl.get("default_value").unwrap();
-        assert!((val - 3.14).abs() < f64::EPSILON);
+        assert!((val - 3.15).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -540,7 +540,7 @@ mod tests {
             .picker_appearance("drawer")
             .build();
         let tbl = field_config_to_lua(&lua, &f).unwrap();
-        assert_eq!(tbl.get::<bool>("localized").unwrap(), true);
+        assert!(tbl.get::<bool>("localized").unwrap());
         assert_eq!(tbl.get::<String>("picker_appearance").unwrap(), "drawer");
     }
 

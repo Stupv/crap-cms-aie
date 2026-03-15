@@ -664,7 +664,6 @@ async fn delete_many_with_where_partial() {
         .delete_many(Request::new(content::DeleteManyRequest {
             collection: "posts".to_string(),
             r#where: Some(r#"{"status": "draft"}"#.to_string()),
-            ..Default::default()
         }))
         .await
         .unwrap()

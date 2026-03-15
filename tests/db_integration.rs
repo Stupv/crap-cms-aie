@@ -13,13 +13,17 @@ fn make_posts_def() -> CollectionDefinition {
         plural: Some(LocalizedString::Plain("Posts".to_string())),
     };
     def.timestamps = true;
-    let mut title = FieldDefinition::default();
-    title.name = "title".to_string();
-    title.required = true;
-    let mut status = FieldDefinition::default();
-    status.name = "status".to_string();
-    status.field_type = FieldType::Select;
-    status.default_value = Some(serde_json::json!("draft"));
+    let title = FieldDefinition {
+        name: "title".to_string(),
+        required: true,
+        ..Default::default()
+    };
+    let status = FieldDefinition {
+        name: "status".to_string(),
+        field_type: FieldType::Select,
+        default_value: Some(serde_json::json!("draft")),
+        ..Default::default()
+    };
     def.fields = vec![title, status];
     def
 }
@@ -341,13 +345,17 @@ fn make_users_def() -> CollectionDefinition {
         plural: Some(LocalizedString::Plain("Users".to_string())),
     };
     def.timestamps = true;
-    let mut email = FieldDefinition::default();
-    email.name = "email".to_string();
-    email.field_type = FieldType::Email;
-    email.required = true;
-    email.unique = true;
-    let mut name = FieldDefinition::default();
-    name.name = "name".to_string();
+    let email = FieldDefinition {
+        name: "email".to_string(),
+        field_type: FieldType::Email,
+        required: true,
+        unique: true,
+        ..Default::default()
+    };
+    let name = FieldDefinition {
+        name: "name".to_string(),
+        ..Default::default()
+    };
     def.fields = vec![email, name];
     def.auth = Some(Auth {
         enabled: true,
@@ -587,10 +595,14 @@ fn make_global_def() -> GlobalDefinition {
         singular: Some(LocalizedString::Plain("Site Settings".to_string())),
         plural: None,
     };
-    let mut site_name = FieldDefinition::default();
-    site_name.name = "site_name".to_string();
-    let mut tagline = FieldDefinition::default();
-    tagline.name = "tagline".to_string();
+    let site_name = FieldDefinition {
+        name: "site_name".to_string(),
+        ..Default::default()
+    };
+    let tagline = FieldDefinition {
+        name: "tagline".to_string(),
+        ..Default::default()
+    };
     def.fields = vec![site_name, tagline];
     def
 }

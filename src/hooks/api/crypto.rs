@@ -214,7 +214,7 @@ mod tests {
 
         // Decrypting with a different key should fail.
         let result = lua_dec
-            .load(&format!(r#"return crap.crypto.decrypt("{}")"#, ciphertext))
+            .load(format!(r#"return crap.crypto.decrypt("{}")"#, ciphertext))
             .eval::<String>();
         assert!(result.is_err());
     }

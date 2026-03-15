@@ -108,7 +108,7 @@ mod tests {
     #[test]
     fn as_f64_extracts_numbers() {
         assert_eq!(as_f64(&json!(42)), Some(42.0));
-        assert_eq!(as_f64(&json!(3.14)), Some(3.14));
+        assert_eq!(as_f64(&json!(3.15)), Some(3.15));
         assert_eq!(as_f64(&json!("2.5")), Some(2.5));
         assert_eq!(as_f64(&json!("not_a_number")), None);
         assert_eq!(as_f64(&json!(null)), None);

@@ -373,24 +373,24 @@ fn field_read_access_strips_denied_fields() {
 
     // Build fields: one normal, one with read access that always denies, one normal
     let fields = vec![
-        {
-            let mut f = crap_cms::core::field::FieldDefinition::default();
-            f.name = "title".to_string();
-            f.field_type = crap_cms::core::field::FieldType::Text;
-            f
+        crap_cms::core::FieldDefinition {
+            name: "title".to_string(),
+            field_type: crap_cms::core::field::FieldType::Text,
+            ..Default::default()
         },
-        {
-            let mut f = crap_cms::core::field::FieldDefinition::default();
-            f.name = "secret_notes".to_string();
-            f.field_type = crap_cms::core::field::FieldType::Textarea;
-            f.access.read = Some("access.admin_only".to_string());
-            f
+        crap_cms::core::FieldDefinition {
+            name: "secret_notes".to_string(),
+            field_type: crap_cms::core::field::FieldType::Textarea,
+            access: crap_cms::core::field::FieldAccess {
+                read: Some("access.admin_only".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
         },
-        {
-            let mut f = crap_cms::core::field::FieldDefinition::default();
-            f.name = "body".to_string();
-            f.field_type = crap_cms::core::field::FieldType::Textarea;
-            f
+        crap_cms::core::FieldDefinition {
+            name: "body".to_string(),
+            field_type: crap_cms::core::field::FieldType::Textarea,
+            ..Default::default()
         },
     ];
 
@@ -425,29 +425,32 @@ fn field_write_access_strips_denied_fields() {
     let conn = pool.get().unwrap();
 
     let fields = vec![
-        {
-            let mut f = crap_cms::core::field::FieldDefinition::default();
-            f.name = "title".to_string();
-            f.field_type = crap_cms::core::field::FieldType::Text;
-            f
+        crap_cms::core::FieldDefinition {
+            name: "title".to_string(),
+            field_type: crap_cms::core::field::FieldType::Text,
+            ..Default::default()
         },
-        {
-            // This field denies create but allows update
-            let mut f = crap_cms::core::field::FieldDefinition::default();
-            f.name = "auto_slug".to_string();
-            f.field_type = crap_cms::core::field::FieldType::Text;
-            f.access.create = Some("access.admin_only".to_string());
-            f.access.update = None;
-            f
+        // This field denies create but allows update
+        crap_cms::core::FieldDefinition {
+            name: "auto_slug".to_string(),
+            field_type: crap_cms::core::field::FieldType::Text,
+            access: crap_cms::core::field::FieldAccess {
+                create: Some("access.admin_only".to_string()),
+                update: None,
+                ..Default::default()
+            },
+            ..Default::default()
         },
-        {
-            // This field allows create but denies update
-            let mut f = crap_cms::core::field::FieldDefinition::default();
-            f.name = "immutable_field".to_string();
-            f.field_type = crap_cms::core::field::FieldType::Text;
-            f.access.create = None;
-            f.access.update = Some("access.admin_only".to_string());
-            f
+        // This field allows create but denies update
+        crap_cms::core::FieldDefinition {
+            name: "immutable_field".to_string(),
+            field_type: crap_cms::core::field::FieldType::Text,
+            access: crap_cms::core::field::FieldAccess {
+                create: None,
+                update: Some("access.admin_only".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
         },
     ];
 
@@ -506,12 +509,11 @@ fn no_access_config_means_allowed() {
     );
 
     // Field-level: fields without any access config should not be denied
-    let fields = vec![{
-        let mut f = crap_cms::core::field::FieldDefinition::default();
-        f.name = "open_field".to_string();
-        f.field_type = crap_cms::core::field::FieldType::Text;
-        // access.read, access.create, access.update all None by default
-        f
+    // access.read, access.create, access.update all None by default
+    let fields = vec![crap_cms::core::FieldDefinition {
+        name: "open_field".to_string(),
+        field_type: crap_cms::core::field::FieldType::Text,
+        ..Default::default()
     }];
 
     let denied_read = runner.check_field_read_access(&fields, None, &conn);

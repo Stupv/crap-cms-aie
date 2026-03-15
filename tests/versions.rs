@@ -1168,15 +1168,13 @@ fn service_update_draft_preserves_join_data_in_snapshot() {
         .unwrap()
         .unwrap();
     let main_blocks = main_doc.fields.get("content").and_then(|v| v.as_array());
-    match main_blocks {
-        Some(arr) => {
-            assert_eq!(arr.len(), 1, "main table should still have 1 block");
-            assert_eq!(
-                arr[0].get("body").and_then(|v| v.as_str()),
-                Some("Initial block")
-            );
-        }
-        None => {} // no blocks hydrated means join table was empty for main doc, which is acceptable
+    // no blocks hydrated means join table was empty for main doc, which is acceptable
+    if let Some(arr) = main_blocks {
+        assert_eq!(arr.len(), 1, "main table should still have 1 block");
+        assert_eq!(
+            arr[0].get("body").and_then(|v| v.as_str()),
+            Some("Initial block")
+        );
     }
 }
 

@@ -370,8 +370,8 @@ mod tests {
 
     #[test]
     fn test_filter_op_greater_than_or_equal() {
-        let op = lua_parse_filter_op("greater_than_or_equal", &Value::Number(3.14)).unwrap();
-        assert!(matches!(op, FilterOp::GreaterThanOrEqual(ref v) if v == "3.14"));
+        let op = lua_parse_filter_op("greater_than_or_equal", &Value::Number(3.15)).unwrap();
+        assert!(matches!(op, FilterOp::GreaterThanOrEqual(ref v) if v == "3.15"));
     }
 
     #[test]
@@ -462,12 +462,12 @@ mod tests {
         let tbl = lua.create_table().unwrap();
         tbl.set("title", "Hello").unwrap();
         tbl.set("count", 42).unwrap();
-        tbl.set("ratio", 3.14).unwrap();
+        tbl.set("ratio", 3.15).unwrap();
         tbl.set("active", true).unwrap();
         let map = lua_table_to_hashmap(&tbl).unwrap();
         assert_eq!(map.get("title").unwrap(), "Hello");
         assert_eq!(map.get("count").unwrap(), "42");
-        assert_eq!(map.get("ratio").unwrap(), "3.14");
+        assert_eq!(map.get("ratio").unwrap(), "3.15");
         assert_eq!(map.get("active").unwrap(), "true");
     }
 
