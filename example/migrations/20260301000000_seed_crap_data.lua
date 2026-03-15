@@ -1,22 +1,22 @@
 local M = {}
 
 function M.up()
-	crap.log.info("Seeding Meridian Studio data...")
+	crap.log.info("Seeding Crap Studio data...")
 
 	-- ========================
 	-- USERS (6)
 	-- ========================
 	local admin = crap.collections.create("users", {
-		email = "admin@meridian.studio",
+		email = "admin@crap.studio",
 		password = "admin123",
 		name = "Alex Morgan",
 		role = "admin",
 		skills = { "strategy", "design" },
-		bio = "Founder & Creative Director at Meridian Studio. 15 years of experience in digital design and brand strategy.",
+		bio = "Founder & Creative Director at Crap Studio. 15 years of experience in digital design and brand strategy.",
 	})
 
 	local director = crap.collections.create("users", {
-		email = "sam@meridian.studio",
+		email = "sam@crap.studio",
 		password = "password123",
 		name = "Sam Chen",
 		role = "director",
@@ -25,7 +25,7 @@ function M.up()
 	})
 
 	local editor = crap.collections.create("users", {
-		email = "jordan@meridian.studio",
+		email = "jordan@crap.studio",
 		password = "password123",
 		name = "Jordan Rivera",
 		role = "editor",
@@ -34,7 +34,7 @@ function M.up()
 	})
 
 	local designer = crap.collections.create("users", {
-		email = "taylor@meridian.studio",
+		email = "taylor@crap.studio",
 		password = "password123",
 		name = "Taylor Kim",
 		role = "author",
@@ -43,7 +43,7 @@ function M.up()
 	})
 
 	local dev = crap.collections.create("users", {
-		email = "casey@meridian.studio",
+		email = "casey@crap.studio",
 		password = "password123",
 		name = "Casey Brooks",
 		role = "author",
@@ -52,7 +52,7 @@ function M.up()
 	})
 
 	local photographer = crap.collections.create("users", {
-		email = "riley@meridian.studio",
+		email = "riley@crap.studio",
 		password = "password123",
 		name = "Riley Patel",
 		role = "author",
@@ -400,9 +400,9 @@ function M.up()
 	})
 
 	local proj_ds = crap.collections.create("projects", {
-		title = "Meridian Design System",
-		slug = "meridian-design-system",
-		excerpt = "Internal design system powering all Meridian Studio projects. Components, tokens, and documentation.",
+		title = "Crap Design System",
+		slug = "crap-design-system",
+		excerpt = "Internal design system powering all Crap Studio projects. Components, tokens, and documentation.",
 		status = "in_progress",
 		priority = "high",
 		featured = true,
@@ -419,7 +419,7 @@ function M.up()
 		content = {
 			{
 				_block_type = "richtext",
-				body = "<h2>One System, Every Project</h2><p>The Meridian Design System ensures consistency across all our deliverables while giving each project room to breathe with customizable tokens and composable components.</p>",
+				body = "<h2>One System, Every Project</h2><p>The Crap Design System ensures consistency across all our deliverables while giving each project room to breathe with customizable tokens and composable components.</p>",
 			},
 		},
 	})
@@ -475,8 +475,8 @@ function M.up()
 	})
 
 	local proj_internal_site = crap.collections.create("projects", {
-		title = "Meridian Studio Website",
-		slug = "meridian-website",
+		title = "Crap Studio Website",
+		slug = "crap-website",
 		excerpt = "Our own website, built with Crap CMS. Dogfooding at its finest.",
 		status = "in_progress",
 		priority = "normal",
@@ -501,13 +501,13 @@ function M.up()
 	end
 
 	create_post({
-		title = "Introducing Meridian Studio",
-		slug = "introducing-meridian-studio",
-		excerpt = "We're excited to announce the launch of Meridian Studio, a creative technology studio focused on building beautiful, performant digital experiences.",
+		title = "Introducing Crap Studio",
+		slug = "introducing-crap-studio",
+		excerpt = "We're excited to announce the launch of Crap Studio, a creative technology studio focused on building beautiful, performant digital experiences.",
 		post_type = "article",
 		author = admin.id,
 		categories = { cat_culture.id },
-		content = "<h2>Hello, World</h2><p>After years of freelancing and agency work, we've decided to build something of our own. Meridian Studio is a creative technology studio that brings together design, engineering, and strategy under one roof.</p><p>We believe the best digital experiences come from teams that deeply understand both the craft of design and the power of technology. That's what we're building here.</p>",
+		content = "<h2>Hello, World</h2><p>After years of freelancing and agency work, we've decided to build something of our own. Crap Studio is a creative technology studio that brings together design, engineering, and strategy under one roof.</p><p>We believe the best digital experiences come from teams that deeply understand both the craft of design and the power of technology. That's what we're building here.</p>",
 		published_at = "2024-01-15T10:00:00Z",
 		featured = true,
 	})
@@ -532,7 +532,7 @@ function M.up()
 		author = designer.id,
 		categories = { cat_design.id },
 		tags = { tag_a11y.id, tag_ds.id, tag_figma.id },
-		content = "<h2>Accessibility as a Foundation</h2><p>Accessibility isn't an afterthought at Meridian — it's baked into our design system from the ground up. Every component is tested against WCAG 2.1 AA standards.</p><h2>Color System</h2><p>Our color tokens are generated with contrast ratios in mind. Every foreground/background combination in our palette meets at least 4.5:1 contrast ratio for normal text.</p>",
+		content = "<h2>Accessibility as a Foundation</h2><p>Accessibility isn't an afterthought at Crap — it's baked into our design system from the ground up. Every component is tested against WCAG 2.1 AA standards.</p><h2>Color System</h2><p>Our color tokens are generated with contrast ratios in mind. Every foreground/background combination in our palette meets at least 4.5:1 contrast ratio for normal text.</p>",
 		published_at = "2024-03-10T10:00:00Z",
 		featured = true,
 	})
@@ -594,7 +594,7 @@ function M.up()
 		author = editor.id,
 		categories = { cat_strategy.id, cat_design.id },
 		tags = { tag_ux.id },
-		content = "<h2>Research-Driven Design</h2><p>At Meridian, every project starts with understanding the people we're designing for. Our research process combines interviews, surveys, analytics, and usability testing.</p>",
+		content = "<h2>Research-Driven Design</h2><p>At Crap, every project starts with understanding the people we're designing for. Our research process combines interviews, surveys, analytics, and usability testing.</p>",
 		published_at = "2024-07-08T10:00:00Z",
 	})
 
@@ -809,7 +809,7 @@ function M.up()
 			{
 				_block_type = "hero",
 				heading = "We design and build digital experiences",
-				subheading = "Meridian Studio is a creative technology practice specializing in brand, product, and web.",
+				subheading = "Crap Studio is a creative technology practice specializing in brand, product, and web.",
 				cta_text = "See our work",
 				cta_url = "/projects",
 			},
@@ -830,7 +830,7 @@ function M.up()
 		content = {
 			{
 				_block_type = "richtext",
-				body = "<h2>Our Story</h2><p>Meridian Studio was founded in 2024 with a simple belief: the best digital experiences come from teams that deeply understand both design and technology. We're a small, senior team that partners with ambitious companies to build products people love.</p>",
+				body = "<h2>Our Story</h2><p>Crap Studio was founded in 2024 with a simple belief: the best digital experiences come from teams that deeply understand both design and technology. We're a small, senior team that partners with ambitious companies to build products people love.</p>",
 			},
 			{
 				_block_type = "team_grid",
@@ -849,8 +849,8 @@ function M.up()
 		content = {
 			{
 				_block_type = "two_column",
-				left = "<h2>Get in touch</h2><p>Have a project in mind? We'd love to hear about it. Drop us a line and we'll get back to you within 24 hours.</p><p><strong>Email:</strong> hello@meridian.studio<br/><strong>Phone:</strong> +1 555 MERIDIAN</p>",
-				right = "<h2>Visit us</h2><p>Meridian Studio<br/>123 Creative Ave, Suite 400<br/>San Francisco, CA 94105</p><p>Monday - Friday, 9am - 6pm PST</p>",
+				left = "<h2>Get in touch</h2><p>Have a project in mind? We'd love to hear about it. Drop us a line and we'll get back to you within 24 hours.</p><p><strong>Email:</strong> hello@crap.studio<br/><strong>Phone:</strong> +1 555 CRAP</p>",
+				right = "<h2>Visit us</h2><p>Crap Studio<br/>123 Creative Ave, Suite 400<br/>San Francisco, CA 94105</p><p>Monday - Friday, 9am - 6pm PST</p>",
 			},
 		},
 		template = "default",
@@ -883,14 +883,14 @@ function M.up()
 	-- EVENTS (5)
 	-- ========================
 	crap.collections.create("events", {
-		title = "Meridian Design Meetup #12",
+		title = "Crap Design Meetup #12",
 		slug = "design-meetup-12",
-		description = "<p>Monthly design meetup hosted at Meridian Studio. This month: <strong>Design Systems in Practice</strong> with talks from our team and guest speakers.</p>",
+		description = "<p>Monthly design meetup hosted at Crap Studio. This month: <strong>Design Systems in Practice</strong> with talks from our team and guest speakers.</p>",
 		start_date = "2026-03-15T18:00:00Z",
 		end_date = "2026-03-15T21:00:00Z",
 		online = false,
 		location = {
-			venue_name = "Meridian Studio",
+			venue_name = "Crap Studio",
 			address = "123 Creative Ave, Suite 400",
 			city = "San Francisco",
 			country = "USA",
@@ -941,7 +941,7 @@ function M.up()
 		end_date = "2026-05-01T20:00:00Z",
 		online = false,
 		location = {
-			venue_name = "Meridian Studio",
+			venue_name = "Crap Studio",
 			address = "123 Creative Ave, Suite 400",
 			city = "San Francisco",
 			country = "USA",
@@ -970,7 +970,7 @@ function M.up()
 		author_name = "Michael Torres",
 		author_title = "CEO, Nova Financial",
 		company = "Nova Financial",
-		quote = "Meridian didn't just redesign our brand — they helped us reimagine who we are. The new identity has fundamentally changed how our customers perceive us.",
+		quote = "Crap didn't just redesign our brand — they helped us reimagine who we are. The new identity has fundamentally changed how our customers perceive us.",
 		rating = 5,
 		project = proj_nova_rebrand.id,
 		featured = true,
@@ -980,7 +980,7 @@ function M.up()
 		author_name = "Sarah Kim",
 		author_title = "CTO, Pulse Health",
 		company = "Pulse Health",
-		quote = "The technical depth of the Meridian team is remarkable. They understood our HIPAA requirements from day one and built a platform our patients trust.",
+		quote = "The technical depth of the Crap team is remarkable. They understood our HIPAA requirements from day one and built a platform our patients trust.",
 		rating = 5,
 		project = proj_pulse_portal.id,
 		featured = true,
@@ -990,7 +990,7 @@ function M.up()
 		author_name = "David Okonkwo",
 		author_title = "VP Engineering, Apex Retail",
 		company = "Apex Retail",
-		quote = "50K concurrent users with sub-second page loads. Meridian delivered on a promise that three other agencies couldn't.",
+		quote = "50K concurrent users with sub-second page loads. Crap delivered on a promise that three other agencies couldn't.",
 		rating = 5,
 		project = proj_apex_ecom.id,
 		featured = true,
@@ -1000,7 +1000,7 @@ function M.up()
 		author_name = "Lisa Chang",
 		author_title = "Head of Product, Verde Education",
 		company = "Verde Education",
-		quote = "Working with Meridian feels like having a senior tech team embedded in your company. They truly care about the product.",
+		quote = "Working with Crap feels like having a senior tech team embedded in your company. They truly care about the product.",
 		rating = 4,
 		project = proj_verde_lms.id,
 	})
@@ -1009,7 +1009,7 @@ function M.up()
 		author_name = "James Wright",
 		author_title = "CTO, Echo Media Group",
 		company = "Echo Media Group",
-		quote = "Even in the planning phase, Meridian's strategic thinking has been invaluable. Can't wait to see the finished product.",
+		quote = "Even in the planning phase, Crap's strategic thinking has been invaluable. Can't wait to see the finished product.",
 		rating = 5,
 		project = proj_echo_cms.id,
 	})
@@ -1018,7 +1018,7 @@ function M.up()
 		author_name = "Amanda Foster",
 		author_title = "CMO, TechStart Inc",
 		company = "TechStart Inc",
-		quote = "The brand identity Meridian created for us has been instrumental in our Series A fundraising. Investors consistently comment on our polished presence.",
+		quote = "The brand identity Crap created for us has been instrumental in our Series A fundraising. Investors consistently comment on our polished presence.",
 		rating = 5,
 		featured = true,
 	})
@@ -1027,7 +1027,7 @@ function M.up()
 		author_name = "Robert Chen",
 		author_title = "Director of Digital, Pacific Northwest Health",
 		company = "Pacific Northwest Health",
-		quote = "Meridian's understanding of healthcare UX is unmatched. They balance compliance requirements with genuinely delightful user experiences.",
+		quote = "Crap's understanding of healthcare UX is unmatched. They balance compliance requirements with genuinely delightful user experiences.",
 		rating = 4,
 	})
 
@@ -1035,7 +1035,7 @@ function M.up()
 		author_name = "Elena Vasquez",
 		author_title = "Founder, Bloom Creative",
 		company = "Bloom Creative",
-		quote = "We hired Meridian for a quick brand refresh and ended up with a complete transformation. Best investment we've made.",
+		quote = "We hired Crap for a quick brand refresh and ended up with a complete transformation. Best investment we've made.",
 		rating = 5,
 	})
 
@@ -1100,18 +1100,18 @@ function M.up()
 	-- GLOBALS
 	-- ========================
 	crap.globals.update("site_settings", {
-		site_name = "Meridian Studio",
+		site_name = "Crap Studio",
 		tagline = "Design. Build. Launch.",
-		contact_email = "hello@meridian.studio",
-		phone = "+1 555 MERIDIAN",
+		contact_email = "hello@crap.studio",
+		phone = "+1 555 CRAP",
 		address = "123 Creative Ave, Suite 400\nSan Francisco, CA 94105",
 		primary_color = "#2563eb",
 		secondary_color = "#7c3aed",
 		social = {
-			github = "https://github.com/meridian-studio",
-			twitter = "https://twitter.com/meridianstudio",
-			linkedin = "https://linkedin.com/company/meridian-studio",
-			instagram = "https://instagram.com/meridianstudio",
+			github = "https://github.com/crap-studio",
+			twitter = "https://twitter.com/crapstudio",
+			linkedin = "https://linkedin.com/company/crap-studio",
+			instagram = "https://instagram.com/crapstudio",
 		},
 	})
 
@@ -1129,11 +1129,11 @@ function M.up()
 	})
 
 	crap.globals.update("footer", {
-		copyright_text = "Meridian Studio. All rights reserved.",
+		copyright_text = "Crap Studio. All rights reserved.",
 		show_social_links = true,
 	})
 
-	crap.log.info("Meridian Studio seed complete: 6 users, 5 clients, 6 categories, 12 tags, 5 services, 10 projects, 20 posts, 4 pages, 5 events, 8 testimonials, 5 inquiries, 3 globals")
+	crap.log.info("Crap Studio seed complete: 6 users, 5 clients, 6 categories, 12 tags, 5 services, 10 projects, 20 posts, 4 pages, 5 events, 8 testimonials, 5 inquiries, 3 globals")
 end
 
 function M.down()
@@ -1161,7 +1161,7 @@ function M.down()
 		end
 	end
 
-	crap.log.info("Meridian Studio seed removed")
+	crap.log.info("Crap Studio seed removed")
 end
 
 return M

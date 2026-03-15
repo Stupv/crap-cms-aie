@@ -27,8 +27,8 @@ smtp_port = 587
 smtp_user = "${CRAP_SMTP_USER}"
 smtp_pass = "${CRAP_SMTP_PASS}"
 smtp_tls = "${CRAP_SMTP_TLS:-starttls}"
-from_address = "${CRAP_SMTP_FROM:-noreply@meridian.studio}"
-from_name = "Meridian Studio"
+from_address = "${CRAP_SMTP_FROM:-noreply@crap.studio}"
+from_name = "Crap Studio"
 
 [live]
 enabled = true
@@ -60,7 +60,7 @@ max_age = 3600
 on_init = ["hooks.on_init"]
 vm_pool_size = 16
 
-[meridian]
-studio_name = "Meridian Studio"
+[crap]
+studio_name = "Crap Studio"
 max_budget = 500000
 inquiry_webhook_url = "https://hooks.example.com/inquiries"

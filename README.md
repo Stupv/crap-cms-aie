@@ -21,21 +21,26 @@ For usage documentation, see the [user manual](https://crapcms.com/docs) (source
 src/
 ├── main.rs           # binary entry point, subcommand dispatch
 ├── lib.rs            # crate exports
-├── config.rs         # crap.toml loading + defaults
+├── config/           # crap.toml loading + defaults
 ├── core/             # collection, field, document types
 ├── db/               # SQLite pool, migrations, query builder
 ├── hooks/            # Lua VM, crap.* API, hook lifecycle
 ├── admin/            # Axum admin UI (handlers, templates)
-└── api/              # Tonic gRPC service
+├── api/              # Tonic gRPC service
+├── scheduler/        # background job scheduler
+├── mcp/              # Model Context Protocol server
+├── commands/         # CLI subcommands
+└── scaffold/         # init/make scaffolding
 ```
 
 ## Development
 
 ```bash
-cargo build                        # compile
-cargo test                         # run tests (2400+)
-cargo tarpaulin --out html         # coverage report
-crap-cms serve ./example           # run with example config
+git config core.hooksPath .githooks  # enable shared git hooks (fmt + clippy pre-commit)
+cargo build                          # compile
+cargo test                           # run tests (3600+)
+cargo tarpaulin --out html           # coverage report
+crap-cms serve ./example             # run with example config
 ```
 
 Static files and templates are compiled into the binary via `include_dir!`. Rebuild after changing files in `static/` or `templates/`.
@@ -54,16 +59,27 @@ create_post
 
 ### Load Testing
 
+#### gRPC benchmarks (recommended)
+
+Requires [ghz](https://github.com/bojand/ghz), grpcurl, protoc, jq, and a running server:
+
+```bash
+./tests/grpc_loadtest.sh                              # all scenarios, default settings
+./tests/grpc_loadtest.sh --duration 5                 # shorter runs
+./tests/grpc_loadtest.sh --concurrency 1,10           # custom concurrency levels
+./tests/grpc_loadtest.sh --scenarios find,count        # specific scenarios only
+```
+
+Scenarios: `describe`, `count`, `find`, `find_where`, `find_by_id`, `find_deep`, `create`, `update`.
+
+#### HTTP + gRPC mixed
+
 Requires [oha](https://github.com/hatoo/oha), grpcurl, jq, and a running server:
 
 ```bash
-./tests/loadtest.sh                              # all scenarios, default settings
-./tests/loadtest.sh --duration 5                 # shorter runs
-./tests/loadtest.sh --concurrency 1,10           # custom concurrency levels
-./tests/loadtest.sh --scenarios grpc_find,search  # specific scenarios only
+./tests/loadtest.sh                                    # all scenarios
+./tests/loadtest.sh --scenarios read_list,grpc_find    # specific scenarios
 ```
-
-Scenarios: `read_list`, `read_single`, `grpc_find`, `grpc_find_deep`, `grpc_write`, `search`.
 
 ### Documentation Book
 

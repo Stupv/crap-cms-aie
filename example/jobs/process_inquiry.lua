@@ -27,7 +27,7 @@ function M.run(context)
 
   -- Send email notification
   crap.email.send({
-    to = "hello@meridian.studio",
+    to = "hello@crap.studio",
     subject = string.format("New inquiry from %s", inquiry.name or "Unknown"),
     html = string.format(
       "<h2>New Inquiry</h2>"
@@ -44,7 +44,7 @@ function M.run(context)
   })
 
   -- Send webhook notification
-  local webhook_url = crap.config.get("meridian.inquiry_webhook_url")
+  local webhook_url = crap.config.get("crap.inquiry_webhook_url")
   if webhook_url then
     local ok, err = pcall(function()
       crap.http.request({

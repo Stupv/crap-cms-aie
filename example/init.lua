@@ -1,4 +1,4 @@
-crap.log.info("Meridian Studio initializing...")
+crap.log.info("Crap Studio initializing...")
 
 -- Load plugins (runs after collections/*.lua are loaded)
 require("plugins.seo").install({ exclude = { "pages", "inquiries" } })
@@ -52,4 +52,4 @@ crap.hooks.register("after_change", function(context)
 	return context
 end)
 
-crap.log.info("Meridian Studio ready")
+crap.log.info("Crap Studio ready")

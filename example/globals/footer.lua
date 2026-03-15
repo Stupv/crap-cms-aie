@@ -4,7 +4,7 @@ crap.globals.define("footer", {
     crap.fields.text({
       name = "copyright_text",
       localized = true,
-      default_value = "Meridian Studio. All rights reserved.",
+      default_value = "Crap Studio. All rights reserved.",
     }),
     crap.fields.checkbox({ name = "show_social_links", default_value = true }),
     crap.fields.array({

@@ -7,7 +7,7 @@ return function()
 
   crap.log.info(
     string.format(
-      "Meridian Studio: %d collections, %d locales (%s)",
+      "Crap Studio: %d collections, %d locales (%s)",
       #collections,
       #locales,
       table.concat(locales, ", ")
