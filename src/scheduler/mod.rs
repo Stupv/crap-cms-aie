@@ -39,12 +39,18 @@ pub async fn start(
         config.max_concurrent
     );
 
-    // Recover stale jobs on startup
+    // Recover stale jobs and image queue entries on startup
     {
         let conn = pool
             .get()
             .context("Scheduler: failed to get DB connection for recovery")?;
         recover_stale_jobs(&conn, &registry)?;
+
+        match image_query::recover_stale_images(&conn) {
+            Ok(n) if n > 0 => tracing::info!("Recovered {} stale image queue entries", n),
+            Ok(_) => {}
+            Err(e) => tracing::warn!("Image queue recovery error: {}", e),
+        }
     }
 
     let poll_interval = tokio::time::Duration::from_secs(config.poll_interval);

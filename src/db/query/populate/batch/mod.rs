@@ -13,14 +13,14 @@ use crate::db::query::populate::{
     PopulateCache, PopulateContext, PopulateCtx, PopulateOpts, document_to_json,
 };
 use crate::{
-    core::{Document, FieldType, upload},
+    core::{Document, FieldType, field::flatten_array_sub_fields, upload},
     db::{
         Filter, FilterClause, FilterOp, FindQuery,
         query::{hydrate_document, read},
     },
 };
 
-use super::single::populate_relationships_cached;
+use super::single::{nested, populate_relationships_cached};
 
 /// Batch-populate relationship fields across a slice of documents.
 ///
@@ -56,8 +56,8 @@ pub fn populate_relationships_batch_cached(
         visited.insert((collection_slug.to_string(), doc.id.to_string()));
     }
 
-    // -- Non-join relationship/upload fields --
-    for field in &def.fields {
+    // -- Non-join relationship/upload fields (flattened through transparent containers) --
+    for field in flatten_array_sub_fields(&def.fields) {
         if field.field_type != FieldType::Relationship && field.field_type != FieldType::Upload {
             continue;
         }
@@ -120,6 +120,19 @@ pub fn populate_relationships_batch_cached(
                 )?;
             }
         }
+    }
+
+    // -- Nested containers: populate relationship/upload fields inside Groups/Blocks/Arrays --
+    for doc in docs.iter_mut() {
+        let mut doc_visited = visited.clone();
+        let nested_pctx = PopulateCtx {
+            conn,
+            registry,
+            effective_depth: depth,
+            locale_ctx,
+            cache,
+        };
+        nested::populate_containers_in_doc(&nested_pctx, doc, &def.fields, &mut doc_visited)?;
     }
 
     // -- Join fields: fall through to per-doc (reverse lookups can't batch easily) --

@@ -748,37 +748,34 @@ impl ContentService {
         let token = Self::extract_token(&metadata);
         let req = request.into_inner();
 
-        // Look up job definition
-        let job_def = self
-            .registry
-            .get_job(&req.slug)
-            .cloned()
-            .ok_or_else(|| Status::not_found(format!("Job '{}' not found", req.slug)))?;
-
         let pool = self.pool.clone();
         let hook_runner = self.hook_runner.clone();
         let jwt_secret = self.jwt_secret.clone();
         let registry = self.registry.clone();
         let data_json = req.data_json.unwrap_or_else(|| "{}".to_string());
         let slug = req.slug.clone();
-        let access_ref = job_def.access.clone();
-        let retries = job_def.retries;
-        let queue = job_def.queue.clone();
         let job_id = tokio::task::spawn_blocking(move || -> Result<String, Status> {
             let mut conn = pool.get().map_err(|e| {
                 tracing::error!("TriggerJob pool error: {}", e);
                 Status::internal("Internal error")
             })?;
 
+            // Auth check first — before job lookup
             let auth_user = ContentService::resolve_auth_user(token, &jwt_secret, &registry, &conn);
             if auth_user.is_none() {
                 return Err(Status::unauthenticated("Authentication required"));
             }
 
+            // Look up job definition
+            let job_def = registry
+                .get_job(&slug)
+                .cloned()
+                .ok_or_else(|| Status::not_found(format!("Job '{}' not found", slug)))?;
+
             // Check access if defined
-            if access_ref.is_some() {
+            if job_def.access.is_some() {
                 let result = ContentService::check_access_blocking(
-                    access_ref.as_deref(),
+                    job_def.access.as_deref(),
                     &auth_user,
                     None,
                     None,
@@ -791,8 +788,15 @@ impl ContentService {
                 }
             }
 
-            let job_run = jobs::insert_job(&conn, &slug, &data_json, "grpc", retries + 1, &queue)
-                .map_err(|e| {
+            let job_run = jobs::insert_job(
+                &conn,
+                &slug,
+                &data_json,
+                "grpc",
+                job_def.retries + 1,
+                &job_def.queue,
+            )
+            .map_err(|e| {
                 tracing::error!("Failed to queue job: {}", e);
                 Status::internal("Internal error")
             })?;

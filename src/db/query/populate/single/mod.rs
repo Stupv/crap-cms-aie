@@ -1,6 +1,7 @@
 //! Single-document relationship population (recursive, cached).
 
 mod join;
+pub(crate) mod nested;
 mod nonpoly;
 mod poly;
 #[cfg(test)]
@@ -9,7 +10,7 @@ mod tests;
 use anyhow::Result;
 use std::collections::HashSet;
 
-use crate::core::{Document, FieldType};
+use crate::core::{Document, FieldType, field::flatten_array_sub_fields};
 use crate::db::query::populate::{PopulateCache, PopulateContext, PopulateCtx, PopulateOpts};
 
 /// Recursively populate relationship fields with full document objects.
@@ -42,7 +43,7 @@ pub fn populate_relationships_cached(
     }
     visited.insert(visit_key);
 
-    for field in &def.fields {
+    for field in flatten_array_sub_fields(&def.fields) {
         if field.field_type != FieldType::Relationship && field.field_type != FieldType::Upload {
             continue;
         }
@@ -110,6 +111,16 @@ pub fn populate_relationships_cached(
             }
         }
     }
+
+    // Populate relationship/upload fields inside nested containers (Groups, Blocks, Arrays)
+    let nested_pctx = PopulateCtx {
+        conn,
+        registry,
+        effective_depth: depth,
+        locale_ctx,
+        cache,
+    };
+    nested::populate_containers_in_doc(&nested_pctx, doc, &def.fields, visited)?;
 
     // Join fields: virtual reverse lookups
     join::populate_join_fields(ctx, doc, visited, opts, cache)?;

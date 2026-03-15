@@ -46,7 +46,7 @@ pub(crate) mod test_helpers {
     use crate::db::{DbConnection, InMemoryConn};
 
     // Re-export shared helpers so callers keep `use test_helpers::*`
-    pub use crate::db::query::test_helpers::make_field;
+    pub use crate::db::query::test_helpers::{make_field, make_group_field, make_tabs_field};
 
     pub fn make_collection_def(slug: &str, fields: Vec<FieldDefinition>) -> CollectionDefinition {
         crate::db::query::test_helpers::make_collection_def(slug, fields, false)

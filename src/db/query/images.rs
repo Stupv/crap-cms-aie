@@ -220,6 +220,17 @@ pub fn fail_image_entry(conn: &dyn DbConnection, id: &str, error: &str) -> Resul
     Ok(())
 }
 
+/// Reset stale `processing` entries back to `pending`.
+/// These are entries that were claimed but never completed — e.g., due to a server
+/// crash mid-conversion. Called on scheduler startup.
+pub fn recover_stale_images(conn: &dyn DbConnection) -> Result<i64> {
+    let updated = conn.execute(
+        "UPDATE _crap_image_queue SET status = 'pending' WHERE status = 'processing'",
+        &[],
+    )?;
+    Ok(updated as i64)
+}
+
 /// Count pending entries in the queue.
 pub fn count_pending_images(conn: &dyn DbConnection) -> Result<i64> {
     let row = conn
@@ -599,5 +610,38 @@ mod tests {
 
         let purged = purge_old_image_entries(&conn, 86400).unwrap(); // 1 day
         assert_eq!(purged, 1);
+    }
+
+    #[test]
+    fn recover_stale_processing_entries() {
+        let (_dir, conn) = setup_db();
+
+        // Insert two entries and claim them (moves to processing)
+        insert_image_queue_entry(
+            &conn,
+            &entry("m", "d1", "/a", "/b", "avif", 60, "og_avif_url", "/u1"),
+        )
+        .unwrap();
+        insert_image_queue_entry(
+            &conn,
+            &entry("m", "d1", "/a", "/c", "avif", 60, "hero_avif_url", "/u2"),
+        )
+        .unwrap();
+
+        // Claim them — both move to processing
+        let claimed = claim_pending_images(&conn, 10).unwrap();
+        assert_eq!(claimed.len(), 2);
+
+        // Nothing pending anymore
+        assert_eq!(count_pending_images(&conn).unwrap(), 0);
+
+        // Recover stale entries — should move both back to pending
+        let recovered = recover_stale_images(&conn).unwrap();
+        assert_eq!(recovered, 2);
+
+        // Now they're claimable again
+        assert_eq!(count_pending_images(&conn).unwrap(), 2);
+        let reclaimed = claim_pending_images(&conn, 10).unwrap();
+        assert_eq!(reclaimed.len(), 2);
     }
 }

@@ -179,7 +179,12 @@ impl ContentService {
         request: Request<content::MeRequest>,
     ) -> Result<Response<content::MeResponse>, Status> {
         let metadata = request.metadata().clone();
+        let req = request.into_inner();
         let token = Self::extract_token(&metadata)
+            .or_else(|| {
+                let t = &req.token;
+                if t.is_empty() { None } else { Some(t.clone()) }
+            })
             .ok_or_else(|| Status::unauthenticated("Missing token"))?;
 
         let claims = auth::validate_token(&token, self.jwt_secret.as_ref())

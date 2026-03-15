@@ -6,9 +6,10 @@ mod tests {
     use serde_json::json;
 
     use crate::core::{
-        Document, Registry,
-        field::{FieldType, RelationshipConfig},
+        Document, FieldDefinition, Registry,
+        field::{BlockDefinition, FieldTab, FieldType, RelationshipConfig},
     };
+    use crate::db::DbConnection;
     use crate::db::query::populate::{
         PopulateCache, PopulateContext, PopulateOpts, populate_relationships,
         populate_relationships_cached, test_helpers::*,
@@ -400,5 +401,287 @@ mod tests {
             doc2.fields["author"].get("name").and_then(|v| v.as_str()),
             Some("Alice")
         );
+    }
+
+    // ── nested container population tests ─────────────────────────────────
+
+    #[test]
+    fn populate_upload_inside_blocks() {
+        let conn = setup_populate_db();
+        // Add media table (simulating an upload collection)
+        conn.execute_batch(
+            "CREATE TABLE media (
+                id TEXT PRIMARY KEY,
+                filename TEXT,
+                url TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            );
+            INSERT INTO media (id, filename, url, created_at, updated_at)
+                VALUES ('m1', 'hero.jpg', '/uploads/hero.jpg', '2024-01-01', '2024-01-01');
+            CREATE TABLE pages (
+                id TEXT PRIMARY KEY,
+                title TEXT,
+                content TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            );
+            INSERT INTO pages (id, title, content, created_at, updated_at)
+                VALUES ('pg1', 'Home', '[]', '2024-01-01', '2024-01-01');",
+        )
+        .unwrap();
+
+        let media_def = make_collection_def(
+            "media",
+            vec![
+                make_field("filename", FieldType::Text),
+                make_field("url", FieldType::Text),
+            ],
+        );
+
+        // Build pages def with a blocks field containing a hero block with an upload sub-field
+        let mut bg_field = make_field("background", FieldType::Upload);
+        bg_field.relationship = Some(RelationshipConfig::new("media", false));
+        let hero_block = BlockDefinition::new(
+            "hero",
+            vec![make_field("heading", FieldType::Text), bg_field],
+        );
+        let content_field = FieldDefinition::builder("content", FieldType::Blocks)
+            .blocks(vec![hero_block])
+            .build();
+        let pages_def = make_collection_def(
+            "pages",
+            vec![make_field("title", FieldType::Text), content_field],
+        );
+
+        let mut registry = Registry::new();
+        registry.register_collection(pages_def.clone());
+        registry.register_collection(media_def);
+
+        let mut doc = Document::new("pg1".to_string());
+        doc.fields.insert("title".to_string(), json!("Home"));
+        doc.fields.insert(
+            "content".to_string(),
+            json!([{
+                "_block_type": "hero",
+                "heading": "Welcome",
+                "background": "m1"
+            }]),
+        );
+
+        let mut visited = HashSet::new();
+        populate_relationships_cached(
+            &PopulateContext {
+                conn: &conn,
+                registry: &registry,
+                collection_slug: "pages",
+                def: &pages_def,
+            },
+            &mut doc,
+            &mut visited,
+            &PopulateOpts {
+                depth: 1,
+                select: None,
+                locale_ctx: None,
+            },
+            &PopulateCache::new(),
+        )
+        .unwrap();
+
+        let content = doc.fields.get("content").expect("content should exist");
+        let blocks = content.as_array().expect("content should be array");
+        assert_eq!(blocks.len(), 1);
+
+        let hero = blocks[0].as_object().expect("block should be object");
+        let bg = hero.get("background").expect("background should exist");
+        assert!(
+            bg.is_object(),
+            "upload inside block should be populated, got {:?}",
+            bg
+        );
+        assert_eq!(bg.get("id").and_then(|v| v.as_str()), Some("m1"));
+        assert_eq!(
+            bg.get("filename").and_then(|v| v.as_str()),
+            Some("hero.jpg")
+        );
+    }
+
+    #[test]
+    fn populate_relationship_inside_tabs() {
+        let conn = setup_populate_db();
+        // posts and authors tables already exist from setup_populate_db
+
+        // Build a collection with a tabs field containing a relationship sub-field
+        let mut author_field = make_field("author", FieldType::Relationship);
+        author_field.relationship = Some(RelationshipConfig::new("authors", false));
+        let tabs_field = make_tabs_field(
+            "layout",
+            vec![
+                FieldTab {
+                    label: "Content".to_string(),
+                    description: None,
+                    fields: vec![make_field("title", FieldType::Text)],
+                },
+                FieldTab {
+                    label: "Meta".to_string(),
+                    description: None,
+                    fields: vec![author_field],
+                },
+            ],
+        );
+        let posts_def = make_collection_def("posts", vec![tabs_field]);
+
+        let mut registry = Registry::new();
+        registry.register_collection(posts_def.clone());
+        registry.register_collection(make_authors_def());
+
+        let mut doc = Document::new("p1".to_string());
+        doc.fields.insert("title".to_string(), json!("Hello"));
+        doc.fields.insert("author".to_string(), json!("a1"));
+
+        let mut visited = HashSet::new();
+        populate_relationships_cached(
+            &PopulateContext {
+                conn: &conn,
+                registry: &registry,
+                collection_slug: "posts",
+                def: &posts_def,
+            },
+            &mut doc,
+            &mut visited,
+            &PopulateOpts {
+                depth: 1,
+                select: None,
+                locale_ctx: None,
+            },
+            &PopulateCache::new(),
+        )
+        .unwrap();
+
+        let author = doc.fields.get("author").expect("author should exist");
+        assert!(
+            author.is_object(),
+            "relationship inside tabs should be populated, got {:?}",
+            author
+        );
+        assert_eq!(author.get("name").and_then(|v| v.as_str()), Some("Alice"));
+    }
+
+    #[test]
+    fn populate_relationship_inside_group() {
+        let conn = setup_populate_db();
+
+        let mut author_field = make_field("og_author", FieldType::Relationship);
+        author_field.relationship = Some(RelationshipConfig::new("authors", false));
+        let seo_field = make_group_field(
+            "seo",
+            vec![make_field("og_title", FieldType::Text), author_field],
+        );
+        let posts_def = make_collection_def(
+            "posts",
+            vec![make_field("title", FieldType::Text), seo_field],
+        );
+
+        let mut registry = Registry::new();
+        registry.register_collection(posts_def.clone());
+        registry.register_collection(make_authors_def());
+
+        let mut doc = Document::new("p1".to_string());
+        doc.fields.insert("title".to_string(), json!("Hello"));
+        doc.fields.insert(
+            "seo".to_string(),
+            json!({"og_title": "Hello SEO", "og_author": "a1"}),
+        );
+
+        let mut visited = HashSet::new();
+        populate_relationships_cached(
+            &PopulateContext {
+                conn: &conn,
+                registry: &registry,
+                collection_slug: "posts",
+                def: &posts_def,
+            },
+            &mut doc,
+            &mut visited,
+            &PopulateOpts {
+                depth: 1,
+                select: None,
+                locale_ctx: None,
+            },
+            &PopulateCache::new(),
+        )
+        .unwrap();
+
+        let seo = doc.fields.get("seo").expect("seo should exist");
+        let seo_obj = seo.as_object().expect("seo should be object");
+        let og_author = seo_obj.get("og_author").expect("og_author should exist");
+        assert!(
+            og_author.is_object(),
+            "relationship inside group should be populated, got {:?}",
+            og_author
+        );
+        assert_eq!(
+            og_author.get("name").and_then(|v| v.as_str()),
+            Some("Alice")
+        );
+    }
+
+    #[test]
+    fn populate_relationship_inside_array() {
+        let conn = setup_populate_db();
+
+        let mut ref_field = make_field("related", FieldType::Relationship);
+        ref_field.relationship = Some(RelationshipConfig::new("authors", false));
+        let items_field = FieldDefinition::builder("items", FieldType::Array)
+            .fields(vec![make_field("label", FieldType::Text), ref_field])
+            .build();
+        let posts_def = make_collection_def(
+            "posts",
+            vec![make_field("title", FieldType::Text), items_field],
+        );
+
+        let mut registry = Registry::new();
+        registry.register_collection(posts_def.clone());
+        registry.register_collection(make_authors_def());
+
+        let mut doc = Document::new("p1".to_string());
+        doc.fields.insert("title".to_string(), json!("Hello"));
+        doc.fields.insert(
+            "items".to_string(),
+            json!([
+                {"id": "row1", "label": "First", "related": "a1"},
+            ]),
+        );
+
+        let mut visited = HashSet::new();
+        populate_relationships_cached(
+            &PopulateContext {
+                conn: &conn,
+                registry: &registry,
+                collection_slug: "posts",
+                def: &posts_def,
+            },
+            &mut doc,
+            &mut visited,
+            &PopulateOpts {
+                depth: 1,
+                select: None,
+                locale_ctx: None,
+            },
+            &PopulateCache::new(),
+        )
+        .unwrap();
+
+        let items = doc.fields.get("items").expect("items should exist");
+        let arr = items.as_array().expect("items should be array");
+        assert_eq!(arr.len(), 1);
+        let row = arr[0].as_object().expect("row should be object");
+        let related = row.get("related").expect("related should exist");
+        assert!(
+            related.is_object(),
+            "relationship inside array should be populated, got {:?}",
+            related
+        );
+        assert_eq!(related.get("name").and_then(|v| v.as_str()), Some("Alice"));
     }
 }
