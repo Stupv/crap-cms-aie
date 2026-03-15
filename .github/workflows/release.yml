@@ -1,0 +1,157 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+  pages: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-linux:
+    name: Build Linux (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            artifact: crap-cms-linux-x86_64
+          - target: aarch64-unknown-linux-musl
+            artifact: crap-cms-linux-aarch64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Rename binary
+        run: cp target/${{ matrix.target }}/release/crap-cms ${{ matrix.artifact }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  build-windows:
+    name: Build Windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build
+        run: cross build --release --target x86_64-pc-windows-gnu
+
+      - name: Rename binary
+        run: cp target/x86_64-pc-windows-gnu/release/crap-cms.exe crap-cms-windows-x86_64.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: crap-cms-windows-x86_64.exe
+          path: crap-cms-windows-x86_64.exe
+
+  docker:
+    name: Docker
+    needs: build-linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: crap-cms-linux-x86_64
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "major_minor=$(echo "$TAG" | grep -oP '^\d+\.\d+')" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          build-args: BINARY=crap-cms-linux-x86_64
+          tags: |
+            ghcr.io/dkluhzeb/crap-cms:${{ steps.version.outputs.tag }}
+            ghcr.io/dkluhzeb/crap-cms:${{ steps.version.outputs.major_minor }}
+            ghcr.io/dkluhzeb/crap-cms:latest
+
+  release:
+    name: GitHub Release
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --prerelease \
+            --generate-notes \
+            artifacts/crap-cms-linux-x86_64/crap-cms-linux-x86_64 \
+            artifacts/crap-cms-linux-aarch64/crap-cms-linux-aarch64 \
+            artifacts/crap-cms-windows-x86_64.exe/crap-cms-windows-x86_64.exe
+
+  docs:
+    name: Deploy docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mdbook
+        run: |
+          curl -sSL https://github.com/rust-lang/mdBook/releases/latest/download/mdbook-v0.4.44-x86_64-unknown-linux-gnu.tar.gz \
+            | tar xz -C /usr/local/bin
+
+      - name: Build book
+        run: cd docs && mdbook build
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/book
+
+  # publish-crates:
+  #   name: Publish to crates.io
+  #   needs: release
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: dtolnay/rust-toolchain@stable
+  #     - name: Install protoc
+  #       run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+  #     - name: Publish
+  #       run: cargo publish
+  #       env:
+  #         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

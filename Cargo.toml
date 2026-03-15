@@ -1,8 +1,16 @@
 [package]
 name = "crap-cms"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 edition = "2024"
 default-run = "crap-cms"
+description = "Headless CMS in Rust with Lua hooks, gRPC API, and HTMX admin UI"
+license = "MIT"
+repository = "https://github.com/dkluhzeb/crap-cms"
+homepage = "https://github.com/dkluhzeb/crap-cms"
+authors = ["dkluhzeb"]
+keywords = ["cms", "headless", "grpc", "lua", "htmx"]
+categories = ["web-programming", "database"]
+readme = "README.md"
 
 [[bin]]
 name = "crap-cms"

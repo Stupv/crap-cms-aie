@@ -1,5 +1,9 @@
 # Crap CMS
 
+[![CI](https://github.com/dkluhzeb/crap-cms/actions/workflows/ci.yml/badge.svg)](https://github.com/dkluhzeb/crap-cms/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://ghcr.io/dkluhzeb/crap-cms)
+
 Headless CMS in Rust. Lua config (neovim-style) + gRPC API + HTMX admin UI.
 
 For usage documentation, see the [user manual](https://crapcms.com/docs) (source in `docs/`).
@@ -8,7 +12,7 @@ For usage documentation, see the [user manual](https://crapcms.com/docs) (source
 
 | Component    | Technology                            |
 |--------------|---------------------------------------|
-| Language     | Rust (edition 2021)                   |
+| Language     | Rust (edition 2024)                   |
 | Web / Admin  | Axum + Handlebars + HTMX             |
 | API          | gRPC via Tonic + Prost               |
 | Database     | SQLite via rusqlite (WAL mode)        |
@@ -88,6 +92,53 @@ cd docs && mdbook build            # build the user manual
 cd docs && mdbook serve            # local preview at localhost:3000
 ```
 
+## Deployment
+
+### Docker
+
+```bash
+docker pull ghcr.io/dkluhzeb/crap-cms:nightly   # latest master build
+docker pull ghcr.io/dkluhzeb/crap-cms:0.1.0-alpha.1  # specific release
+
+docker run -v /path/to/config:/config -p 3000:3000 -p 50051:50051 \
+  ghcr.io/dkluhzeb/crap-cms:nightly
+```
+
+Images are Alpine-based (~15 MB) and published to `ghcr.io/dkluhzeb/crap-cms`. Tags:
+
+| Tag | Description |
+|-----|-------------|
+| `nightly` | Latest master build (x86_64) |
+| `sha-<commit>` | Pinned to a specific commit |
+| `X.Y.Z-alpha.N` | Tagged release |
+| `X.Y` | Latest patch in a minor series |
+| `latest` | Most recent tagged release |
+
+### Static Binaries
+
+Pre-built static binaries are attached to each [GitHub Release](https://github.com/dkluhzeb/crap-cms/releases):
+
+- `crap-cms-linux-x86_64` — Linux x86_64 (musl, fully static)
+- `crap-cms-linux-aarch64` — Linux ARM64 (musl, fully static)
+- `crap-cms-windows-x86_64.exe` — Windows x86_64
+
+Download and run directly — no runtime dependencies required.
+
+```bash
+curl -L -o crap-cms \
+  https://github.com/dkluhzeb/crap-cms/releases/latest/download/crap-cms-linux-x86_64
+chmod +x crap-cms
+./crap-cms serve /path/to/config
+```
+
+### CI/CD
+
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| **CI** | Every push & PR | fmt, clippy, tests |
+| **Nightly** | Push to master | x86_64 musl binary, Docker `nightly` tag, docs deploy |
+| **Release** | Tag `v*` | Multi-arch binaries, Docker semver tags, GitHub Release (pre-release), docs deploy |
+
 ## License
 
-TBD
+MIT
