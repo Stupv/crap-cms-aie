@@ -97,9 +97,11 @@ cd docs && mdbook serve            # local preview at localhost:3000
 ### Docker
 
 ```bash
-docker pull ghcr.io/dkluhzeb/crap-cms:nightly   # latest master build
-docker pull ghcr.io/dkluhzeb/crap-cms:0.1.0-alpha.1  # specific release
+# Quick demo — example project is bundled in the image
+docker run -p 3000:3000 -p 50051:50051 \
+  ghcr.io/dkluhzeb/crap-cms:nightly serve /example
 
+# Production — mount your own config
 docker run -v /path/to/config:/config -p 3000:3000 -p 50051:50051 \
   ghcr.io/dkluhzeb/crap-cms:nightly
 ```
@@ -122,13 +124,18 @@ Pre-built static binaries are attached to each [GitHub Release](https://github.c
 - `crap-cms-linux-aarch64` — Linux ARM64 (musl, fully static)
 - `crap-cms-windows-x86_64.exe` — Windows x86_64
 
-Download and run directly — no runtime dependencies required.
+Download and run directly — no runtime dependencies required. An `example.tar.gz` with a sample project is also included in each release.
 
 ```bash
 curl -L -o crap-cms \
   https://github.com/dkluhzeb/crap-cms/releases/latest/download/crap-cms-linux-x86_64
 chmod +x crap-cms
-./crap-cms serve /path/to/config
+
+# Download and extract the example project
+curl -L https://github.com/dkluhzeb/crap-cms/releases/latest/download/example.tar.gz \
+  | tar xz
+
+./crap-cms serve ./example
 ```
 
 ### CI/CD
