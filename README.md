@@ -116,7 +116,7 @@ Images are Alpine-based (~15 MB) and published to `ghcr.io/dkluhzeb/crap-cms`. T
 
 | Tag | Description |
 |-----|-------------|
-| `nightly` | Latest master build (x86_64) |
+| `nightly` | Latest main build (x86_64) |
 | `sha-<commit>` | Pinned to a specific commit |
 | `X.Y.Z-alpha.N` | Tagged release |
 | `X.Y` | Latest patch in a minor series |
@@ -149,7 +149,7 @@ curl -L https://github.com/dkluhzeb/crap-cms/releases/latest/download/example.ta
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
 | **CI** | Every push & PR | fmt, clippy, tests |
-| **Nightly** | Push to master | x86_64 musl binary, Docker `nightly` tag, docs deploy |
+| **Nightly** | Push to main | x86_64 musl binary, Docker `nightly` tag, docs deploy |
 | **Release** | Tag `v*` | Multi-arch binaries, Docker semver tags, GitHub Release (pre-release), docs deploy |
 
 ## License
