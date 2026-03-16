@@ -97,11 +97,17 @@ cd docs && mdbook serve            # local preview at localhost:3000
 ### Docker
 
 ```bash
-# Quick demo — example project is bundled in the image
+# Start the server — example project with demo data is pre-loaded
 docker run -p 3000:3000 -p 50051:50051 \
   ghcr.io/dkluhzeb/crap-cms:nightly serve /example
 
-# Production — mount your own config
+# Open http://localhost:3000/admin
+# Login: admin@crap.studio / admin123
+```
+
+Production — mount your own config:
+
+```bash
 docker run -v /path/to/config:/config -p 3000:3000 -p 50051:50051 \
   ghcr.io/dkluhzeb/crap-cms:nightly
 ```
