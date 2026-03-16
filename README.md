@@ -19,12 +19,14 @@ Inspiration came from what I consider the best solutions out there:
 - **Lua scripting API** — modeled after Neovim and Awesome WM, where Lua gives users deep control without touching core code
 - **Configuration & hook system** — inspired by [Payload CMS](https://payloadcms.com), an excellent and highly recommended CMS for anyone needing a production-ready solution
 - **CLI tooling** — influenced by Laravel's comprehensive Artisan CLI
-- **SQLite + WAL + FTS** — sufficient for most of my use cases, and it bundles cleanly into a single binary with zero external dependencies
+- **SQLite + WAL + FTS** — sufficient for most of my use cases, and it bundles cleanly into a single binary with zero external dependencies. The database layer is abstracted behind a trait, so alternative relational backends could be added in the future if the need arises
 - **Pure JavaScript with JSDoc types** — no TypeScript, no bundler, no build step. Type safety through JSDoc annotations, checkable with `tsc --checkJs` without compiling anything
 - **HTMX + Web Components** — easy to theme (similar to WordPress child themes), no frontend build step. Web Components are a native browser standard — no framework updates, no outdated dependencies, no breaking changes
-- **gRPC API** — because I wanted it. A separate [REST proxy](https://github.com/dkluhzeb/crap-rest) is available for those who prefer plain JSON over HTTP
+- **gRPC API** — binary protocol with streaming support, ideal for service-to-service communication. And because I wanted it. A separate [REST proxy](https://github.com/dkluhzeb/crap-rest) is available for those who prefer plain JSON over HTTP
 
 The project is functional but not yet production-ready — it still needs to prove itself.
+
+**Warning:** While in alpha (`0.x`), breaking changes may appear without prior notice.
 
 ## Tech Stack
 
@@ -65,9 +67,9 @@ cargo tarpaulin --out html           # coverage report
 crap-cms serve ./example             # run with example config
 ```
 
-Static files and templates are compiled into the binary via `include_dir!`. Rebuild after changing files in `static/` or `templates/`.
+Default templates and static files are compiled into the binary via `include_dir!`. The config directory overlay takes priority — any file placed in `{config_dir}/static/` or `{config_dir}/templates/` is served from disk without rebuilding. Only changes to the *embedded* defaults (under `static/` or `templates/` in the source tree) require `cargo build`.
 
-Dev mode (`admin.dev_mode = true` in `crap.toml`) reloads templates from disk per-request — but static files still require a rebuild.
+Dev mode (`admin.dev_mode = true` in `crap.toml`) reloads templates from disk on every request instead of caching them.
 
 ### API Testing
 
@@ -81,8 +83,6 @@ create_post
 
 ### Load Testing
 
-#### gRPC benchmarks (recommended)
-
 Requires [ghz](https://github.com/bojand/ghz), grpcurl, protoc, jq, and a running server:
 
 ```bash
@@ -93,15 +93,6 @@ Requires [ghz](https://github.com/bojand/ghz), grpcurl, protoc, jq, and a runnin
 ```
 
 Scenarios: `describe`, `count`, `find`, `find_where`, `find_by_id`, `find_deep`, `create`, `update`.
-
-#### HTTP + gRPC mixed
-
-Requires [oha](https://github.com/hatoo/oha), grpcurl, jq, and a running server:
-
-```bash
-./tests/loadtest.sh                                    # all scenarios
-./tests/loadtest.sh --scenarios read_list,grpc_find    # specific scenarios
-```
 
 ### Documentation Book
 

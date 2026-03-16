@@ -13,12 +13,14 @@ Inspiration came from what I consider the best solutions out there:
 - **Lua scripting API** — modeled after Neovim and Awesome WM, where Lua gives users deep control without touching core code
 - **Configuration & hook system** — inspired by [Payload CMS](https://payloadcms.com), an excellent and highly recommended CMS for anyone needing a production-ready solution
 - **CLI tooling** — influenced by Laravel's comprehensive Artisan CLI
-- **SQLite + WAL + FTS** — sufficient for most of my use cases, and it bundles cleanly into a single binary with zero external dependencies
+- **SQLite + WAL + FTS** — sufficient for most of my use cases, and it bundles cleanly into a single binary with zero external dependencies. The database layer is abstracted behind a trait, so alternative relational backends could be added in the future if the need arises
 - **Pure JavaScript with JSDoc types** — no TypeScript, no bundler, no build step. Type safety through JSDoc annotations, checkable with `tsc --checkJs` without compiling anything
 - **HTMX + Web Components** — easy to theme (similar to WordPress child themes), no frontend build step. Web Components are a native browser standard — no framework updates, no outdated dependencies, no breaking changes
-- **gRPC API** — because I wanted it. A separate [REST proxy](https://github.com/dkluhzeb/crap-rest) is available for those who prefer plain JSON over HTTP
+- **gRPC API** — binary protocol with streaming support, ideal for service-to-service communication. And because I wanted it. A separate [REST proxy](https://github.com/dkluhzeb/crap-rest) is available for those who prefer plain JSON over HTTP
 
 The project is functional but not yet production-ready — it still needs to prove itself.
+
+**Warning:** While in alpha (`0.x`), breaking changes may appear without prior notice.
 
 ## Design Philosophy
 
