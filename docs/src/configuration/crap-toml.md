@@ -2,7 +2,7 @@
 
 The `crap.toml` file configures the server, database, authentication, and other global settings. All sections and fields are optional — sensible defaults are used when omitted.
 
-If `crap.toml` does not exist in the config directory, all defaults apply.
+A `crap.toml` file must exist in the config directory — the server will refuse to start without one. It can be empty (all defaults apply), but the file itself is required.
 
 ## Top-Level Fields
 
