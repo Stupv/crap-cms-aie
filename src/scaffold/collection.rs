@@ -1288,6 +1288,223 @@ mod tests {
         );
     }
 
+    // ── Shorthand parsing edge cases ─────────────────────────────────
+
+    #[test]
+    fn test_parse_empty_parens_container() {
+        // `items:array()` → should error (no subfields parsed)
+        assert!(parse_fields_shorthand("items:array()").is_err());
+    }
+
+    #[test]
+    fn test_parse_trailing_comma() {
+        // Trailing comma should be ignored, yielding 2 fields
+        let fields = parse_fields_shorthand("title:text,body:textarea,").unwrap();
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].name, "title");
+        assert_eq!(fields[1].name, "body");
+    }
+
+    #[test]
+    fn test_parse_whitespace_around_segments() {
+        // Leading/trailing whitespace on the token is trimmed,
+        // but internal spaces around ':' are NOT trimmed (they become part of the segment).
+        // So `title : text` has name "title " and type " text" which is invalid.
+        // Only fully trimmed tokens work: "  title:text:required  "
+        let fields = parse_fields_shorthand("  title:text:required  ").unwrap();
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].name, "title");
+        assert_eq!(fields[0].field_type, "text");
+        assert!(fields[0].required);
+
+        // Spaces around ':' should fail (type " text " is unknown)
+        assert!(parse_fields_shorthand("title : text").is_err());
+    }
+
+    #[test]
+    fn test_parse_deeply_nested_4_levels() {
+        // array > group > collapsible > row > text
+        let fields =
+            parse_fields_shorthand("a:array(b:group(c:collapsible(d:row(x:text))))").unwrap();
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].field_type, "array");
+        assert_eq!(fields[0].fields[0].field_type, "group");
+        assert_eq!(fields[0].fields[0].fields[0].field_type, "collapsible");
+        assert_eq!(fields[0].fields[0].fields[0].fields[0].field_type, "row");
+        assert_eq!(
+            fields[0].fields[0].fields[0].fields[0].fields[0].field_type,
+            "text"
+        );
+        assert_eq!(fields[0].fields[0].fields[0].fields[0].fields[0].name, "x");
+    }
+
+    #[test]
+    fn test_parse_blocks_empty_fields() {
+        // `para|Paragraph()` → empty parens → parse_fields_shorthand("") → error
+        assert!(parse_fields_shorthand("content:blocks(para|Paragraph())").is_err());
+    }
+
+    #[test]
+    fn test_parse_tabs_single_tab() {
+        let fields = parse_fields_shorthand("settings:tabs(General(name:text))").unwrap();
+        assert_eq!(fields[0].tabs.len(), 1);
+        assert_eq!(fields[0].tabs[0].label, "General");
+        assert_eq!(fields[0].tabs[0].fields.len(), 1);
+        assert_eq!(fields[0].tabs[0].fields[0].name, "name");
+    }
+
+    #[test]
+    fn test_parse_blocks_empty_type() {
+        // `|Paragraph(body:textarea)` → empty block type → error
+        assert!(parse_fields_shorthand("content:blocks(|Paragraph(body:textarea))").is_err());
+    }
+
+    #[test]
+    fn test_parse_tabs_empty_label() {
+        // `(name:text)` with empty label → error
+        assert!(parse_fields_shorthand("settings:tabs((name:text))").is_err());
+    }
+
+    #[test]
+    fn test_parse_container_modifiers_with_subfields() {
+        // Modifiers after closing paren: `seo:group(t:text):required:localized`
+        let fields = parse_fields_shorthand("seo:group(t:text):required:localized").unwrap();
+        assert_eq!(fields[0].name, "seo");
+        assert_eq!(fields[0].field_type, "group");
+        assert!(fields[0].required);
+        assert!(fields[0].localized);
+        assert_eq!(fields[0].fields.len(), 1);
+        assert_eq!(fields[0].fields[0].name, "t");
+    }
+
+    // ── Lua generation edge cases ────────────────────────────────────
+
+    #[test]
+    fn test_make_collection_blocks_only_omits_title() {
+        // When blocks is the sole field → no scalar → omit use_as_title
+        let fields =
+            parse_fields_shorthand("content:blocks(para|Paragraph(body:textarea))").unwrap();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_collection(
+            tmp.path(),
+            "pages",
+            Some(&fields),
+            &CollectionOptions::default(),
+        )
+        .unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("collections/pages.lua")).unwrap();
+        assert!(
+            !content.contains("use_as_title"),
+            "blocks-only collection should omit use_as_title"
+        );
+        assert!(
+            !content.contains("list_searchable_fields"),
+            "blocks-only collection should omit list_searchable_fields"
+        );
+    }
+
+    #[test]
+    fn test_make_collection_tabs_only_omits_title() {
+        // When tabs is the sole field → no scalar → omit use_as_title
+        let fields = parse_fields_shorthand("settings:tabs(General(name:text))").unwrap();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_collection(
+            tmp.path(),
+            "config",
+            Some(&fields),
+            &CollectionOptions::default(),
+        )
+        .unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("collections/config.lua")).unwrap();
+        assert!(
+            !content.contains("use_as_title"),
+            "tabs-only collection should omit use_as_title"
+        );
+    }
+
+    #[test]
+    fn test_make_collection_auth_versions() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let opts = CollectionOptions {
+            auth: true,
+            versions: true,
+            ..CollectionOptions::default()
+        };
+        make_collection(tmp.path(), "users", None, &opts).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("collections/users.lua")).unwrap();
+        assert!(content.contains("auth = true"));
+        assert!(content.contains("versions = true"));
+        assert!(content.contains("use_as_title = \"email\""));
+    }
+
+    #[test]
+    fn test_make_collection_upload_versions() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let opts = CollectionOptions {
+            upload: true,
+            versions: true,
+            ..CollectionOptions::default()
+        };
+        make_collection(tmp.path(), "media", None, &opts).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("collections/media.lua")).unwrap();
+        assert!(content.contains("upload = true"));
+        assert!(content.contains("versions = true"));
+        assert!(content.contains("use_as_title = \"filename\""));
+    }
+
+    #[test]
+    fn test_make_collection_all_flags() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let opts = CollectionOptions {
+            auth: true,
+            versions: true,
+            no_timestamps: true,
+            ..CollectionOptions::default()
+        };
+        make_collection(tmp.path(), "users", None, &opts).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("collections/users.lua")).unwrap();
+        assert!(content.contains("auth = true"));
+        assert!(content.contains("versions = true"));
+        assert!(content.contains("timestamps = false"));
+        assert!(
+            !content.contains("default_sort"),
+            "no default_sort when timestamps disabled"
+        );
+    }
+
+    #[test]
+    fn test_make_collection_nested_localized() {
+        // Nested array with localized subfields
+        let tmp = tempfile::tempdir().expect("tempdir");
+        make_collection_from_shorthand(
+            tmp.path(),
+            "pages",
+            Some("items:array(label:text:required:localized,desc:textarea:localized)"),
+            &CollectionOptions::default(),
+        )
+        .unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("collections/pages.lua")).unwrap();
+        assert!(content.contains("crap.fields.array({"));
+        assert!(content.contains("name = \"items\""));
+        // Subfields should have localized = true
+        assert!(content.contains("localized = true"));
+        assert!(content.contains("name = \"label\""));
+        assert!(content.contains("name = \"desc\""));
+        // Count localized occurrences — should be 2 (label + desc)
+        let localized_count = content.matches("localized = true").count();
+        assert_eq!(
+            localized_count, 2,
+            "expected 2 localized subfields, got {}",
+            localized_count
+        );
+    }
+
     #[test]
     fn test_container_without_subfields_gets_default_stub() {
         // Containers without (...) should still get default placeholder stubs

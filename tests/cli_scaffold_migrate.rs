@@ -1417,6 +1417,463 @@ fn nested_fields_via_binary_e2e() {
         .expect("sync schema from binary-generated nested fields");
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Binary-level init tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn init_no_input_creates_default_structure() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let dir = tmp.path().join("project");
+
+    let output = std::process::Command::new(crap_bin())
+        .args(["init", "--no-input", dir.to_str().unwrap()])
+        .output()
+        .expect("failed to run binary");
+
+    assert!(
+        output.status.success(),
+        "init --no-input should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Core files
+    assert!(dir.join("crap.toml").exists());
+    assert!(dir.join("init.lua").exists());
+    assert!(dir.join(".luarc.json").exists());
+    assert!(dir.join(".gitignore").exists());
+    assert!(dir.join("stylua.toml").exists());
+
+    // Default collections
+    let users_lua = std::fs::read_to_string(dir.join("collections/users.lua")).unwrap();
+    assert!(users_lua.contains("auth = true"), "users should have auth");
+    let media_lua = std::fs::read_to_string(dir.join("collections/media.lua")).unwrap();
+    assert!(
+        media_lua.contains("upload = true"),
+        "media should have upload"
+    );
+
+    // Directories
+    for subdir in &[
+        "collections",
+        "globals",
+        "hooks",
+        "templates",
+        "static",
+        "access",
+        "jobs",
+        "plugins",
+        "migrations",
+        "types",
+    ] {
+        assert!(
+            dir.join(subdir).is_dir(),
+            "{} directory should exist",
+            subdir
+        );
+    }
+}
+
+#[test]
+fn init_no_input_full_roundtrip() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let dir = tmp.path().join("project");
+
+    let output = std::process::Command::new(crap_bin())
+        .args(["init", "--no-input", dir.to_str().unwrap()])
+        .output()
+        .expect("failed to run binary");
+    assert!(
+        output.status.success(),
+        "init --no-input failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Load config → init Lua → create pool → sync schema
+    let cfg = CrapConfig::load(&dir).expect("load config");
+    let registry = hooks::init_lua(&dir, &cfg).expect("init lua");
+    let db_pool = pool::create_pool(&dir, &cfg).expect("create pool");
+    migrate::sync_all(&db_pool, &registry, &cfg.locale).expect("sync schema");
+
+    // Verify collections registered
+    {
+        let reg = registry.read().unwrap();
+        let users_def = reg
+            .get_collection("users")
+            .expect("users collection should be registered");
+        assert!(users_def.auth.is_some(), "users should have auth flag");
+
+        let media_def = reg
+            .get_collection("media")
+            .expect("media collection should be registered");
+        assert!(media_def.upload.is_some(), "media should have upload flag");
+    }
+
+    // Create a user programmatically
+    let reg = registry.read().unwrap();
+    let users_def = reg.get_collection("users").unwrap();
+    {
+        let mut conn = db_pool.get().unwrap();
+        let tx = conn.transaction().unwrap();
+        let mut data = HashMap::new();
+        data.insert("email".to_string(), "test@example.com".to_string());
+        data.insert("password".to_string(), "secret123".to_string());
+        query::create(&tx, "users", users_def, &data, None).unwrap();
+        tx.commit().unwrap();
+    }
+
+    // Verify user was persisted
+    let conn = db_pool.get().unwrap();
+    let users = query::find(
+        &conn,
+        "users",
+        users_def,
+        &query::FindQuery::default(),
+        None,
+    )
+    .unwrap();
+    assert_eq!(users.len(), 1);
+
+    // Create a document in media collection
+    let media_def = reg.get_collection("media").unwrap();
+    drop(conn);
+    {
+        let mut conn = db_pool.get().unwrap();
+        let tx = conn.transaction().unwrap();
+        let mut data = HashMap::new();
+        data.insert("filename".to_string(), "test.png".to_string());
+        data.insert("mime_type".to_string(), "image/png".to_string());
+        data.insert("size".to_string(), "1024".to_string());
+        query::create(&tx, "media", media_def, &data, None).unwrap();
+        tx.commit().unwrap();
+    }
+
+    let conn = db_pool.get().unwrap();
+    let media = query::find(
+        &conn,
+        "media",
+        media_def,
+        &query::FindQuery::default(),
+        None,
+    )
+    .unwrap();
+    assert_eq!(media.len(), 1);
+}
+
+#[test]
+fn init_no_input_requires_dir() {
+    let output = std::process::Command::new(crap_bin())
+        .args(["init", "--no-input"])
+        .output()
+        .expect("failed to run binary");
+
+    assert!(
+        !output.status.success(),
+        "init --no-input without dir should fail"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("required"),
+        "stderr should mention 'required': {}",
+        stderr
+    );
+}
+
+#[test]
+fn init_via_binary_refuses_existing() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let dir = tmp.path().join("project");
+
+    // First init — should succeed
+    let output = std::process::Command::new(crap_bin())
+        .args(["init", "--no-input", dir.to_str().unwrap()])
+        .output()
+        .expect("failed to run binary");
+    assert!(output.status.success());
+
+    // Second init — should fail
+    let output = std::process::Command::new(crap_bin())
+        .args(["init", "--no-input", dir.to_str().unwrap()])
+        .output()
+        .expect("failed to run binary");
+    assert!(!output.status.success(), "second init should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("refusing to overwrite"),
+        "should mention refusing to overwrite: {}",
+        stderr
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Full e2e roundtrips
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn init_scaffold_nested_collection_full_crud() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let config_dir = tmp.path().join("config");
+    scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
+
+    // Scaffold a nested collection
+    let fields = scaffold::parse_fields_shorthand(
+        "title:text:required,meta:group(desc:text,tags:array(label:text))",
+    )
+    .unwrap();
+    scaffold::make_collection(
+        &config_dir,
+        "articles",
+        Some(&fields),
+        &scaffold::CollectionOptions::default(),
+    )
+    .unwrap();
+
+    // Add users collection for auth
+    let auth_opts = scaffold::CollectionOptions {
+        auth: true,
+        ..scaffold::CollectionOptions::default()
+    };
+    scaffold::make_collection(&config_dir, "users", None, &auth_opts).unwrap();
+
+    // Load → sync
+    let cfg = CrapConfig::load(&config_dir).expect("load config");
+    let registry = hooks::init_lua(&config_dir, &cfg).expect("init lua");
+    let db_pool = pool::create_pool(&config_dir, &cfg).expect("create pool");
+    migrate::sync_all(&db_pool, &registry, &cfg.locale).expect("sync schema");
+
+    let reg = registry.read().unwrap();
+    let def = reg.get_collection("articles").unwrap();
+
+    // Create a document with title
+    {
+        let mut conn = db_pool.get().unwrap();
+        let tx = conn.transaction().unwrap();
+        let mut data = HashMap::new();
+        data.insert("title".to_string(), "Test Article".to_string());
+        query::create(&tx, "articles", def, &data, None).unwrap();
+        tx.commit().unwrap();
+    }
+
+    // Find and verify
+    let conn = db_pool.get().unwrap();
+    let docs = query::find(&conn, "articles", def, &query::FindQuery::default(), None).unwrap();
+    assert_eq!(docs.len(), 1);
+
+    // Create a user
+    let users_def = reg.get_collection("users").unwrap();
+    drop(conn);
+    {
+        let mut conn = db_pool.get().unwrap();
+        let tx = conn.transaction().unwrap();
+        let mut data = HashMap::new();
+        data.insert("email".to_string(), "admin@test.com".to_string());
+        data.insert("password".to_string(), "password123".to_string());
+        query::create(&tx, "users", users_def, &data, None).unwrap();
+        tx.commit().unwrap();
+    }
+    let conn = db_pool.get().unwrap();
+    let users = query::find(
+        &conn,
+        "users",
+        users_def,
+        &query::FindQuery::default(),
+        None,
+    )
+    .unwrap();
+    assert_eq!(users.len(), 1);
+}
+
+#[test]
+fn init_with_locales_and_nested_localized_crud() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let config_dir = tmp.path().join("config");
+    let init_opts = scaffold::InitOptions {
+        locales: vec!["en".to_string(), "de".to_string()],
+        default_locale: "en".to_string(),
+        ..scaffold::InitOptions::default()
+    };
+    scaffold::init(Some(config_dir.clone()), &init_opts).unwrap();
+
+    // Use slug (non-localized) as first scalar so use_as_title points to a real column,
+    // then localized title + nested array with localized subfield
+    let fields = scaffold::parse_fields_shorthand(
+        "slug:text:required,title:text:localized,items:array(label:text:localized,image:upload)",
+    )
+    .unwrap();
+    scaffold::make_collection(
+        &config_dir,
+        "pages",
+        Some(&fields),
+        &scaffold::CollectionOptions::default(),
+    )
+    .unwrap();
+
+    // Load → sync
+    let cfg = CrapConfig::load(&config_dir).expect("load config");
+    let registry = hooks::init_lua(&config_dir, &cfg).expect("init lua");
+    let db_pool = pool::create_pool(&config_dir, &cfg).expect("create pool");
+    migrate::sync_all(&db_pool, &registry, &cfg.locale).expect("sync schema");
+
+    // Verify collection registered with localized fields
+    let reg = registry.read().unwrap();
+    let def = reg.get_collection("pages").unwrap();
+    let title_field = def.fields.iter().find(|f| f.name == "title").unwrap();
+    assert!(title_field.localized, "title field should be localized");
+
+    // Create a document with localized column names (pass locale context)
+    let locale_ctx = query::LocaleContext::from_locale_string(None, &cfg.locale);
+    {
+        let mut conn = db_pool.get().unwrap();
+        let tx = conn.transaction().unwrap();
+        let mut data = HashMap::new();
+        data.insert("slug".to_string(), "test-page".to_string());
+        data.insert("title__en".to_string(), "Test Page".to_string());
+        data.insert("title__de".to_string(), "Testseite".to_string());
+        query::create(&tx, "pages", def, &data, locale_ctx.as_ref()).unwrap();
+        tx.commit().unwrap();
+    }
+
+    let conn = db_pool.get().unwrap();
+    let docs = query::find(
+        &conn,
+        "pages",
+        def,
+        &query::FindQuery::default(),
+        locale_ctx.as_ref(),
+    )
+    .unwrap();
+    assert_eq!(docs.len(), 1);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Binary-level make collection/global with blocks/tabs
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn make_collection_nested_blocks_via_binary() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let config_dir = tmp.path().join("project");
+    scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
+
+    let output = std::process::Command::new(crap_bin())
+        .args([
+            "make",
+            "collection",
+            config_dir.to_str().unwrap(),
+            "pages",
+            "--fields",
+            "content:blocks(para|Paragraph(body:textarea),hero|Hero(title:text,img:upload))",
+            "--no-input",
+        ])
+        .output()
+        .expect("failed to run binary");
+
+    assert!(
+        output.status.success(),
+        "make collection with blocks failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Verify Lua output
+    let content = std::fs::read_to_string(config_dir.join("collections/pages.lua")).unwrap();
+    assert!(content.contains("crap.fields.blocks({"));
+    assert!(content.contains("type = \"para\""));
+    assert!(content.contains("label = \"Paragraph\""));
+    assert!(content.contains("name = \"body\""));
+    assert!(content.contains("type = \"hero\""));
+    assert!(content.contains("label = \"Hero\""));
+    assert!(content.contains("name = \"img\""));
+
+    // Load + sync
+    let cfg = CrapConfig::load(&config_dir).expect("load config");
+    let registry = hooks::init_lua(&config_dir, &cfg).expect("init lua");
+    let db_pool = pool::create_pool(&config_dir, &cfg).expect("create pool");
+    migrate::sync_all(&db_pool, &registry, &cfg.locale)
+        .expect("sync schema from blocks collection");
+}
+
+#[test]
+fn make_collection_nested_tabs_via_binary() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let config_dir = tmp.path().join("project");
+    scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
+
+    let output = std::process::Command::new(crap_bin())
+        .args([
+            "make",
+            "collection",
+            config_dir.to_str().unwrap(),
+            "config",
+            "--fields",
+            "settings:tabs(General(name:text),Advanced(key:text))",
+            "--no-input",
+        ])
+        .output()
+        .expect("failed to run binary");
+
+    assert!(
+        output.status.success(),
+        "make collection with tabs failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let content = std::fs::read_to_string(config_dir.join("collections/config.lua")).unwrap();
+    assert!(content.contains("crap.fields.tabs({"));
+    assert!(content.contains("label = \"General\""));
+    assert!(content.contains("name = \"name\""));
+    assert!(content.contains("label = \"Advanced\""));
+    assert!(content.contains("name = \"key\""));
+
+    // Load + sync
+    let cfg = CrapConfig::load(&config_dir).expect("load config");
+    let registry = hooks::init_lua(&config_dir, &cfg).expect("init lua");
+    let db_pool = pool::create_pool(&config_dir, &cfg).expect("create pool");
+    migrate::sync_all(&db_pool, &registry, &cfg.locale).expect("sync schema from tabs collection");
+}
+
+#[test]
+fn make_global_nested_via_binary() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let config_dir = tmp.path().join("project");
+    scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
+
+    let output = std::process::Command::new(crap_bin())
+        .args([
+            "make",
+            "global",
+            config_dir.to_str().unwrap(),
+            "nav",
+            "--fields",
+            "links:array(label:text:required,url:text)",
+        ])
+        .output()
+        .expect("failed to run binary");
+
+    assert!(
+        output.status.success(),
+        "make global with nested fields failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let content = std::fs::read_to_string(config_dir.join("globals/nav.lua")).unwrap();
+    assert!(content.contains("crap.globals.define(\"nav\""));
+    assert!(content.contains("crap.fields.array({"));
+    assert!(content.contains("name = \"links\""));
+    assert!(content.contains("name = \"label\""));
+    assert!(content.contains("required = true"));
+    assert!(content.contains("name = \"url\""));
+
+    // Load + sync
+    let cfg = CrapConfig::load(&config_dir).expect("load config");
+    let registry = hooks::init_lua(&config_dir, &cfg).expect("init lua");
+    let db_pool = pool::create_pool(&config_dir, &cfg).expect("create pool");
+    migrate::sync_all(&db_pool, &registry, &cfg.locale).expect("sync schema from nested global");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Existing nested fields tests
+// ═══════════════════════════════════════════════════════════════════════════
+
 #[test]
 fn nested_fields_with_locales_e2e() {
     // Scaffold a project with locales enabled and nested localized fields

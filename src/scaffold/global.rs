@@ -137,4 +137,38 @@ mod tests {
         let result = make_global(tmp.path(), "Bad Slug", None, false);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_make_global_with_nested_group() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let fields = crate::scaffold::collection::parse_fields_shorthand(
+            "seo:group(meta_title:text:required,meta_desc:textarea)",
+        )
+        .unwrap();
+        make_global(tmp.path(), "site_seo", Some(&fields), false).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("globals/site_seo.lua")).unwrap();
+        assert!(content.contains("crap.globals.define(\"site_seo\""));
+        assert!(content.contains("crap.fields.group({"));
+        assert!(content.contains("name = \"seo\""));
+        assert!(content.contains("name = \"meta_title\""));
+        assert!(content.contains("required = true"));
+        assert!(content.contains("name = \"meta_desc\""));
+    }
+
+    #[test]
+    fn test_make_global_all_containers() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let fields = crate::scaffold::collection::parse_fields_shorthand(
+            "items:array(label:text),meta:group(key:text),layout:blocks(hero|Hero(title:text)),panels:tabs(General(name:text))",
+        )
+        .unwrap();
+        make_global(tmp.path(), "kitchen_sink", Some(&fields), false).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("globals/kitchen_sink.lua")).unwrap();
+        assert!(content.contains("crap.fields.array({"));
+        assert!(content.contains("crap.fields.group({"));
+        assert!(content.contains("crap.fields.blocks({"));
+        assert!(content.contains("crap.fields.tabs({"));
+    }
 }

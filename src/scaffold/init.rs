@@ -247,6 +247,48 @@ mod tests {
     }
 
     #[test]
+    fn test_init_with_single_locale() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let target = tmp.path().join("single_locale");
+        let opts = InitOptions {
+            locales: vec!["en".to_string()],
+            default_locale: "en".to_string(),
+            ..InitOptions::default()
+        };
+        init(Some(target.clone()), &opts).unwrap();
+
+        let content = fs::read_to_string(target.join("crap.toml")).unwrap();
+        // Single locale still gets active [locale] section
+        assert!(content.contains("[locale]"));
+        assert!(content.contains("default_locale = \"en\""));
+        assert!(content.contains("locales = [\"en\"]"));
+        assert!(content.contains("fallback = true"));
+    }
+
+    #[test]
+    fn test_init_types_lua_content() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let target = tmp.path().join("types_check");
+        init(Some(target.clone()), &InitOptions::default()).unwrap();
+
+        let content = fs::read_to_string(target.join("types/crap.lua")).unwrap();
+        assert!(!content.is_empty(), "types/crap.lua should not be empty");
+        // Should contain key Lua API markers
+        assert!(
+            content.contains("crap"),
+            "types/crap.lua should reference 'crap' global"
+        );
+        assert!(
+            content.contains("collections"),
+            "types/crap.lua should reference collections API"
+        );
+        assert!(
+            content.contains("fields"),
+            "types/crap.lua should reference fields API"
+        );
+    }
+
+    #[test]
     fn test_init_refuses_overwrite() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let target = tmp.path().join("existing");
