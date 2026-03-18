@@ -195,12 +195,8 @@ fn migrate_create_via_binary() {
     copy_dir(&fixture_dir(), &config_dir);
 
     let output = std::process::Command::new(crap_bin())
-        .args([
-            "migrate",
-            config_dir.to_str().unwrap(),
-            "create",
-            "add_tags",
-        ])
+        .env("CRAP_CONFIG_DIR", config_dir.to_str().unwrap())
+        .args(["migrate", "create", "add_tags"])
         .output()
         .expect("failed to run binary");
     assert!(

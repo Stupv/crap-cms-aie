@@ -1,6 +1,6 @@
 # Config Directory
 
-All customization lives in a single config directory, passed as the first positional argument to most commands.
+All customization lives in a single config directory. When you run CLI commands from inside this directory (or a subdirectory), the config is auto-detected by walking up and looking for `crap.toml`. You can also set it explicitly with `--config`/`-C` or the `CRAP_CONFIG_DIR` environment variable.
 
 ## Directory Structure
 
@@ -65,7 +65,7 @@ Create a `.luarc.json` in your config directory for IDE autocompletion:
 Generate type definitions with:
 
 ```bash
-crap-cms typegen ./my-project
+crap-cms typegen
 ```
 
 This writes `types/crap.lua` with LuaLS annotations for the entire `crap.*` API. Use `-l all` to generate types for all supported languages.

@@ -1,10 +1,12 @@
 //! `user` command — user management for auth collections.
 
 use anyhow::{Context as _, Result, anyhow, bail};
+use dialoguer::{Confirm, Input, Password, Select};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 use crate::{
+    cli::{self, Table, crap_theme},
     config::{CrapConfig, PasswordPolicy},
     core::{CollectionDefinition, Document, SharedRegistry, field::FieldType},
     db::{DbPool, query},
@@ -13,17 +15,16 @@ use crate::{
 /// Dispatch user management subcommands.
 /// Untestable: dispatches to interactive CLI functions that require stdin/dialoguer.
 #[cfg(not(tarpaulin_include))]
-pub fn run(action: super::UserAction) -> Result<()> {
+pub fn run(config_dir: &Path, action: super::UserAction) -> Result<()> {
     match action {
         super::UserAction::Create {
-            config,
             collection,
             email,
             password,
             fields,
         } => {
-            let cfg = CrapConfig::load(&config).context("Failed to load config")?;
-            let (pool, registry) = super::load_config_and_sync(&config)?;
+            let cfg = CrapConfig::load(config_dir).context("Failed to load config")?;
+            let (pool, registry) = super::load_config_and_sync(config_dir)?;
             user_create(
                 &pool,
                 &registry,
@@ -34,74 +35,67 @@ pub fn run(action: super::UserAction) -> Result<()> {
                 &cfg.auth.password_policy,
             )
         }
-        super::UserAction::List { config, collection } => {
-            let (pool, registry) = super::load_config_and_sync(&config)?;
+        super::UserAction::List { collection } => {
+            let (pool, registry) = super::load_config_and_sync(config_dir)?;
             user_list(&pool, &registry, &collection)
         }
         super::UserAction::Info {
-            config,
             collection,
             email,
             id,
         } => {
-            let (pool, registry) = super::load_config_and_sync(&config)?;
+            let (pool, registry) = super::load_config_and_sync(config_dir)?;
             user_info(&pool, &registry, &collection, email, id)
         }
         super::UserAction::Delete {
-            config,
             collection,
             email,
             id,
             confirm,
         } => {
-            let (pool, registry) = super::load_config_and_sync(&config)?;
+            let (pool, registry) = super::load_config_and_sync(config_dir)?;
             user_delete(&pool, &registry, &collection, email, id, confirm)
         }
         super::UserAction::Lock {
-            config,
             collection,
             email,
             id,
         } => {
-            let (pool, registry) = super::load_config_and_sync(&config)?;
+            let (pool, registry) = super::load_config_and_sync(config_dir)?;
             user_lock(&pool, &registry, &collection, email, id)
         }
         super::UserAction::Unlock {
-            config,
             collection,
             email,
             id,
         } => {
-            let (pool, registry) = super::load_config_and_sync(&config)?;
+            let (pool, registry) = super::load_config_and_sync(config_dir)?;
             user_unlock(&pool, &registry, &collection, email, id)
         }
         super::UserAction::Verify {
-            config,
             collection,
             email,
             id,
         } => {
-            let (pool, registry) = super::load_config_and_sync(&config)?;
+            let (pool, registry) = super::load_config_and_sync(config_dir)?;
             user_verify(&pool, &registry, &collection, email, id)
         }
         super::UserAction::Unverify {
-            config,
             collection,
             email,
             id,
         } => {
-            let (pool, registry) = super::load_config_and_sync(&config)?;
+            let (pool, registry) = super::load_config_and_sync(config_dir)?;
             user_unverify(&pool, &registry, &collection, email, id)
         }
         super::UserAction::ChangePassword {
-            config,
             collection,
             email,
             id,
             password,
         } => {
-            let cfg = CrapConfig::load(&config).context("Failed to load config")?;
-            let (pool, registry) = super::load_config_and_sync(&config)?;
+            let cfg = CrapConfig::load(config_dir).context("Failed to load config")?;
+            let (pool, registry) = super::load_config_and_sync(config_dir)?;
             user_change_password(
                 &pool,
                 &registry,
@@ -155,7 +149,6 @@ fn resolve_user(
         Ok((def, doc))
     } else {
         // Interactive: select from existing users
-        use dialoguer::Select;
         let find_query = query::FindQuery::default();
         let users = query::find(&conn, collection, &def, &find_query, None)?;
 
@@ -175,12 +168,12 @@ fn resolve_user(
             .collect();
 
         if users.len() == 1 {
-            println!("Auto-selected only user: {}", labels[0]);
+            cli::info(&format!("Auto-selected only user: {}", labels[0]));
             let doc = users.into_iter().next().expect("guarded by len == 1");
 
             return Ok((def, doc));
         }
-        let selection = Select::new()
+        let selection = Select::with_theme(&crap_theme())
             .with_prompt("Select user")
             .items(&labels)
             .interact()
@@ -228,44 +221,23 @@ pub fn user_create(
     // Get email — from flag or interactive prompt
     let email = match email {
         Some(e) => e,
-        None => {
-            eprint!("Email: ");
-            let mut input = String::new();
-            std::io::stdin()
-                .read_line(&mut input)
-                .context("Failed to read email")?;
-            let trimmed = input.trim().to_string();
-
-            if trimmed.is_empty() {
-                bail!("Email cannot be empty");
-            }
-            trimmed
-        }
+        None => Input::with_theme(&crap_theme())
+            .with_prompt("Email")
+            .interact_text()
+            .context("Failed to read email")?,
     };
 
     // Get password — from flag or interactive prompt
     let password = match password {
         Some(p) => {
-            eprintln!(
-                "Warning: password provided via command line — it may be visible in shell history"
-            );
+            cli::warning("Password provided via command line — it may be visible in shell history");
             p
         }
-        None => {
-            eprint!("Password: ");
-            let p1 = rpassword::read_password().context("Failed to read password")?;
-
-            if p1.is_empty() {
-                bail!("Password cannot be empty");
-            }
-            eprint!("Confirm password: ");
-            let p2 = rpassword::read_password().context("Failed to read password confirmation")?;
-
-            if p1 != p2 {
-                bail!("Passwords do not match");
-            }
-            p1
-        }
+        None => Password::with_theme(&crap_theme())
+            .with_prompt("Password")
+            .with_confirmation("Confirm password", "Passwords do not match")
+            .interact()
+            .context("Failed to read password")?,
     };
 
     // Validate password against policy
@@ -306,32 +278,24 @@ pub fn user_create(
                 Value::String(s) => s.clone(),
                 other => other.to_string(),
             };
-            eprint!("{} (required) [{}]: ", field.name, val);
-            let mut input = String::new();
-            std::io::stdin()
-                .read_line(&mut input)
+            let entered: String = Input::with_theme(&crap_theme())
+                .with_prompt(format!("{} (required)", field.name))
+                .default(val)
+                .interact_text()
                 .with_context(|| format!("Failed to read {}", field.name))?;
-            let trimmed = input.trim();
-
-            if trimmed.is_empty() {
-                data.insert(field.name.clone(), val);
-            } else {
-                data.insert(field.name.clone(), trimmed.to_string());
-            }
+            data.insert(field.name.clone(), entered);
             continue;
         }
         // Required field, no default — must prompt
-        eprint!("{} (required): ", field.name);
-        let mut input = String::new();
-        std::io::stdin()
-            .read_line(&mut input)
+        let entered: String = Input::with_theme(&crap_theme())
+            .with_prompt(format!("{} (required)", field.name))
+            .interact_text()
             .with_context(|| format!("Failed to read {}", field.name))?;
-        let trimmed = input.trim().to_string();
 
-        if trimmed.is_empty() {
+        if entered.is_empty() {
             bail!("{} is required", field.name);
         }
-        data.insert(field.name.clone(), trimmed);
+        data.insert(field.name.clone(), entered);
     }
 
     // Create user in a transaction
@@ -345,7 +309,7 @@ pub fn user_create(
 
     tx.commit().context("Failed to commit transaction")?;
 
-    println!("Created user {} in '{}'", doc.id, collection);
+    cli::success(&format!("Created user {} in '{}'", doc.id, collection));
 
     Ok(())
 }
@@ -380,22 +344,16 @@ pub fn user_list(pool: &DbPool, registry: &SharedRegistry, collection: &str) -> 
     let users = query::find(&conn, collection, &def, &find_query, None)?;
 
     if users.is_empty() {
-        println!("No users in '{}'.", collection);
+        cli::info(&format!("No users in '{}'.", collection));
 
         return Ok(());
     }
 
-    // Print header
-    if verify_email {
-        println!(
-            "{:<24} {:<30} {:<8} {:<8}",
-            "ID", "Email", "Locked", "Verified"
-        );
-        println!("{}", "-".repeat(72));
+    let mut table = if verify_email {
+        Table::new(vec!["ID", "Email", "Locked", "Verified"])
     } else {
-        println!("{:<24} {:<30} {:<8}", "ID", "Email", "Locked");
-        println!("{}", "-".repeat(64));
-    }
+        Table::new(vec!["ID", "Email", "Locked"])
+    };
 
     for user in &users {
         let email = user
@@ -409,16 +367,14 @@ pub fn user_list(pool: &DbPool, registry: &SharedRegistry, collection: &str) -> 
         if verify_email {
             let verified = query::is_verified(&conn, collection, &user.id).unwrap_or(false);
             let verified_str = if verified { "yes" } else { "no" };
-            println!(
-                "{:<24} {:<30} {:<8} {:<8}",
-                user.id, email, locked_str, verified_str
-            );
+            table.row(vec![&user.id, email, locked_str, verified_str]);
         } else {
-            println!("{:<24} {:<30} {:<8}", user.id, email, locked_str);
+            table.row(vec![&user.id, email, locked_str]);
         }
     }
 
-    println!("\n{} user(s)", users.len());
+    table.print();
+    table.footer(&format!("{} user(s)", users.len()));
 
     Ok(())
 }
@@ -448,18 +404,18 @@ pub fn user_info(
         .and_then(|v| v.as_str())
         .unwrap_or("-");
 
-    println!("User: {}", doc.id);
-    println!("Collection: {}", collection);
-    println!("Email: {}", user_email);
+    cli::kv("User", &doc.id);
+    cli::kv("Collection", collection);
+    cli::kv("Email", user_email);
 
-    println!("\nStatus:");
-    println!("  Locked:    {}", if locked { "yes" } else { "no" });
+    cli::header("Status");
+    cli::kv_status("Locked", if locked { "yes" } else { "no" }, !locked);
 
     if verify_email {
         let verified = query::is_verified(&conn, collection, &doc.id).unwrap_or(false);
-        println!("  Verified:  {}", if verified { "yes" } else { "no" });
+        cli::kv_status("Verified", if verified { "yes" } else { "no" }, verified);
     }
-    println!("  Password:  {}", if has_pw { "set" } else { "not set" });
+    cli::kv_status("Password", if has_pw { "set" } else { "not set" }, has_pw);
 
     // Timestamps
     let created = doc
@@ -472,9 +428,9 @@ pub fn user_info(
         .get("updated_at")
         .and_then(|v| v.as_str())
         .unwrap_or("-");
-    println!("\nTimestamps:");
-    println!("  Created:   {}", created);
-    println!("  Updated:   {}", updated);
+    cli::header("Timestamps");
+    cli::kv("Created", created);
+    cli::kv("Updated", updated);
 
     // Extra fields (skip email, created_at, updated_at — already shown)
     let skip = ["email", "created_at", "updated_at"];
@@ -485,14 +441,14 @@ pub fn user_info(
         .collect();
 
     if !extra.is_empty() {
-        println!("\nFields:");
+        cli::header("Fields");
         for (key, val) in &extra {
             let display = match val {
                 Value::String(s) => s.clone(),
                 Value::Null => "-".to_string(),
                 other => other.to_string(),
             };
-            println!("  {:<12} {}", format!("{}:", key), display);
+            cli::kv(key, &display);
         }
     }
 
@@ -519,8 +475,7 @@ pub fn user_delete(
         .unwrap_or("unknown");
 
     if !confirm {
-        use dialoguer::Confirm;
-        let proceed = Confirm::new()
+        let proceed = Confirm::with_theme(&crap_theme())
             .with_prompt(format!(
                 "Delete user {} ({}) from '{}'?",
                 doc.id, user_email, collection
@@ -530,7 +485,7 @@ pub fn user_delete(
             .context("Failed to read confirmation")?;
 
         if !proceed {
-            println!("Aborted.");
+            cli::info("Aborted.");
 
             return Ok(());
         }
@@ -539,10 +494,10 @@ pub fn user_delete(
     let conn = pool.get().context("Failed to get database connection")?;
     query::delete(&conn, collection, &doc.id).context("Failed to delete user")?;
 
-    println!(
+    cli::success(&format!(
         "Deleted user {} ({}) from '{}'",
         doc.id, user_email, collection
-    );
+    ));
 
     Ok(())
 }
@@ -567,10 +522,10 @@ pub fn user_lock(
         .get("email")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
-    println!(
+    cli::success(&format!(
         "Locked user {} ({}) in '{}'",
         doc.id, user_email, collection
-    );
+    ));
 
     Ok(())
 }
@@ -595,10 +550,10 @@ pub fn user_unlock(
         .get("email")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
-    println!(
+    cli::success(&format!(
         "Unlocked user {} ({}) in '{}'",
         doc.id, user_email, collection
-    );
+    ));
 
     Ok(())
 }
@@ -630,10 +585,10 @@ pub fn user_verify(
         .get("email")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
-    println!(
+    cli::success(&format!(
         "Verified user {} ({}) in '{}'",
         doc.id, user_email, collection
-    );
+    ));
 
     Ok(())
 }
@@ -665,10 +620,10 @@ pub fn user_unverify(
         .get("email")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
-    println!(
+    cli::success(&format!(
         "Unverified user {} ({}) in '{}'",
         doc.id, user_email, collection
-    );
+    ));
 
     Ok(())
 }
@@ -689,26 +644,14 @@ pub fn user_change_password(
 
     let password = match password {
         Some(p) => {
-            eprintln!(
-                "Warning: password provided via command line — it may be visible in shell history"
-            );
+            cli::warning("Password provided via command line — it may be visible in shell history");
             p
         }
-        None => {
-            eprint!("New password: ");
-            let p1 = rpassword::read_password().context("Failed to read password")?;
-
-            if p1.is_empty() {
-                bail!("Password cannot be empty");
-            }
-            eprint!("Confirm password: ");
-            let p2 = rpassword::read_password().context("Failed to read password confirmation")?;
-
-            if p1 != p2 {
-                bail!("Passwords do not match");
-            }
-            p1
-        }
+        None => Password::with_theme(&crap_theme())
+            .with_prompt("New password")
+            .with_confirmation("Confirm password", "Passwords do not match")
+            .interact()
+            .context("Failed to read password")?,
     };
 
     // Validate password against policy
@@ -723,10 +666,10 @@ pub fn user_change_password(
         .get("email")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
-    println!(
+    cli::success(&format!(
         "Password changed for user {} ({}) in '{}'",
         doc.id, user_email, collection
-    );
+    ));
 
     Ok(())
 }

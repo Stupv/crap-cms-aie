@@ -10,56 +10,81 @@ Use `crap-cms --help` to list all commands, or `crap-cms <command> --help` for d
 
 | Flag | Description |
 |------|-------------|
+| `-C`, `--config <PATH>` | Path to the config directory (overrides auto-detection) |
 | `-V`, `--version` | Print version and exit |
 | `-h`, `--help` | Print help |
+
+## Config Directory Resolution
+
+Most commands need a config directory (the folder containing `crap.toml`). The CLI resolves it in this order:
+
+1. **`--config` / `-C` flag** — explicit path, highest priority
+2. **`CRAP_CONFIG_DIR` environment variable** — useful for CI/Docker
+3. **Auto-detection** — walks up from the current working directory looking for `crap.toml`
+
+If you `cd` into your project directory (or any subdirectory), commands just work without any flags:
+
+```bash
+cd my-project
+crap-cms serve
+crap-cms status
+crap-cms user list
+```
+
+From elsewhere, use `-C`:
+
+```bash
+crap-cms -C ./my-project serve
+crap-cms -C ./my-project status
+```
+
+Or set the environment variable:
+
+```bash
+export CRAP_CONFIG_DIR=./my-project
+crap-cms serve
+```
 
 ## Commands
 
 ### `serve` — Start the server
 
 ```bash
-crap-cms serve <CONFIG> [-d] [--json] [--only <admin|api>] [--no-scheduler]
+crap-cms serve [-d] [--json] [--only <admin|api>] [--no-scheduler]
 ```
 
-| Argument / Flag | Description |
-|-----------------|-------------|
-| `<CONFIG>` | Path to the config directory |
+| Flag | Description |
+|------|-------------|
 | `-d`, `--detach` | Run in the background (prints PID and exits) |
 | `--json` | Output logs as structured JSON (for log aggregation) |
 | `--only <admin\|api>` | Start only the specified server. Omit to start both. |
 | `--no-scheduler` | Disable the background job scheduler |
 
 ```bash
-crap-cms serve ./my-project
-crap-cms serve ./my-project -d
-crap-cms serve ./my-project --json
-crap-cms serve ./my-project --only admin       # admin UI only
-crap-cms serve ./my-project --only api         # gRPC API only
-crap-cms serve ./my-project --no-scheduler     # both servers, no scheduler
-crap-cms serve ./my-project --only admin --no-scheduler
-crap-cms serve ./my-project -d --only api      # detached, API only
+crap-cms serve
+crap-cms serve -d
+crap-cms serve --json
+crap-cms serve --only admin       # admin UI only
+crap-cms serve --only api         # gRPC API only
+crap-cms serve --no-scheduler     # both servers, no scheduler
+crap-cms serve --only admin --no-scheduler
+crap-cms serve -d --only api      # detached, API only
 ```
 
 ### `status` — Show project status
 
 ```bash
-crap-cms status <CONFIG>
+crap-cms status
 ```
 
 Prints collections (with row counts), globals, DB size, and migration status.
 
-```bash
-crap-cms status ./my-project
-```
-
 ### `user` — User management
-
-All user subcommands require a config directory as the first positional argument.
 
 #### `user create`
 
 ```bash
-crap-cms user create <CONFIG> [-c <COLLECTION>] [-e <EMAIL>] [-p <PASSWORD>] [-f <KEY=VALUE>]...
+crap-cms user create [-c <COLLECTION>] [-e <EMAIL>] [-p <PASSWORD>] [-f <KEY=VALUE>]...
 ```
 
 | Flag | Short | Default | Description |
@@ -71,10 +96,10 @@ crap-cms user create <CONFIG> [-c <COLLECTION>] [-e <EMAIL>] [-p <PASSWORD>] [-f
 
 ```bash
 # Interactive (prompts for password)
-crap-cms user create ./my-project -e admin@example.com
+crap-cms user create -e admin@example.com
 
 # Non-interactive
-crap-cms user create ./my-project \
+crap-cms user create \
     -e admin@example.com \
     -p secret123 \
     -f role=admin \
@@ -84,33 +109,33 @@ crap-cms user create ./my-project \
 #### `user list`
 
 ```bash
-crap-cms user list <CONFIG> [-c <COLLECTION>]
+crap-cms user list [-c <COLLECTION>]
 ```
 
 Lists all users with ID, email, locked status, and verified status (if email verification is enabled).
 
 ```bash
-crap-cms user list ./my-project
-crap-cms user list ./my-project -c admins
+crap-cms user list
+crap-cms user list -c admins
 ```
 
 #### `user info`
 
 ```bash
-crap-cms user info <CONFIG> [-c <COLLECTION>] [-e <EMAIL>] [--id <ID>]
+crap-cms user info [-c <COLLECTION>] [-e <EMAIL>] [--id <ID>]
 ```
 
 Shows detailed info for a single user: ID, email, locked/verified status, password status, timestamps, and all field values.
 
 ```bash
-crap-cms user info ./my-project -e admin@example.com
-crap-cms user info ./my-project --id abc123
+crap-cms user info -e admin@example.com
+crap-cms user info --id abc123
 ```
 
 #### `user delete`
 
 ```bash
-crap-cms user delete <CONFIG> [-c <COLLECTION>] [-e <EMAIL>] [--id <ID>] [-y]
+crap-cms user delete [-c <COLLECTION>] [-e <EMAIL>] [--id <ID>] [-y]
 ```
 
 | Flag | Short | Description |
@@ -123,15 +148,15 @@ crap-cms user delete <CONFIG> [-c <COLLECTION>] [-e <EMAIL>] [--id <ID>] [-y]
 #### `user lock` / `user unlock`
 
 ```bash
-crap-cms user lock <CONFIG> [-c <COLLECTION>] [-e <EMAIL>] [--id <ID>]
-crap-cms user unlock <CONFIG> [-c <COLLECTION>] [-e <EMAIL>] [--id <ID>]
+crap-cms user lock [-c <COLLECTION>] [-e <EMAIL>] [--id <ID>]
+crap-cms user unlock [-c <COLLECTION>] [-e <EMAIL>] [--id <ID>]
 ```
 
 #### `user verify` / `user unverify`
 
 ```bash
-crap-cms user verify <CONFIG> [-c <COLLECTION>] [-e <EMAIL>] [--id <ID>]
-crap-cms user unverify <CONFIG> [-c <COLLECTION>] [-e <EMAIL>] [--id <ID>]
+crap-cms user verify [-c <COLLECTION>] [-e <EMAIL>] [--id <ID>]
+crap-cms user unverify [-c <COLLECTION>] [-e <EMAIL>] [--id <ID>]
 ```
 
 Manually mark a user's email as verified or unverified. Only works on collections with `verify_email = true`. Useful when email is not configured.
@@ -139,7 +164,7 @@ Manually mark a user's email as verified or unverified. Only works on collection
 #### `user change-password`
 
 ```bash
-crap-cms user change-password <CONFIG> [-c <COLLECTION>] [-e <EMAIL>] [--id <ID>] [-p <PASSWORD>]
+crap-cms user change-password [-c <COLLECTION>] [-e <EMAIL>] [--id <ID>] [-p <PASSWORD>]
 ```
 
 ### `init` — Scaffold a new config directory
@@ -173,7 +198,8 @@ crap-cms init ./my-project
 After scaffolding:
 
 ```bash
-crap-cms serve ./my-project
+cd my-project
+crap-cms serve
 ```
 
 ### `make` — Generate scaffolding files
@@ -181,7 +207,7 @@ crap-cms serve ./my-project
 #### `make collection`
 
 ```bash
-crap-cms make collection <CONFIG> [SLUG] [-F <FIELDS>] [-T] [--auth] [--upload] [--versions] [--no-input] [-f]
+crap-cms make collection [SLUG] [-F <FIELDS>] [-T] [--auth] [--upload] [--versions] [--no-input] [-f]
 ```
 
 | Flag | Short | Description |
@@ -211,31 +237,31 @@ Modifiers are order-independent:
 
 ```bash
 # Basic
-crap-cms make collection ./my-project posts
+crap-cms make collection posts
 
 # With fields
-crap-cms make collection ./my-project articles \
+crap-cms make collection articles \
     -F "title:text:required,body:richtext"
 
 # With localized fields
-crap-cms make collection ./my-project pages \
+crap-cms make collection pages \
     -F "title:text:required:localized,body:textarea:localized,slug:text:required"
 
 # Auth collection
-crap-cms make collection ./my-project users --auth
+crap-cms make collection users --auth
 
 # Upload collection
-crap-cms make collection ./my-project media --upload
+crap-cms make collection media --upload
 
 # Non-interactive with versions
-crap-cms make collection ./my-project posts \
+crap-cms make collection posts \
     -F "title:text:required,body:richtext" --versions --no-input
 ```
 
 #### `make global`
 
 ```bash
-crap-cms make global <CONFIG> [SLUG] [-F <FIELDS>] [-f]
+crap-cms make global [SLUG] [-F <FIELDS>] [-f]
 ```
 
 | Flag | Short | Description |
@@ -244,14 +270,14 @@ crap-cms make global <CONFIG> [SLUG] [-F <FIELDS>] [-f]
 | `--force` | `-f` | Overwrite existing file |
 
 ```bash
-crap-cms make global ./my-project site_settings
-crap-cms make global ./my-project nav -F "links:array(label:text:required,url:text)"
+crap-cms make global site_settings
+crap-cms make global nav -F "links:array(label:text:required,url:text)"
 ```
 
 #### `make hook`
 
 ```bash
-crap-cms make hook <CONFIG> [NAME] [-t <TYPE>] [-c <COLLECTION>] [-l <POSITION>] [-F <FIELD>] [--force]
+crap-cms make hook [NAME] [-t <TYPE>] [-c <COLLECTION>] [-l <POSITION>] [-F <FIELD>] [--force]
 ```
 
 | Flag | Short | Description |
@@ -283,29 +309,29 @@ Generated hooks use per-collection typed annotations for IDE support:
 
 ```bash
 # Interactive (prompts for everything)
-crap-cms make hook ./my-project
+crap-cms make hook
 
 # Fully specified
-crap-cms make hook ./my-project auto_slug \
+crap-cms make hook auto_slug \
     -t collection -c posts -l before_change
 
 # Field hook
-crap-cms make hook ./my-project normalize_email \
+crap-cms make hook normalize_email \
     -t field -c users -l before_validate -F email
 
 # Access hook
-crap-cms make hook ./my-project owner_only \
+crap-cms make hook owner_only \
     -t access -c posts -l read
 
 # Condition hook (client-side table)
-crap-cms make hook ./my-project show_external_url \
+crap-cms make hook show_external_url \
     -t condition -c posts -l table -F post_type
 ```
 
 #### `make job`
 
 ```bash
-crap-cms make job <CONFIG> [SLUG] [-s <SCHEDULE>] [-q <QUEUE>] [-r <RETRIES>] [-t <TIMEOUT>] [-f]
+crap-cms make job [SLUG] [-s <SCHEDULE>] [-q <QUEUE>] [-r <RETRIES>] [-t <TIMEOUT>] [-f]
 ```
 
 | Flag | Short | Default | Description |
@@ -318,13 +344,13 @@ crap-cms make job <CONFIG> [SLUG] [-s <SCHEDULE>] [-q <QUEUE>] [-r <RETRIES>] [-
 
 ```bash
 # Interactive (prompts for slug)
-crap-cms make job ./my-project
+crap-cms make job
 
 # With schedule
-crap-cms make job ./my-project cleanup_expired -s "0 3 * * *" -r 3 -t 300
+crap-cms make job cleanup_expired -s "0 3 * * *" -r 3 -t 300
 
 # Simple job (triggered from hooks)
-crap-cms make job ./my-project send_welcome_email
+crap-cms make job send_welcome_email
 ```
 
 ### `blueprint` — Manage saved blueprints
@@ -332,10 +358,10 @@ crap-cms make job ./my-project send_welcome_email
 #### `blueprint save`
 
 ```bash
-crap-cms blueprint save <CONFIG> <NAME> [-f]
+crap-cms blueprint save <NAME> [-f]
 ```
 
-Saves a config directory as a reusable blueprint (excluding `data/`, `uploads/`, `types/`). A `.crap-blueprint.toml` manifest is written with the CMS version and timestamp.
+Saves the current config directory as a reusable blueprint (excluding `data/`, `uploads/`, `types/`). A `.crap-blueprint.toml` manifest is written with the CMS version and timestamp.
 
 #### `blueprint use`
 
@@ -364,7 +390,7 @@ crap-cms blueprint remove <NAME>
 #### `db console`
 
 ```bash
-crap-cms db console <CONFIG>
+crap-cms db console
 ```
 
 Opens an interactive `sqlite3` session on the project database.
@@ -372,7 +398,7 @@ Opens an interactive `sqlite3` session on the project database.
 #### `db cleanup`
 
 ```bash
-crap-cms db cleanup <CONFIG> [--confirm]
+crap-cms db cleanup [--confirm]
 ```
 
 | Flag | Description |
@@ -383,16 +409,16 @@ Detects columns in collection tables that don't correspond to any field in the c
 
 ```bash
 # Dry run — show orphans without removing them
-crap-cms db cleanup ./my-project
+crap-cms db cleanup
 
 # Actually drop orphan columns
-crap-cms db cleanup ./my-project --confirm
+crap-cms db cleanup --confirm
 ```
 
 ### `export` — Export collection data
 
 ```bash
-crap-cms export <CONFIG> [-c <COLLECTION>] [-o <FILE>]
+crap-cms export [-c <COLLECTION>] [-o <FILE>]
 ```
 
 | Flag | Short | Description |
@@ -403,14 +429,14 @@ crap-cms export <CONFIG> [-c <COLLECTION>] [-o <FILE>]
 Export includes `crap_version` and `exported_at` metadata in the JSON envelope. On import, a version mismatch produces a warning (but does not abort).
 
 ```bash
-crap-cms export ./my-project
-crap-cms export ./my-project -c posts -o posts.json
+crap-cms export
+crap-cms export -c posts -o posts.json
 ```
 
 ### `import` — Import collection data
 
 ```bash
-crap-cms import <CONFIG> <FILE> [-c <COLLECTION>]
+crap-cms import <FILE> [-c <COLLECTION>]
 ```
 
 | Flag | Short | Description |
@@ -418,14 +444,14 @@ crap-cms import <CONFIG> <FILE> [-c <COLLECTION>]
 | `--collection` | `-c` | Import only this collection (default: all in file) |
 
 ```bash
-crap-cms import ./my-project backup.json
-crap-cms import ./my-project backup.json -c posts
+crap-cms import backup.json
+crap-cms import backup.json -c posts
 ```
 
 ### `typegen` — Generate typed definitions
 
 ```bash
-crap-cms typegen <CONFIG> [-l <LANG>] [-o <DIR>]
+crap-cms typegen [-l <LANG>] [-o <DIR>]
 ```
 
 | Flag | Short | Default | Description |
@@ -434,9 +460,9 @@ crap-cms typegen <CONFIG> [-l <LANG>] [-o <DIR>]
 | `--output` | `-o` | `<config>/types/` | Output directory for generated files |
 
 ```bash
-crap-cms typegen ./my-project
-crap-cms typegen ./my-project -l all
-crap-cms typegen ./my-project -l ts -o ./client/src/types
+crap-cms typegen
+crap-cms typegen -l all
+crap-cms typegen -l ts -o ./client/src/types
 ```
 
 ### `proto` — Export proto file
@@ -455,7 +481,7 @@ crap-cms proto -o ./proto/
 ### `migrate` — Run database migrations
 
 ```bash
-crap-cms migrate <CONFIG> <create|up|down|list|fresh>
+crap-cms migrate <create|up|down|list|fresh>
 ```
 
 | Subcommand | Description |
@@ -467,17 +493,17 @@ crap-cms migrate <CONFIG> <create|up|down|list|fresh>
 | `fresh [-y\|--confirm]` | Drop all tables and recreate (destructive, requires confirmation) |
 
 ```bash
-crap-cms migrate ./my-project create backfill_slugs
-crap-cms migrate ./my-project up
-crap-cms migrate ./my-project list
-crap-cms migrate ./my-project down -s 2
-crap-cms migrate ./my-project fresh -y
+crap-cms migrate create backfill_slugs
+crap-cms migrate up
+crap-cms migrate list
+crap-cms migrate down -s 2
+crap-cms migrate fresh -y
 ```
 
 ### `backup` — Backup database
 
 ```bash
-crap-cms backup <CONFIG> [-o <DIR>] [-i]
+crap-cms backup [-o <DIR>] [-i]
 ```
 
 | Flag | Short | Description |
@@ -486,14 +512,14 @@ crap-cms backup <CONFIG> [-o <DIR>] [-i]
 | `--include-uploads` | `-i` | Also compress the uploads directory |
 
 ```bash
-crap-cms backup ./my-project
-crap-cms backup ./my-project -o /tmp/backups -i
+crap-cms backup
+crap-cms backup -o /tmp/backups -i
 ```
 
 ### `restore` — Restore from backup
 
 ```bash
-crap-cms restore <CONFIG> <BACKUP> [-i] [-y]
+crap-cms restore <BACKUP> [-i] [-y]
 ```
 
 | Flag | Short | Description |
@@ -504,8 +530,8 @@ crap-cms restore <CONFIG> <BACKUP> [-i] [-y]
 Replaces the current database with a backup snapshot. Cleans up stale WAL/SHM files.
 
 ```bash
-crap-cms restore ./my-project ./my-project/backups/backup-2026-03-07T10-00-00 -y
-crap-cms restore ./my-project /tmp/backups/backup-2026-03-07T10-00-00 -i -y
+crap-cms restore ./backups/backup-2026-03-07T10-00-00 -y
+crap-cms restore /tmp/backups/backup-2026-03-07T10-00-00 -i -y
 ```
 
 ### `templates` — List and extract default admin templates
@@ -532,7 +558,7 @@ crap-cms templates list -v
 #### `templates extract`
 
 ```bash
-crap-cms templates extract <CONFIG> [PATHS...] [-a] [-t <TYPE>] [-f]
+crap-cms templates extract [PATHS...] [-a] [-t <TYPE>] [-f]
 ```
 
 | Flag | Short | Description |
@@ -543,23 +569,21 @@ crap-cms templates extract <CONFIG> [PATHS...] [-a] [-t <TYPE>] [-f]
 
 ```bash
 # Extract specific files
-crap-cms templates extract ./my-project layout/base.hbs styles.css
+crap-cms templates extract layout/base.hbs styles.css
 
 # Extract all templates
-crap-cms templates extract ./my-project --all --type templates
+crap-cms templates extract --all --type templates
 
 # Extract everything, overwriting existing
-crap-cms templates extract ./my-project --all --force
+crap-cms templates extract --all --force
 ```
 
 ### `jobs` — Manage background jobs
 
-All jobs subcommands require a config directory.
-
 #### `jobs list`
 
 ```bash
-crap-cms jobs list <CONFIG>
+crap-cms jobs list
 ```
 
 Lists all defined jobs with their configuration (handler, schedule, queue, retries, timeout, concurrency).
@@ -567,7 +591,7 @@ Lists all defined jobs with their configuration (handler, schedule, queue, retri
 #### `jobs trigger`
 
 ```bash
-crap-cms jobs trigger <CONFIG> <SLUG> [-d <DATA>]
+crap-cms jobs trigger <SLUG> [-d <DATA>]
 ```
 
 | Flag | Short | Default | Description |
@@ -579,7 +603,7 @@ Manually queue a job for execution. Works even while the server is running (SQLi
 #### `jobs status`
 
 ```bash
-crap-cms jobs status <CONFIG> [--id <ID>] [-s <SLUG>] [-l <LIMIT>]
+crap-cms jobs status [--id <ID>] [-s <SLUG>] [-l <LIMIT>]
 ```
 
 | Flag | Short | Default | Description |
@@ -593,7 +617,7 @@ Show recent job runs. If `--id` is given, shows details for that specific run. O
 #### `jobs cancel`
 
 ```bash
-crap-cms jobs cancel <CONFIG> [--slug <SLUG>]
+crap-cms jobs cancel [--slug <SLUG>]
 ```
 
 | Flag | Default | Description |
@@ -605,7 +629,7 @@ Deletes pending jobs from the queue. Useful for clearing stuck or unwanted jobs 
 #### `jobs purge`
 
 ```bash
-crap-cms jobs purge <CONFIG> [--older-than <DURATION>]
+crap-cms jobs purge [--older-than <DURATION>]
 ```
 
 | Flag | Default | Description |
@@ -615,7 +639,7 @@ crap-cms jobs purge <CONFIG> [--older-than <DURATION>]
 #### `jobs healthcheck`
 
 ```bash
-crap-cms jobs healthcheck <CONFIG>
+crap-cms jobs healthcheck
 ```
 
 Checks job system health and prints a summary: defined jobs, stale jobs (running but heartbeat expired), failed jobs in the last 24 hours, pending jobs waiting longer than 5 minutes, and scheduled jobs that have never completed a run.
@@ -623,14 +647,14 @@ Checks job system health and prints a summary: defined jobs, stale jobs (running
 Exit status: `healthy` (no issues), `warning` (failed or long-pending jobs), `unhealthy` (stale jobs detected).
 
 ```bash
-crap-cms jobs list ./my-project
-crap-cms jobs trigger ./my-project cleanup_expired
-crap-cms jobs status ./my-project
-crap-cms jobs status ./my-project --id abc123
-crap-cms jobs cancel ./my-project
-crap-cms jobs cancel ./my-project -s process_inquiry
-crap-cms jobs purge ./my-project --older-than 30d
-crap-cms jobs healthcheck ./my-project
+crap-cms jobs list
+crap-cms jobs trigger cleanup_expired
+crap-cms jobs status
+crap-cms jobs status --id abc123
+crap-cms jobs cancel
+crap-cms jobs cancel -s process_inquiry
+crap-cms jobs purge --older-than 30d
+crap-cms jobs healthcheck
 ```
 
 ### `images` — Manage image processing queue
@@ -640,7 +664,7 @@ Inspect and manage the background image format conversion queue. See [Image Proc
 #### `images list`
 
 ```bash
-crap-cms images list <CONFIG> [-s <STATUS>] [-l <LIMIT>]
+crap-cms images list [-s <STATUS>] [-l <LIMIT>]
 ```
 
 | Flag | Short | Default | Description |
@@ -651,7 +675,7 @@ crap-cms images list <CONFIG> [-s <STATUS>] [-l <LIMIT>]
 #### `images stats`
 
 ```bash
-crap-cms images stats <CONFIG>
+crap-cms images stats
 ```
 
 Shows counts by status (pending, processing, completed, failed) and total.
@@ -659,7 +683,7 @@ Shows counts by status (pending, processing, completed, failed) and total.
 #### `images retry`
 
 ```bash
-crap-cms images retry <CONFIG> [--id <ID>] [--all] [-y]
+crap-cms images retry [--id <ID>] [--all] [-y]
 ```
 
 | Flag | Short | Description |
@@ -671,7 +695,7 @@ crap-cms images retry <CONFIG> [--id <ID>] [--all] [-y]
 #### `images purge`
 
 ```bash
-crap-cms images purge <CONFIG> [--older-than <DURATION>]
+crap-cms images purge [--older-than <DURATION>]
 ```
 
 | Flag | Default | Description |
@@ -679,12 +703,12 @@ crap-cms images purge <CONFIG> [--older-than <DURATION>]
 | `--older-than` | `7d` | Delete completed/failed entries older than this. Supports `Nd`, `Nh`, `Nm`, `Ns` formats. |
 
 ```bash
-crap-cms images list ./my-project
-crap-cms images list ./my-project -s failed
-crap-cms images stats ./my-project
-crap-cms images retry ./my-project --id abc123
-crap-cms images retry ./my-project --all -y
-crap-cms images purge ./my-project --older-than 30d
+crap-cms images list
+crap-cms images list -s failed
+crap-cms images stats
+crap-cms images retry --id abc123
+crap-cms images retry --all -y
+crap-cms images purge --older-than 30d
 ```
 
 ### `mcp` — Start the MCP server (stdio)
@@ -692,15 +716,7 @@ crap-cms images purge ./my-project --older-than 30d
 Start an MCP (Model Context Protocol) server over stdio for AI assistant integration.
 
 ```bash
-crap-cms mcp <CONFIG>
-```
-
-| Argument | Description |
-|----------|-------------|
-| `<CONFIG>` | Path to the config directory |
-
-```bash
-crap-cms mcp ./my-project
+crap-cms mcp
 ```
 
 Reads JSON-RPC 2.0 from stdin, writes responses to stdout. Use with Claude Desktop,
@@ -711,5 +727,6 @@ for configuration and usage.
 
 | Variable | Description |
 |----------|-------------|
+| `CRAP_CONFIG_DIR` | Path to the config directory (same as `--config` flag; flag takes priority) |
 | `RUST_LOG` | Controls log verbosity. Default: `crap_cms=debug,info`. Example: `RUST_LOG=crap_cms=trace` |
 | `CRAP_LOG_FORMAT` | Set to `json` for structured JSON log output (same as `--json` flag) |

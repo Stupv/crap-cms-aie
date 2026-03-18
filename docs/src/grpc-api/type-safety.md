@@ -261,7 +261,7 @@ The gRPC type safety story above is for **external clients**. For **Lua hooks an
 Types are auto-generated on every server startup. You can also generate them explicitly:
 
 ```bash
-crap-cms typegen ./my-project
+crap-cms typegen
 ```
 
 This writes `<config_dir>/types/generated.lua` with LuaLS annotations derived from your Lua collection definitions. Use `-l all` to generate types for all supported languages (Lua, TypeScript, Go, Python, Rust).

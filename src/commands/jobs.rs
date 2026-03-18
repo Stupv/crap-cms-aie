@@ -2,9 +2,10 @@
 
 use anyhow::{Context as _, Result, anyhow};
 use serde_json::Value;
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::{
+    cli::{self, Table},
     config::{CrapConfig, parse_duration_string},
     core::{SharedRegistry, job::JobStatus},
     db::{DbPool, migrate, pool, query},
@@ -12,8 +13,10 @@ use crate::{
 };
 
 /// Initialize config, Lua, pool, and migrate. Used by most job subcommands.
-fn init_stack(config: PathBuf) -> Result<(CrapConfig, SharedRegistry, DbPool)> {
-    let config_dir = config.canonicalize().unwrap_or(config);
+fn init_stack(config_dir: &Path) -> Result<(CrapConfig, SharedRegistry, DbPool)> {
+    let config_dir = config_dir
+        .canonicalize()
+        .unwrap_or_else(|_| config_dir.to_path_buf());
     let cfg = CrapConfig::load(&config_dir)?;
     let registry = hooks::init_lua(&config_dir, &cfg)?;
     let pool = pool::create_pool(&config_dir, &cfg)?;
@@ -30,23 +33,19 @@ fn run_list(registry: &SharedRegistry, pool: &DbPool) -> Result<()> {
     let conn = pool.get().context("Failed to get DB connection")?;
 
     if reg.jobs.is_empty() {
-        println!("No jobs defined.");
+        cli::info("No jobs defined.");
 
         return Ok(());
     }
 
-    println!(
-        "{:<24} {:<16} {:<16} {:<12}",
-        "Job", "Schedule", "Queue", "Recent Runs"
-    );
-    println!("{}", "-".repeat(70));
+    let mut table = Table::new(vec!["Job", "Schedule", "Queue", "Recent Runs"]);
 
     let mut slugs: Vec<_> = reg.jobs.keys().collect();
     slugs.sort();
 
     for slug in slugs {
         let def = &reg.jobs[slug];
-        let schedule = def.schedule.as_deref().unwrap_or("-");
+        let schedule = def.schedule.as_deref().unwrap_or("-").to_string();
         let recent = query::jobs::list_job_runs(&conn, Some(slug), None, 5, 0).unwrap_or_default();
 
         let status_summary = if recent.is_empty() {
@@ -85,11 +84,10 @@ fn run_list(registry: &SharedRegistry, pool: &DbPool) -> Result<()> {
             parts.join("/")
         };
 
-        println!(
-            "{:<24} {:<16} {:<16} {}",
-            slug, schedule, &def.queue, status_summary
-        );
+        table.row(vec![slug, &schedule, &def.queue, &status_summary]);
     }
+
+    table.print();
 
     Ok(())
 }
@@ -101,59 +99,49 @@ fn run_status(pool: &DbPool, id: Option<String>, slug: Option<String>, limit: i6
     if let Some(run_id) = id {
         let run = query::jobs::get_job_run(&conn, &run_id)?
             .ok_or_else(|| anyhow!("Job run '{}' not found", run_id))?;
-        println!("ID:          {}", run.id);
-        println!("Job:         {}", run.slug);
-        println!("Status:      {}", run.status.as_str());
-        println!("Queue:       {}", run.queue);
-        println!("Attempt:     {}/{}", run.attempt, run.max_attempts);
-        println!(
-            "Scheduled by: {}",
-            run.scheduled_by.as_deref().unwrap_or("-")
-        );
-        println!("Created:     {}", run.created_at.as_deref().unwrap_or("-"));
-        println!("Started:     {}", run.started_at.as_deref().unwrap_or("-"));
-        println!(
-            "Completed:   {}",
-            run.completed_at.as_deref().unwrap_or("-")
-        );
+        cli::kv("ID", &run.id);
+        cli::kv("Job", &run.slug);
+        cli::kv("Status", run.status.as_str());
+        cli::kv("Queue", &run.queue);
+        cli::kv("Attempt", &format!("{}/{}", run.attempt, run.max_attempts));
+        cli::kv("Scheduled", run.scheduled_by.as_deref().unwrap_or("-"));
+        cli::kv("Created", run.created_at.as_deref().unwrap_or("-"));
+        cli::kv("Started", run.started_at.as_deref().unwrap_or("-"));
+        cli::kv("Completed", run.completed_at.as_deref().unwrap_or("-"));
 
         if let Some(ref data) = Some(&run.data) {
-            println!("Data:        {}", data);
+            cli::kv("Data", &data.to_string());
         }
         if let Some(ref result) = run.result {
-            println!("Result:      {}", result);
+            cli::kv("Result", &result.to_string());
         }
         if let Some(ref error) = run.error {
-            println!("Error:       {}", error);
+            cli::kv("Error", &error.to_string());
         }
     } else {
         let runs = query::jobs::list_job_runs(&conn, slug.as_deref(), None, limit, 0)?;
 
         if runs.is_empty() {
-            println!("No job runs found.");
+            cli::info("No job runs found.");
 
             return Ok(());
         }
 
-        println!(
-            "{:<24} {:<20} {:<12} {:<8} {:<20}",
-            "ID", "Job", "Status", "Attempt", "Created"
-        );
-        println!("{}", "-".repeat(86));
+        let mut table = Table::new(vec!["ID", "Job", "Status", "Attempt", "Created"]);
 
         for run in &runs {
-            println!(
-                "{:<24} {:<20} {:<12} {}/{:<5} {}",
-                run.id,
-                run.slug,
+            let attempt = format!("{}/{}", run.attempt, run.max_attempts);
+            table.row(vec![
+                &run.id,
+                &run.slug,
                 run.status.as_str(),
-                run.attempt,
-                run.max_attempts,
-                run.created_at.as_deref().unwrap_or("-")
-            );
+                &attempt,
+                run.created_at.as_deref().unwrap_or("-"),
+            ]);
         }
 
-        println!("\n{} run(s)", runs.len());
+        table.print();
+        table.footer(&format!("{} run(s)", runs.len()));
     }
 
     Ok(())
@@ -200,28 +188,28 @@ fn run_healthcheck(cfg: &CrapConfig, registry: &SharedRegistry, pool: &DbPool) -
         "healthy"
     };
 
-    println!("Job system health:");
-    println!("  Defined jobs:    {}", defined_count);
-    println!("  Stale jobs:      {}", stale_count);
-    println!("  Failed (24h):    {}", failed_24h);
-    println!("  Pending > 5min:  {}", pending_long);
+    cli::header("Job system health");
+    cli::kv("Defined", &defined_count.to_string());
+    cli::kv("Stale", &stale_count.to_string());
+    cli::kv("Failed 24h", &failed_24h.to_string());
+    cli::kv("Pending 5m", &pending_long.to_string());
 
     if !no_recent_runs.is_empty() {
         no_recent_runs.sort();
-        println!("  Never completed: {}", no_recent_runs.join(", "));
+        cli::kv("No runs", &no_recent_runs.join(", "));
     }
-    println!("  Status: {}", status);
+    cli::kv_status("Status", status, status == "healthy");
 
     if stale_count > 0 {
-        println!("\nStale jobs:");
+        cli::header("Stale jobs");
         for job in &stale_jobs {
-            println!(
-                "  {} ({}): started {}, last heartbeat {}",
+            cli::warning(&format!(
+                "{} ({}): started {}, last heartbeat {}",
                 job.id,
                 job.slug,
                 job.started_at.as_deref().unwrap_or("-"),
                 job.heartbeat_at.as_deref().unwrap_or("never")
-            );
+            ));
         }
     }
 
@@ -232,14 +220,14 @@ fn run_healthcheck(cfg: &CrapConfig, registry: &SharedRegistry, pool: &DbPool) -
 // Excluded from coverage: requires full Lua + DB setup (init_lua, create_pool, sync_all)
 // for each subcommand variant. Tested via CLI integration tests.
 #[cfg(not(tarpaulin_include))]
-pub fn run(action: super::JobsAction) -> Result<()> {
+pub fn run(config_dir: &Path, action: super::JobsAction) -> Result<()> {
     match action {
-        super::JobsAction::List { config } => {
-            let (_cfg, registry, pool) = init_stack(config)?;
+        super::JobsAction::List => {
+            let (_cfg, registry, pool) = init_stack(config_dir)?;
             run_list(&registry, &pool)
         }
-        super::JobsAction::Trigger { config, slug, data } => {
-            let (_cfg, registry, pool) = init_stack(config)?;
+        super::JobsAction::Trigger { slug, data } => {
+            let (_cfg, registry, pool) = init_stack(config_dir)?;
             let reg = registry
                 .read()
                 .map_err(|e| anyhow!("Registry lock poisoned: {}", e))?;
@@ -261,34 +249,33 @@ pub fn run(action: super::JobsAction) -> Result<()> {
                 &job_def.queue,
             )?;
 
-            println!("Queued job '{}' (run {})", slug, job_run.id);
-            println!("The job will be picked up by the scheduler when the server is running.");
+            cli::success(&format!("Queued job '{}' (run {})", slug, job_run.id));
+            cli::hint("The job will be picked up by the scheduler when the server is running.");
 
             Ok(())
         }
-        super::JobsAction::Status {
-            config,
-            id,
-            slug,
-            limit,
-        } => {
-            let (_cfg, _registry, pool) = init_stack(config)?;
+        super::JobsAction::Status { id, slug, limit } => {
+            let (_cfg, _registry, pool) = init_stack(config_dir)?;
             run_status(&pool, id, slug, limit)
         }
-        super::JobsAction::Cancel { config, slug } => {
-            let config_dir = config.canonicalize().unwrap_or(config);
+        super::JobsAction::Cancel { slug } => {
+            let config_dir = config_dir
+                .canonicalize()
+                .unwrap_or_else(|_| config_dir.to_path_buf());
             let cfg = CrapConfig::load(&config_dir)?;
             let pool = pool::create_pool(&config_dir, &cfg)?;
             let conn = pool.get().context("Failed to get DB connection")?;
             let deleted = query::jobs::cancel_pending_jobs(&conn, slug.as_deref())?;
             match slug {
-                Some(s) => println!("Cancelled {} pending '{}' job(s)", deleted, s),
-                None => println!("Cancelled {} pending job(s)", deleted),
+                Some(s) => cli::success(&format!("Cancelled {} pending '{}' job(s)", deleted, s)),
+                None => cli::success(&format!("Cancelled {} pending job(s)", deleted)),
             }
             Ok(())
         }
-        super::JobsAction::Purge { config, older_than } => {
-            let config_dir = config.canonicalize().unwrap_or(config);
+        super::JobsAction::Purge { older_than } => {
+            let config_dir = config_dir
+                .canonicalize()
+                .unwrap_or_else(|_| config_dir.to_path_buf());
             let cfg = CrapConfig::load(&config_dir)?;
             let pool = pool::create_pool(&config_dir, &cfg)?;
 
@@ -300,12 +287,12 @@ pub fn run(action: super::JobsAction) -> Result<()> {
 
             let conn = pool.get().context("Failed to get DB connection")?;
             let deleted = query::jobs::purge_old_jobs(&conn, secs)?;
-            println!("Purged {} old job run(s)", deleted);
+            cli::success(&format!("Purged {} old job run(s)", deleted));
 
             Ok(())
         }
-        super::JobsAction::Healthcheck { config } => {
-            let (cfg, registry, pool) = init_stack(config)?;
+        super::JobsAction::Healthcheck => {
+            let (cfg, registry, pool) = init_stack(config_dir)?;
             run_healthcheck(&cfg, &registry, &pool)
         }
     }

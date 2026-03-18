@@ -26,7 +26,7 @@ The project is functional but not yet production-ready — it still needs to pro
 
 - **Lua is the single source of truth for schemas.** Collections and fields are defined in Lua files, not in the database. The database stores content, not structure.
 - **Single binary.** The admin UI (Axum) and gRPC API (Tonic) run in one process on two ports.
-- **Config directory pattern.** All customization lives in one directory, passed as a positional argument to each command.
+- **Config directory pattern.** All customization lives in one directory, auto-detected from CWD (or set explicitly with `--config`/`-C`).
 - **No JS build step.** The admin UI uses Handlebars templates + HTMX with plain CSS.
 - **Hooks are the extension system.** Lua hooks at three levels (field, collection, global) provide full lifecycle control with transaction-safe CRUD access.
 

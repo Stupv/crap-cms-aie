@@ -113,7 +113,7 @@ pub fn detach(config_dir: &Path, only: Option<ServeMode>, no_scheduler: bool) ->
 
     let pid = child.id();
     write_pid_file(&config_dir, pid)?;
-    println!("Started crap-cms in background (PID {})", pid);
+    crate::cli::success(&format!("Started crap-cms in background (PID {})", pid));
     Ok(())
 }
 

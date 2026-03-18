@@ -53,31 +53,33 @@ fn field_loop(locales_enabled: bool, breadcrumb: &[String]) -> anyhow::Result<Ve
     use anyhow::Context as _;
     use dialoguer::{Confirm, Input, Select};
 
+    use crate::cli::{self, crap_theme};
+
     let depth = breadcrumb.len();
     if depth >= MAX_WIZARD_DEPTH {
-        println!(
+        cli::warning(&format!(
             "{}Maximum nesting depth ({}) reached — cannot add subfields here.",
             "  ".repeat(depth),
             MAX_WIZARD_DEPTH
-        );
+        ));
         return Ok(vec![]);
     }
 
     let indent = "  ".repeat(depth);
     if breadcrumb.is_empty() {
-        println!("Define fields (empty name to finish):");
+        cli::info("Define fields (empty name to finish):");
     } else {
-        println!(
+        cli::info(&format!(
             "{}Define fields for '{}' (empty name to finish):",
             indent,
             breadcrumb.join(" > ")
-        );
+        ));
     }
 
     let mut fields = Vec::new();
 
     loop {
-        let name: String = Input::new()
+        let name: String = Input::with_theme(&crap_theme())
             .with_prompt(format!("{}Field name", indent))
             .allow_empty(true)
             .interact_text()
@@ -87,7 +89,7 @@ fn field_loop(locales_enabled: bool, breadcrumb: &[String]) -> anyhow::Result<Ve
             break;
         }
 
-        let type_idx = Select::new()
+        let type_idx = Select::with_theme(&crap_theme())
             .with_prompt(format!("{}Field type", indent))
             .items(VALID_FIELD_TYPES)
             .default(0)
@@ -95,14 +97,14 @@ fn field_loop(locales_enabled: bool, breadcrumb: &[String]) -> anyhow::Result<Ve
             .context("Failed to read field type")?;
         let field_type = VALID_FIELD_TYPES[type_idx];
 
-        let required = Confirm::new()
+        let required = Confirm::with_theme(&crap_theme())
             .with_prompt(format!("{}Required?", indent))
             .default(false)
             .interact()
             .context("Failed to read required flag")?;
 
         let localized = if locales_enabled {
-            Confirm::new()
+            Confirm::with_theme(&crap_theme())
                 .with_prompt(format!("{}Localized?", indent))
                 .default(false)
                 .interact()
@@ -148,9 +150,11 @@ fn block_loop(
     use anyhow::Context as _;
     use dialoguer::Input;
 
+    use crate::cli::{self, crap_theme};
+
     let depth = breadcrumb.len();
     let indent = "  ".repeat(depth + 1);
-    println!(
+    cli::info(&format!(
         "{}Define blocks for '{}' (empty type to finish):",
         indent,
         if breadcrumb.is_empty() {
@@ -158,12 +162,12 @@ fn block_loop(
         } else {
             format!("{} > {}", breadcrumb.join(" > "), field_name)
         }
-    );
+    ));
 
     let mut blocks = Vec::new();
 
     loop {
-        let block_type: String = Input::new()
+        let block_type: String = Input::with_theme(&crap_theme())
             .with_prompt(format!("{}Block type", indent))
             .allow_empty(true)
             .interact_text()
@@ -173,7 +177,7 @@ fn block_loop(
             break;
         }
 
-        let label: String = Input::new()
+        let label: String = Input::with_theme(&crap_theme())
             .with_prompt(format!("{}Block label", indent))
             .default(to_title_case(&block_type))
             .interact_text()
@@ -203,9 +207,11 @@ fn tab_loop(
     use anyhow::Context as _;
     use dialoguer::Input;
 
+    use crate::cli::{self, crap_theme};
+
     let depth = breadcrumb.len();
     let indent = "  ".repeat(depth + 1);
-    println!(
+    cli::info(&format!(
         "{}Define tabs for '{}' (empty label to finish):",
         indent,
         if breadcrumb.is_empty() {
@@ -213,12 +219,12 @@ fn tab_loop(
         } else {
             format!("{} > {}", breadcrumb.join(" > "), field_name)
         }
-    );
+    ));
 
     let mut tabs = Vec::new();
 
     loop {
-        let label: String = Input::new()
+        let label: String = Input::with_theme(&crap_theme())
             .with_prompt(format!("{}Tab label", indent))
             .allow_empty(true)
             .interact_text()

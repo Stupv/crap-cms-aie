@@ -591,11 +591,13 @@ return M
     }
 
     // Use the jobs command to trigger it
-    commands::jobs::run(commands::JobsAction::Trigger {
-        config: config_dir.clone(),
-        slug: "cleanup".to_string(),
-        data: None,
-    })
+    commands::jobs::run(
+        &config_dir,
+        commands::JobsAction::Trigger {
+            slug: "cleanup".to_string(),
+            data: None,
+        },
+    )
     .unwrap();
 
     // Verify a job run was created in the DB

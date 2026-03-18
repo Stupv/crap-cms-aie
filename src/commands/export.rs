@@ -8,6 +8,7 @@ use std::{
 };
 
 use crate::{
+    cli,
     config::CrapConfig,
     core::{CollectionDefinition, FieldType},
     db::{DbConnection, DbValue, query},
@@ -73,11 +74,11 @@ pub fn export(
             let content = serde_json::to_string_pretty(&output_json)?;
             std::fs::write(&path, content)
                 .with_context(|| format!("Failed to write {}", path.display()))?;
-            eprintln!(
+            cli::success(&format!(
                 "Exported {} collection(s) to {}",
                 slugs.len(),
                 path.display()
-            );
+            ));
         }
         None => {
             println!("{}", serde_json::to_string_pretty(&output_json)?);
@@ -246,10 +247,7 @@ pub fn import(config_dir: &Path, file: &Path, collection_filter: Option<String>)
         let current = env!("CARGO_PKG_VERSION");
 
         if let Some(warning) = CrapConfig::check_version_against(Some(export_version), current) {
-            eprintln!(
-                "Warning: {}",
-                warning.replace("config requires", "export file was created with")
-            );
+            cli::warning(&warning.replace("config requires", "export file was created with"));
         }
     }
 
@@ -330,10 +328,14 @@ pub fn import(config_dir: &Path, file: &Path, collection_filter: Option<String>)
         tx.commit()
             .with_context(|| format!("Failed to commit import for '{}'", slug))?;
 
-        println!("Imported {} document(s) into '{}'", docs_array.len(), slug);
+        cli::success(&format!(
+            "Imported {} document(s) into '{}'",
+            docs_array.len(),
+            slug
+        ));
     }
 
-    println!("\nTotal: {} document(s) imported", total_imported);
+    cli::success(&format!("Total: {} document(s) imported", total_imported));
 
     Ok(())
 }

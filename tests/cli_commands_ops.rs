@@ -487,7 +487,7 @@ fn cmd_jobs_list() {
     let (tmp, _pool, _registry) = full_setup_with_jobs();
     let config_dir = tmp.path().join("config");
 
-    let result = commands::jobs::run(commands::JobsAction::List { config: config_dir });
+    let result = commands::jobs::run(&config_dir, commands::JobsAction::List);
     assert!(
         result.is_ok(),
         "jobs list should succeed: {:?}",
@@ -502,7 +502,7 @@ fn cmd_jobs_list_empty() {
     let config_dir = tmp.path().join("config");
     copy_dir(&fixture_dir(), &config_dir);
 
-    let result = commands::jobs::run(commands::JobsAction::List { config: config_dir });
+    let result = commands::jobs::run(&config_dir, commands::JobsAction::List);
     assert!(
         result.is_ok(),
         "jobs list with no jobs should succeed: {:?}",
@@ -516,20 +516,24 @@ fn cmd_jobs_trigger_and_status() {
     let config_dir = tmp.path().join("config");
 
     // Trigger a job
-    commands::jobs::run(commands::JobsAction::Trigger {
-        config: config_dir.clone(),
-        slug: "cleanup".to_string(),
-        data: Some(r#"{"key": "value"}"#.to_string()),
-    })
+    commands::jobs::run(
+        &config_dir,
+        commands::JobsAction::Trigger {
+            slug: "cleanup".to_string(),
+            data: Some(r#"{"key": "value"}"#.to_string()),
+        },
+    )
     .unwrap();
 
     // Check status (list all runs)
-    let result = commands::jobs::run(commands::JobsAction::Status {
-        config: config_dir.clone(),
-        id: None,
-        slug: Some("cleanup".to_string()),
-        limit: 10,
-    });
+    let result = commands::jobs::run(
+        &config_dir,
+        commands::JobsAction::Status {
+            id: None,
+            slug: Some("cleanup".to_string()),
+            limit: 10,
+        },
+    );
     assert!(
         result.is_ok(),
         "jobs status should succeed: {:?}",
@@ -542,11 +546,13 @@ fn cmd_jobs_trigger_nonexistent_errors() {
     let (tmp, _pool, _registry) = full_setup_with_jobs();
     let config_dir = tmp.path().join("config");
 
-    let result = commands::jobs::run(commands::JobsAction::Trigger {
-        config: config_dir,
-        slug: "nonexistent_job".to_string(),
-        data: None,
-    });
+    let result = commands::jobs::run(
+        &config_dir,
+        commands::JobsAction::Trigger {
+            slug: "nonexistent_job".to_string(),
+            data: None,
+        },
+    );
     assert!(result.is_err(), "triggering nonexistent job should fail");
     let err = result.unwrap_err().to_string();
     assert!(err.contains("not defined"), "error: {}", err);
@@ -557,11 +563,13 @@ fn cmd_jobs_trigger_invalid_json_errors() {
     let (tmp, _pool, _registry) = full_setup_with_jobs();
     let config_dir = tmp.path().join("config");
 
-    let result = commands::jobs::run(commands::JobsAction::Trigger {
-        config: config_dir,
-        slug: "cleanup".to_string(),
-        data: Some("not valid json {{{".to_string()),
-    });
+    let result = commands::jobs::run(
+        &config_dir,
+        commands::JobsAction::Trigger {
+            slug: "cleanup".to_string(),
+            data: Some("not valid json {{{".to_string()),
+        },
+    );
     assert!(result.is_err(), "triggering with invalid JSON should fail");
 }
 
@@ -571,11 +579,13 @@ fn cmd_jobs_status_single_run() {
     let config_dir = tmp.path().join("config");
 
     // Trigger a job first
-    commands::jobs::run(commands::JobsAction::Trigger {
-        config: config_dir.clone(),
-        slug: "cleanup".to_string(),
-        data: None,
-    })
+    commands::jobs::run(
+        &config_dir,
+        commands::JobsAction::Trigger {
+            slug: "cleanup".to_string(),
+            data: None,
+        },
+    )
     .unwrap();
 
     // Get the run ID from the database
@@ -590,12 +600,14 @@ fn cmd_jobs_status_single_run() {
     drop(db_pool);
 
     // Show single run by ID
-    let result = commands::jobs::run(commands::JobsAction::Status {
-        config: config_dir,
-        id: Some(run_id),
-        slug: None,
-        limit: 20,
-    });
+    let result = commands::jobs::run(
+        &config_dir,
+        commands::JobsAction::Status {
+            id: Some(run_id),
+            slug: None,
+            limit: 20,
+        },
+    );
     assert!(
         result.is_ok(),
         "jobs status by ID should succeed: {:?}",
@@ -608,12 +620,14 @@ fn cmd_jobs_status_not_found() {
     let (tmp, _pool, _registry) = full_setup_with_jobs();
     let config_dir = tmp.path().join("config");
 
-    let result = commands::jobs::run(commands::JobsAction::Status {
-        config: config_dir,
-        id: Some("nonexistent-run-id".to_string()),
-        slug: None,
-        limit: 20,
-    });
+    let result = commands::jobs::run(
+        &config_dir,
+        commands::JobsAction::Status {
+            id: Some("nonexistent-run-id".to_string()),
+            slug: None,
+            limit: 20,
+        },
+    );
     assert!(
         result.is_err(),
         "jobs status with nonexistent ID should fail"
@@ -628,12 +642,14 @@ fn cmd_jobs_status_empty() {
     let config_dir = tmp.path().join("config");
 
     // No job runs yet
-    let result = commands::jobs::run(commands::JobsAction::Status {
-        config: config_dir,
-        id: None,
-        slug: None,
-        limit: 20,
-    });
+    let result = commands::jobs::run(
+        &config_dir,
+        commands::JobsAction::Status {
+            id: None,
+            slug: None,
+            limit: 20,
+        },
+    );
     assert!(
         result.is_ok(),
         "jobs status with no runs should succeed: {:?}",
@@ -647,18 +663,22 @@ fn cmd_jobs_purge() {
     let config_dir = tmp.path().join("config");
 
     // Trigger a job first so there's something to purge
-    commands::jobs::run(commands::JobsAction::Trigger {
-        config: config_dir.clone(),
-        slug: "cleanup".to_string(),
-        data: None,
-    })
+    commands::jobs::run(
+        &config_dir,
+        commands::JobsAction::Trigger {
+            slug: "cleanup".to_string(),
+            data: None,
+        },
+    )
     .unwrap();
 
     // Purge old runs (0 seconds = purge everything older than now)
-    let result = commands::jobs::run(commands::JobsAction::Purge {
-        config: config_dir,
-        older_than: "1m".to_string(),
-    });
+    let result = commands::jobs::run(
+        &config_dir,
+        commands::JobsAction::Purge {
+            older_than: "1m".to_string(),
+        },
+    );
     assert!(
         result.is_ok(),
         "jobs purge should succeed: {:?}",
@@ -671,10 +691,12 @@ fn cmd_jobs_purge_invalid_duration() {
     let (tmp, _pool, _registry) = full_setup_with_jobs();
     let config_dir = tmp.path().join("config");
 
-    let result = commands::jobs::run(commands::JobsAction::Purge {
-        config: config_dir,
-        older_than: "invalid".to_string(),
-    });
+    let result = commands::jobs::run(
+        &config_dir,
+        commands::JobsAction::Purge {
+            older_than: "invalid".to_string(),
+        },
+    );
     assert!(result.is_err(), "purge with invalid duration should fail");
     let err = result.unwrap_err().to_string();
     assert!(err.contains("Invalid duration"), "error: {}", err);
@@ -777,10 +799,7 @@ fn cmd_status_bad_dir() {
 
 #[test]
 fn cmd_templates_list_all() {
-    let result = commands::templates::run(commands::TemplatesAction::List {
-        r#type: None,
-        verbose: false,
-    });
+    let result = commands::templates::list(None, false);
     assert!(
         result.is_ok(),
         "templates list should succeed: {:?}",
@@ -790,10 +809,7 @@ fn cmd_templates_list_all() {
 
 #[test]
 fn cmd_templates_list_templates_only() {
-    let result = commands::templates::run(commands::TemplatesAction::List {
-        r#type: Some("templates".to_string()),
-        verbose: false,
-    });
+    let result = commands::templates::list(Some("templates".to_string()), false);
     assert!(
         result.is_ok(),
         "templates list templates should succeed: {:?}",
@@ -803,10 +819,7 @@ fn cmd_templates_list_templates_only() {
 
 #[test]
 fn cmd_templates_list_static_only() {
-    let result = commands::templates::run(commands::TemplatesAction::List {
-        r#type: Some("static".to_string()),
-        verbose: false,
-    });
+    let result = commands::templates::list(Some("static".to_string()), false);
     assert!(
         result.is_ok(),
         "templates list static should succeed: {:?}",
@@ -816,10 +829,7 @@ fn cmd_templates_list_static_only() {
 
 #[test]
 fn cmd_templates_list_invalid_type() {
-    let result = commands::templates::run(commands::TemplatesAction::List {
-        r#type: Some("invalid".to_string()),
-        verbose: false,
-    });
+    let result = commands::templates::list(Some("invalid".to_string()), false);
     assert!(
         result.is_err(),
         "templates list with invalid type should fail"
@@ -828,10 +838,7 @@ fn cmd_templates_list_invalid_type() {
 
 #[test]
 fn cmd_templates_list_verbose() {
-    let result = commands::templates::run(commands::TemplatesAction::List {
-        r#type: None,
-        verbose: true,
-    });
+    let result = commands::templates::list(None, true);
     assert!(
         result.is_ok(),
         "templates list --verbose should succeed: {:?}",
@@ -843,13 +850,13 @@ fn cmd_templates_list_verbose() {
 fn cmd_templates_extract_specific() {
     let tmp = tempfile::tempdir().expect("tempdir");
 
-    let result = commands::templates::run(commands::TemplatesAction::Extract {
-        config: tmp.path().to_path_buf(),
-        paths: vec!["layout/base.hbs".to_string()],
-        all: false,
-        r#type: None,
-        force: false,
-    });
+    let result = commands::templates::extract(
+        tmp.path(),
+        &["layout/base.hbs".to_string()],
+        false,
+        None,
+        false,
+    );
     assert!(
         result.is_ok(),
         "templates extract specific should succeed: {:?}",
@@ -862,13 +869,8 @@ fn cmd_templates_extract_specific() {
 fn cmd_templates_extract_all_templates() {
     let tmp = tempfile::tempdir().expect("tempdir");
 
-    let result = commands::templates::run(commands::TemplatesAction::Extract {
-        config: tmp.path().to_path_buf(),
-        paths: vec![],
-        all: true,
-        r#type: Some("templates".to_string()),
-        force: false,
-    });
+    let result =
+        commands::templates::extract(tmp.path(), &[], true, Some("templates".to_string()), false);
     assert!(
         result.is_ok(),
         "templates extract all templates should succeed: {:?}",
@@ -881,13 +883,8 @@ fn cmd_templates_extract_all_templates() {
 fn cmd_templates_extract_all_static() {
     let tmp = tempfile::tempdir().expect("tempdir");
 
-    let result = commands::templates::run(commands::TemplatesAction::Extract {
-        config: tmp.path().to_path_buf(),
-        paths: vec![],
-        all: true,
-        r#type: Some("static".to_string()),
-        force: false,
-    });
+    let result =
+        commands::templates::extract(tmp.path(), &[], true, Some("static".to_string()), false);
     assert!(
         result.is_ok(),
         "templates extract all static should succeed: {:?}",
@@ -900,13 +897,7 @@ fn cmd_templates_extract_all_static() {
 fn cmd_templates_extract_no_paths_no_all_errors() {
     let tmp = tempfile::tempdir().expect("tempdir");
 
-    let result = commands::templates::run(commands::TemplatesAction::Extract {
-        config: tmp.path().to_path_buf(),
-        paths: vec![],
-        all: false,
-        r#type: None,
-        force: false,
-    });
+    let result = commands::templates::extract(tmp.path(), &[], false, None, false);
     assert!(
         result.is_err(),
         "extract with no paths and no --all should fail"
@@ -920,38 +911,38 @@ fn cmd_templates_extract_force_overwrites() {
     let tmp = tempfile::tempdir().expect("tempdir");
 
     // Extract once
-    commands::templates::run(commands::TemplatesAction::Extract {
-        config: tmp.path().to_path_buf(),
-        paths: vec!["layout/base.hbs".to_string()],
-        all: false,
-        r#type: None,
-        force: false,
-    })
+    commands::templates::extract(
+        tmp.path(),
+        &["layout/base.hbs".to_string()],
+        false,
+        None,
+        false,
+    )
     .unwrap();
 
     // Write a custom marker
     std::fs::write(tmp.path().join("templates/layout/base.hbs"), "CUSTOM").unwrap();
 
     // Extract again without force — should skip
-    commands::templates::run(commands::TemplatesAction::Extract {
-        config: tmp.path().to_path_buf(),
-        paths: vec!["layout/base.hbs".to_string()],
-        all: false,
-        r#type: None,
-        force: false,
-    })
+    commands::templates::extract(
+        tmp.path(),
+        &["layout/base.hbs".to_string()],
+        false,
+        None,
+        false,
+    )
     .unwrap();
     let content = std::fs::read_to_string(tmp.path().join("templates/layout/base.hbs")).unwrap();
     assert_eq!(content, "CUSTOM", "should not overwrite without force");
 
     // Extract with force — should overwrite
-    commands::templates::run(commands::TemplatesAction::Extract {
-        config: tmp.path().to_path_buf(),
-        paths: vec!["layout/base.hbs".to_string()],
-        all: false,
-        r#type: None,
-        force: true,
-    })
+    commands::templates::extract(
+        tmp.path(),
+        &["layout/base.hbs".to_string()],
+        false,
+        None,
+        true,
+    )
     .unwrap();
     let content = std::fs::read_to_string(tmp.path().join("templates/layout/base.hbs")).unwrap();
     assert_ne!(content, "CUSTOM", "should overwrite with force");

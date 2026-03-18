@@ -11,7 +11,7 @@ A headless CMS written in Rust. Define your schema in Lua, extend everything wit
 ## Try it
 
 ```bash
-docker run -p 3000:3000 -p 50051:50051 ghcr.io/dkluhzeb/crap-cms:latest serve /example
+docker run -p 3000:3000 -p 50051:50051 ghcr.io/dkluhzeb/crap-cms:latest serve -C /example
 ```
 
 Open [http://localhost:3000/admin](http://localhost:3000/admin) — login: `admin@crap.studio` / `admin123`
@@ -23,7 +23,7 @@ curl -L -o crap-cms \
   https://github.com/dkluhzeb/crap-cms/releases/latest/download/crap-cms-linux-x86_64
 chmod +x crap-cms
 curl -L https://github.com/dkluhzeb/crap-cms/releases/latest/download/example.tar.gz | tar xz
-./crap-cms serve ./example
+./crap-cms serve -C ./example
 ```
 
 ## Features
@@ -130,7 +130,7 @@ git config core.hooksPath .githooks  # enable shared git hooks (fmt + clippy pre
 cargo build                          # compile
 cargo test                           # run tests
 cargo tarpaulin --out html           # coverage report
-crap-cms serve ./example             # run with example config
+crap-cms serve -C ./example          # run with example config
 ```
 
 Default templates and static files are compiled into the binary via `include_dir!`. The config directory overlay takes priority — any file placed in `{config_dir}/static/` or `{config_dir}/templates/` is served from disk without rebuilding. Only changes to the *embedded* defaults (under `static/` or `templates/` in the source tree) require `cargo build`.
