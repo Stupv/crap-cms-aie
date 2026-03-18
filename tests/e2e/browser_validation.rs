@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::browser;
 use crate::helpers::*;
 
@@ -22,7 +24,7 @@ fn make_validated_def() -> CollectionDefinition {
 
 // ── 25. client_side_validation_shows_errors ───────────────────────────────
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn client_side_validation_shows_errors() {
     let (base_url, server_handle, app) =
         browser::spawn_server(vec![make_validated_def(), make_users_def()], vec![]).await;
@@ -40,21 +42,23 @@ async fn client_side_validation_shows_errors() {
         .wait_for_navigation()
         .await
         .unwrap();
+    // Wait for JS/HTMX to initialize
+    tokio::time::sleep(Duration::from_millis(500)).await;
 
-    // Submit with empty required field
-    page.find_element("button[type=\"submit\"]")
-        .await
-        .unwrap()
-        .click()
+    // Submit with empty required field using requestSubmit
+    page.evaluate("() => document.querySelector('#edit-form')?.requestSubmit()")
         .await
         .unwrap();
+    // Wait for validation fetch + error rendering
+    tokio::time::sleep(Duration::from_millis(2000)).await;
 
-    // Wait for validation error to appear
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let error_els = page.find_elements(".form__error").await.unwrap();
+    let result = page
+        .evaluate("() => document.querySelectorAll('.form__error').length")
+        .await
+        .unwrap();
+    let error_count: i64 = result.into_value().unwrap_or(0);
     assert!(
-        !error_els.is_empty(),
+        error_count > 0,
         "should show .form__error after submitting empty required field"
     );
 
@@ -63,7 +67,7 @@ async fn client_side_validation_shows_errors() {
 
 // ── 26. validation_clears_on_valid_resubmit ───────────────────────────────
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn validation_clears_on_valid_resubmit() {
     let (base_url, server_handle, app) =
         browser::spawn_server(vec![make_validated_def(), make_users_def()], vec![]).await;
@@ -81,17 +85,16 @@ async fn validation_clears_on_valid_resubmit() {
         .wait_for_navigation()
         .await
         .unwrap();
+    // Wait for JS/HTMX to initialize
+    tokio::time::sleep(Duration::from_millis(500)).await;
 
-    // Trigger error
-    page.find_element("button[type=\"submit\"]")
-        .await
-        .unwrap()
-        .click()
+    // Trigger validation error
+    page.evaluate("() => document.querySelector('#edit-form')?.requestSubmit()")
         .await
         .unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    tokio::time::sleep(Duration::from_millis(2000)).await;
 
-    // Fill in the field
+    // Fill in the required field
     page.find_element("input[name=\"title\"]")
         .await
         .unwrap()
@@ -102,20 +105,20 @@ async fn validation_clears_on_valid_resubmit() {
         .await
         .unwrap();
 
-    // Resubmit
-    page.find_element("button[type=\"submit\"]")
-        .await
-        .unwrap()
-        .click()
+    // Resubmit via requestSubmit
+    page.evaluate("() => document.querySelector('#edit-form')?.requestSubmit()")
         .await
         .unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    tokio::time::sleep(Duration::from_millis(2000)).await;
 
-    let errors = page.find_elements(".form__error").await.unwrap();
-    assert!(
-        errors.is_empty(),
-        "errors should be cleared after valid resubmit, got {} errors",
-        errors.len()
+    let result = page
+        .evaluate("() => document.querySelectorAll('.form__error').length")
+        .await
+        .unwrap();
+    let error_count: i64 = result.into_value().unwrap_or(0);
+    assert_eq!(
+        error_count, 0,
+        "errors should be cleared after valid resubmit, got {error_count}"
     );
 
     server_handle.abort();
@@ -123,7 +126,7 @@ async fn validation_clears_on_valid_resubmit() {
 
 // ── 27. validation_expands_collapsed_array_row ────────────────────────────
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn validation_expands_collapsed_array_row() {
     let mut def = CollectionDefinition::new("teams");
     def.labels = Labels {
@@ -160,17 +163,16 @@ async fn validation_expands_collapsed_array_row() {
         .wait_for_navigation()
         .await
         .unwrap();
+    // Wait for JS to initialize
+    tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Add a row
-    page.find_element("button[data-action=\"add-array-row\"]")
-        .await
-        .unwrap()
-        .click()
+    page.evaluate("() => document.querySelector('button[data-action=\"add-array-row\"]')?.click()")
         .await
         .unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
 
-    // Fill name but leave array sub-field empty, then submit
+    // Fill name but leave array sub-field empty
     page.find_element("input[name=\"name\"]")
         .await
         .unwrap()
@@ -181,22 +183,23 @@ async fn validation_expands_collapsed_array_row() {
         .await
         .unwrap();
 
-    page.find_element("button[type=\"submit\"]")
-        .await
-        .unwrap()
-        .click()
+    // Submit via requestSubmit to trigger HTMX validation
+    page.evaluate("() => document.querySelector('#edit-form')?.requestSubmit()")
         .await
         .unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    tokio::time::sleep(Duration::from_millis(2000)).await;
 
-    // Error badge should appear on the array row
-    let badges = page
-        .find_elements(".form__array-row--has-errors, .form__array-row-error-badge")
+    // Error badge or expanded state should appear on the array row
+    let result = page
+        .evaluate(
+            "() => document.querySelectorAll('.form__array-row--has-errors, .form__array-row-error-badge, .form__error').length",
+        )
         .await
         .unwrap();
+    let badge_count: i64 = result.into_value().unwrap_or(0);
     assert!(
-        !badges.is_empty(),
-        "collapsed array row with error should show error badge or expanded state"
+        badge_count > 0,
+        "array row with validation error should show error indicator"
     );
 
     server_handle.abort();

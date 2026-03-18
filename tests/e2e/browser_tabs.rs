@@ -32,7 +32,7 @@ fn make_tabs_def() -> CollectionDefinition {
 
 // ── 31. tab_switching_shows_correct_panel ─────────────────────────────────
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn tab_switching_shows_correct_panel() {
     let (base_url, server_handle, app) =
         browser::spawn_server(vec![make_tabs_def(), make_users_def()], vec![]).await;
