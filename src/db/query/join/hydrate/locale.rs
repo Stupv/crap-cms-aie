@@ -296,6 +296,77 @@ mod tests {
         assert_eq!(arr[0].as_str(), Some("articles/a1"));
     }
 
+    // ── Group > Array locale fallback ───────────────────────────────────
+
+    #[test]
+    fn hydrate_group_array_locale_fallback() {
+        use super::super::super::arrays::set_array_rows;
+
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE posts (id TEXT PRIMARY KEY, config__label TEXT);
+             CREATE TABLE posts_config__items (
+                 id TEXT PRIMARY KEY,
+                 parent_id TEXT,
+                 _order INTEGER,
+                 name TEXT,
+                 _locale TEXT
+             );
+             INSERT INTO posts (id, config__label) VALUES ('p1', 'My Config');",
+        )
+        .unwrap();
+
+        // Insert EN-only data
+        let sub = vec![FieldDefinition::builder("name", FieldType::Text).build()];
+        let rows = vec![std::collections::HashMap::from([(
+            "name".to_string(),
+            "FallbackItem".to_string(),
+        )])];
+        set_array_rows(
+            &conn,
+            "posts",
+            "config__items",
+            "p1",
+            &rows,
+            &sub,
+            Some("en"),
+        )
+        .unwrap();
+
+        let fields = vec![
+            FieldDefinition::builder("config", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("label", FieldType::Text).build(),
+                    FieldDefinition::builder("items", FieldType::Array)
+                        .localized(true)
+                        .fields(vec![
+                            FieldDefinition::builder("name", FieldType::Text).build(),
+                        ])
+                        .build(),
+                ])
+                .build(),
+        ];
+
+        // Query in DE with fallback enabled — should get EN data
+        let locale_ctx = de_fallback_ctx();
+        let mut doc = crate::core::Document::new("p1".to_string());
+        doc.fields
+            .insert("config__label".to_string(), serde_json::json!("My Config"));
+
+        hydrate_document(&conn, "posts", &fields, &mut doc, None, Some(&locale_ctx)).unwrap();
+
+        let config = doc
+            .fields
+            .get("config")
+            .expect("config group should be hydrated");
+        let items = config
+            .get("items")
+            .expect("items should exist via fallback");
+        let items_arr = items.as_array().expect("items should be array");
+        assert_eq!(items_arr.len(), 1, "should get EN items via fallback");
+        assert_eq!(items_arr[0]["name"], "FallbackItem");
+    }
+
     // ── resolve_join_locale unit tests ────────────────────────────────────
 
     #[test]

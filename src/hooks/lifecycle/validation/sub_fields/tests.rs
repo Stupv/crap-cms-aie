@@ -132,7 +132,7 @@ fn test_validate_group_inside_array() {
     data.insert(
         "items".to_string(),
         json!([
-            {"meta__title": ""}
+            {"meta": {"title": ""}}
         ]),
     );
     let result = validate_fields_inner(
@@ -143,7 +143,7 @@ fn test_validate_group_inside_array() {
     );
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.errors[0].field.contains("items[0][meta__title]"));
+    assert!(err.errors[0].field.contains("items[0][meta][0][title]"));
 }
 
 #[test]
@@ -249,7 +249,7 @@ fn test_validate_date_in_group_inside_array() {
     data.insert(
         "items".to_string(),
         json!([
-            {"meta__publish_date": "bad-date"}
+            {"meta": {"publish_date": "bad-date"}}
         ]),
     );
     let result = validate_fields_inner(
@@ -296,7 +296,7 @@ fn test_validate_custom_function_in_group_inside_array() {
     data.insert(
         "items".to_string(),
         json!([
-            {"meta__slug": "test-slug"}
+            {"meta": {"slug": "test-slug"}}
         ]),
     );
     let result = validate_fields_inner(
@@ -933,7 +933,7 @@ fn test_validate_group_inside_tabs_inside_array_required() {
             .build(),
     ];
     let mut data = HashMap::new();
-    data.insert("items".to_string(), json!([{"meta__title": ""}]));
+    data.insert("items".to_string(), json!([{"meta": {"title": ""}}]));
     let result = validate_fields_inner(
         &lua,
         &fields,
@@ -947,7 +947,7 @@ fn test_validate_group_inside_tabs_inside_array_required() {
     assert!(
         result.unwrap_err().errors[0]
             .field
-            .contains("items[0][meta__title]")
+            .contains("items[0][meta][0][title]")
     );
 }
 
@@ -1022,7 +1022,7 @@ fn test_validate_group_inside_row_inside_array_required() {
             .build(),
     ];
     let mut data = HashMap::new();
-    data.insert("items".to_string(), json!([{"seo__title": ""}]));
+    data.insert("items".to_string(), json!([{"seo": {"title": ""}}]));
     let result = validate_fields_inner(
         &lua,
         &fields,
@@ -1036,7 +1036,7 @@ fn test_validate_group_inside_row_inside_array_required() {
     assert!(
         result.unwrap_err().errors[0]
             .field
-            .contains("items[0][seo__title]")
+            .contains("items[0][seo][0][title]")
     );
 }
 

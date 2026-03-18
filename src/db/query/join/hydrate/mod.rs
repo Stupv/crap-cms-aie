@@ -20,6 +20,137 @@ use crate::{
 };
 use group::reconstruct_group_fields;
 
+/// Recursively hydrate join-table types (Array, Blocks, Relationship) inside a Group.
+/// Uses `__`-prefixed names for join table lookups (e.g., `profile__skills` → table
+/// `{collection}_profile__skills`). Results are inserted into `group_obj` under bare field names.
+fn hydrate_group_join_fields(
+    conn: &dyn DbConnection,
+    slug: &str,
+    fields: &[FieldDefinition],
+    doc: &Document,
+    prefix: &str,
+    group_obj: &mut serde_json::Map<String, Value>,
+    locale_ctx: Option<&LocaleContext>,
+) -> Result<()> {
+    for field in fields {
+        let full_name = format!("{}__{}", prefix, field.name);
+        let locale = locale::resolve_join_locale(field, locale_ctx);
+        let locale_ref = locale.as_deref();
+        let fallback_locale = locale::resolve_join_fallback_locale(field, locale_ctx);
+        let fallback_ref = fallback_locale.as_deref();
+        match field.field_type {
+            FieldType::Relationship | FieldType::Upload => {
+                if let Some(ref rc) = field.relationship
+                    && rc.has_many
+                {
+                    if rc.is_polymorphic() {
+                        let mut items =
+                            find_polymorphic_related(conn, slug, &full_name, &doc.id, locale_ref)?;
+                        if items.is_empty() && fallback_ref.is_some() {
+                            items = find_polymorphic_related(
+                                conn,
+                                slug,
+                                &full_name,
+                                &doc.id,
+                                fallback_ref,
+                            )?;
+                        }
+                        let json_items: Vec<Value> = items
+                            .into_iter()
+                            .map(|(col, id)| Value::String(format!("{}/{}", col, id)))
+                            .collect();
+                        group_obj.insert(field.name.clone(), Value::Array(json_items));
+                    } else {
+                        let mut ids =
+                            find_related_ids(conn, slug, &full_name, &doc.id, locale_ref)?;
+                        if ids.is_empty() && fallback_ref.is_some() {
+                            ids = find_related_ids(conn, slug, &full_name, &doc.id, fallback_ref)?;
+                        }
+                        let json_ids: Vec<Value> = ids.into_iter().map(Value::String).collect();
+                        group_obj.insert(field.name.clone(), Value::Array(json_ids));
+                    }
+                }
+            }
+            FieldType::Array => {
+                let mut rows =
+                    find_array_rows(conn, slug, &full_name, &doc.id, &field.fields, locale_ref)?;
+                if rows.is_empty() && fallback_ref.is_some() {
+                    rows = find_array_rows(
+                        conn,
+                        slug,
+                        &full_name,
+                        &doc.id,
+                        &field.fields,
+                        fallback_ref,
+                    )?;
+                }
+                group_obj.insert(field.name.clone(), Value::Array(rows));
+            }
+            FieldType::Blocks => {
+                let mut rows = find_block_rows(conn, slug, &full_name, &doc.id, locale_ref)?;
+                if rows.is_empty() && fallback_ref.is_some() {
+                    rows = find_block_rows(conn, slug, &full_name, &doc.id, fallback_ref)?;
+                }
+                group_obj.insert(field.name.clone(), Value::Array(rows));
+            }
+            FieldType::Group => {
+                // Nested group: recurse with extended prefix
+                if let Some(Value::Object(sub_obj)) = group_obj.get_mut(&field.name) {
+                    hydrate_group_join_fields(
+                        conn,
+                        slug,
+                        &field.fields,
+                        doc,
+                        &full_name,
+                        sub_obj,
+                        locale_ctx,
+                    )?;
+                } else {
+                    let mut sub_obj = serde_json::Map::new();
+                    hydrate_group_join_fields(
+                        conn,
+                        slug,
+                        &field.fields,
+                        doc,
+                        &full_name,
+                        &mut sub_obj,
+                        locale_ctx,
+                    )?;
+                    if !sub_obj.is_empty() {
+                        group_obj.insert(field.name.clone(), Value::Object(sub_obj));
+                    }
+                }
+            }
+            FieldType::Row | FieldType::Collapsible => {
+                hydrate_group_join_fields(
+                    conn,
+                    slug,
+                    &field.fields,
+                    doc,
+                    prefix,
+                    group_obj,
+                    locale_ctx,
+                )?;
+            }
+            FieldType::Tabs => {
+                for tab in &field.tabs {
+                    hydrate_group_join_fields(
+                        conn,
+                        slug,
+                        &tab.fields,
+                        doc,
+                        prefix,
+                        group_obj,
+                        locale_ctx,
+                    )?;
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 /// Hydrate a document with join table data (has-many relationships and arrays).
 /// Populates `doc.fields` with JSON arrays for each join-table field.
 /// If `select` is provided, skip hydrating fields not in the select list.
@@ -101,6 +232,17 @@ pub fn hydrate_document(
                 let mut group_obj = serde_json::Map::new();
                 let prefix = &field.name;
                 reconstruct_group_fields(&field.fields, prefix, doc, &mut group_obj);
+
+                // Hydrate join-table types (Array, Blocks, Relationship) inside the Group
+                hydrate_group_join_fields(
+                    conn,
+                    slug,
+                    &field.fields,
+                    doc,
+                    prefix,
+                    &mut group_obj,
+                    locale_ctx,
+                )?;
 
                 if !group_obj.is_empty() {
                     doc.fields
@@ -441,6 +583,211 @@ mod tests {
         assert_eq!(arr.len(), 2);
         assert_eq!(arr[0]["label"], "First");
         assert_eq!(arr[1]["value"], "2");
+    }
+
+    // ── Group > Array + Blocks hydration ───────────────────────────────
+
+    #[test]
+    fn hydrate_group_array_and_blocks() {
+        let (_dir, conn) = setup_conn(
+            "CREATE TABLE posts (
+                id TEXT PRIMARY KEY,
+                config__label TEXT
+            );
+            CREATE TABLE posts_config__items (
+                id TEXT PRIMARY KEY,
+                parent_id TEXT,
+                _order INTEGER,
+                name TEXT
+            );
+            CREATE TABLE posts_config__sections (
+                id TEXT PRIMARY KEY,
+                parent_id TEXT,
+                _order INTEGER,
+                _block_type TEXT,
+                data TEXT
+            );
+            INSERT INTO posts (id, config__label) VALUES ('p1', 'My Config');",
+        );
+
+        let fields = vec![
+            FieldDefinition::builder("config", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("label", FieldType::Text).build(),
+                    FieldDefinition::builder("items", FieldType::Array)
+                        .fields(vec![
+                            FieldDefinition::builder("name", FieldType::Text).build(),
+                        ])
+                        .build(),
+                    FieldDefinition::builder("sections", FieldType::Blocks).build(),
+                ])
+                .build(),
+        ];
+
+        // Save array rows
+        let array_rows = vec![HashMap::from([("name".to_string(), "Item1".to_string())])];
+        set_array_rows(
+            &conn,
+            "posts",
+            "config__items",
+            "p1",
+            &array_rows,
+            &[FieldDefinition::builder("name", FieldType::Text).build()],
+            None,
+        )
+        .unwrap();
+
+        // Save block rows
+        let block_rows = vec![json!({"_block_type": "text", "body": "Hello"})];
+        set_block_rows(&conn, "posts", "config__sections", "p1", &block_rows, None).unwrap();
+
+        // Create document with the scalar group column
+        let mut doc = Document::new("p1".to_string());
+        doc.fields
+            .insert("config__label".to_string(), json!("My Config"));
+
+        hydrate_document(&conn, "posts", &fields, &mut doc, None, None).unwrap();
+
+        let config = doc
+            .fields
+            .get("config")
+            .expect("config group should be hydrated");
+        assert_eq!(
+            config.get("label").and_then(|v| v.as_str()),
+            Some("My Config")
+        );
+
+        let items = config
+            .get("items")
+            .expect("items array should exist in config");
+        let items_arr = items.as_array().expect("items should be array");
+        assert_eq!(items_arr.len(), 1);
+        assert_eq!(items_arr[0]["name"], "Item1");
+
+        let sections = config
+            .get("sections")
+            .expect("sections blocks should exist in config");
+        let sections_arr = sections.as_array().expect("sections should be array");
+        assert_eq!(sections_arr.len(), 1);
+        assert_eq!(sections_arr[0]["_block_type"], "text");
+        assert_eq!(sections_arr[0]["body"], "Hello");
+    }
+
+    #[test]
+    fn hydrate_group_relationship() {
+        let (_dir, conn) = setup_conn(
+            "CREATE TABLE posts (
+                id TEXT PRIMARY KEY,
+                config__label TEXT
+            );
+            CREATE TABLE posts_config__tags (
+                parent_id TEXT,
+                related_id TEXT,
+                _order INTEGER,
+                PRIMARY KEY (parent_id, related_id)
+            );
+            INSERT INTO posts (id, config__label) VALUES ('p1', 'My Config');",
+        );
+
+        use super::super::relationships::set_related_ids;
+        let tag_ids = vec!["t1".to_string(), "t2".to_string()];
+        set_related_ids(&conn, "posts", "config__tags", "p1", &tag_ids, None).unwrap();
+
+        let fields = vec![
+            FieldDefinition::builder("config", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("label", FieldType::Text).build(),
+                    FieldDefinition::builder("tags", FieldType::Relationship)
+                        .relationship(RelationshipConfig::new("tags", true))
+                        .build(),
+                ])
+                .build(),
+        ];
+
+        let mut doc = Document::new("p1".to_string());
+        doc.fields
+            .insert("config__label".to_string(), json!("My Config"));
+
+        hydrate_document(&conn, "posts", &fields, &mut doc, None, None).unwrap();
+
+        let config = doc
+            .fields
+            .get("config")
+            .expect("config group should be hydrated");
+        assert_eq!(
+            config.get("label").and_then(|v| v.as_str()),
+            Some("My Config")
+        );
+        let tags = config
+            .get("tags")
+            .expect("tags relationship should exist in config");
+        let tags_arr = tags.as_array().expect("tags should be array");
+        assert_eq!(tags_arr.len(), 2);
+        assert_eq!(tags_arr[0], "t1");
+        assert_eq!(tags_arr[1], "t2");
+    }
+
+    #[test]
+    fn hydrate_group_group_array() {
+        let (_dir, conn) = setup_conn(
+            "CREATE TABLE posts (
+                id TEXT PRIMARY KEY,
+                outer__inner__label TEXT
+            );
+            CREATE TABLE posts_outer__inner__items (
+                id TEXT PRIMARY KEY,
+                parent_id TEXT,
+                _order INTEGER,
+                name TEXT
+            );
+            INSERT INTO posts (id, outer__inner__label) VALUES ('p1', 'Deep Label');",
+        );
+
+        let fields = vec![
+            FieldDefinition::builder("outer", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("inner", FieldType::Group)
+                        .fields(vec![
+                            FieldDefinition::builder("label", FieldType::Text).build(),
+                            FieldDefinition::builder("items", FieldType::Array)
+                                .fields(vec![
+                                    FieldDefinition::builder("name", FieldType::Text).build(),
+                                ])
+                                .build(),
+                        ])
+                        .build(),
+                ])
+                .build(),
+        ];
+
+        let array_rows = vec![HashMap::from([("name".to_string(), "Item1".to_string())])];
+        set_array_rows(
+            &conn,
+            "posts",
+            "outer__inner__items",
+            "p1",
+            &array_rows,
+            &[FieldDefinition::builder("name", FieldType::Text).build()],
+            None,
+        )
+        .unwrap();
+
+        let mut doc = Document::new("p1".to_string());
+        doc.fields
+            .insert("outer__inner__label".to_string(), json!("Deep Label"));
+
+        hydrate_document(&conn, "posts", &fields, &mut doc, None, None).unwrap();
+
+        let outer = doc.fields.get("outer").expect("outer group should exist");
+        let inner = outer.get("inner").expect("inner group should exist");
+        assert_eq!(
+            inner.get("label").and_then(|v| v.as_str()),
+            Some("Deep Label")
+        );
+        let items = inner.get("items").expect("items array should exist");
+        let items_arr = items.as_array().expect("items should be array");
+        assert_eq!(items_arr.len(), 1);
+        assert_eq!(items_arr[0]["name"], "Item1");
     }
 
     #[test]

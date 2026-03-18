@@ -19,45 +19,60 @@ pub(crate) fn extract_join_data_from_form(
     field_defs: &[FieldDefinition],
 ) -> HashMap<String, Value> {
     let mut join_data = HashMap::new();
+    extract_join_data_recursive(form, field_defs, "", &mut join_data);
+    join_data
+}
 
+/// Recursive helper for `extract_join_data_from_form`.
+/// `prefix` accumulates `__`-separated Group names for nested Groups.
+/// Layout wrappers (Row/Collapsible/Tabs) pass through transparently.
+fn extract_join_data_recursive(
+    form: &HashMap<String, String>,
+    field_defs: &[FieldDefinition],
+    prefix: &str,
+    join_data: &mut HashMap<String, Value>,
+) {
     for field in field_defs {
+        let full_name = if prefix.is_empty() {
+            field.name.clone()
+        } else {
+            format!("{}__{}", prefix, field.name)
+        };
+
         match field.field_type {
             FieldType::Relationship => {
                 if let Some(ref rc) = field.relationship
                     && rc.has_many
                 {
-                    // Has-many: comma-separated IDs in form value
-                    if let Some(val) = form.get(&field.name) {
-                        join_data.insert(field.name.clone(), Value::String(val.clone()));
+                    if let Some(val) = form.get(&full_name) {
+                        join_data.insert(full_name, Value::String(val.clone()));
                     } else {
-                        // Empty selection — clear all
-                        join_data.insert(field.name.clone(), Value::String(String::new()));
+                        join_data.insert(full_name, Value::String(String::new()));
                     }
                 }
             }
             FieldType::Array => {
-                let json_rows = parse_composite_form_data(form, &field.name, &field.fields);
-                join_data.insert(field.name.clone(), Value::Array(json_rows));
+                let json_rows = parse_composite_form_data(form, &full_name, &field.fields);
+                join_data.insert(full_name, Value::Array(json_rows));
             }
             FieldType::Blocks => {
-                let json_rows = parse_composite_form_data(form, &field.name, &[]);
-                join_data.insert(field.name.clone(), Value::Array(json_rows));
+                let json_rows = parse_composite_form_data(form, &full_name, &[]);
+                join_data.insert(full_name, Value::Array(json_rows));
+            }
+            FieldType::Group => {
+                extract_join_data_recursive(form, &field.fields, &full_name, join_data);
             }
             FieldType::Row | FieldType::Collapsible => {
-                let nested = extract_join_data_from_form(form, &field.fields);
-                join_data.extend(nested);
+                extract_join_data_recursive(form, &field.fields, prefix, join_data);
             }
             FieldType::Tabs => {
                 for tab in &field.tabs {
-                    let nested = extract_join_data_from_form(form, &tab.fields);
-                    join_data.extend(nested);
+                    extract_join_data_recursive(form, &tab.fields, prefix, join_data);
                 }
             }
             _ => {}
         }
     }
-
-    join_data
 }
 
 /// Convert comma-separated form values to JSON arrays for `has_many` select fields.
@@ -67,67 +82,62 @@ pub(crate) fn transform_select_has_many(
     form: &mut HashMap<String, String>,
     field_defs: &[FieldDefinition],
 ) {
+    transform_has_many_recursive(form, field_defs, "");
+}
+
+/// Recursive helper for `transform_select_has_many`.
+/// `prefix` accumulates `__`-separated Group names.
+/// Layout wrappers (Row/Collapsible/Tabs) pass through transparently.
+fn transform_has_many_recursive(
+    form: &mut HashMap<String, String>,
+    field_defs: &[FieldDefinition],
+    prefix: &str,
+) {
+    // Collect transforms first to avoid double-borrow on `form`
+    let mut updates: Vec<(String, String)> = Vec::new();
+
     for field in field_defs {
+        let full_name = if prefix.is_empty() {
+            field.name.clone()
+        } else {
+            format!("{}__{}", prefix, field.name)
+        };
+
         match field.field_type {
             FieldType::Select | FieldType::Text | FieldType::Number if field.has_many => {
-                if let Some(val) = form.get_mut(&field.name) {
-                    if val.is_empty() {
-                        *val = "[]".to_string();
+                if let Some(val) = form.get(&full_name) {
+                    let json_val = if val.is_empty() {
+                        "[]".to_string()
                     } else {
                         let values: Vec<&str> = val
                             .split(',')
                             .map(|s| s.trim())
                             .filter(|s| !s.is_empty())
                             .collect();
-                        *val = json!(values).to_string();
-                    }
+                        json!(values).to_string()
+                    };
+                    updates.push((full_name, json_val));
                 } else {
-                    form.insert(field.name.clone(), "[]".to_string());
+                    updates.push((full_name, "[]".to_string()));
                 }
             }
-            // Recurse into group sub-fields (stored as flat group__subfield columns)
             FieldType::Group => {
-                let mut has_many_names: Vec<(String, String)> = Vec::new();
-                for sf in &field.fields {
-                    if matches!(
-                        sf.field_type,
-                        FieldType::Select | FieldType::Text | FieldType::Number
-                    ) && sf.has_many
-                    {
-                        let full_name = format!("{}__{}", field.name, sf.name);
-                        if let Some(val) = form.get(&full_name) {
-                            let json_val = if val.is_empty() {
-                                "[]".to_string()
-                            } else {
-                                let values: Vec<&str> = val
-                                    .split(',')
-                                    .map(|s| s.trim())
-                                    .filter(|s| !s.is_empty())
-                                    .collect();
-                                json!(values).to_string()
-                            };
-                            has_many_names.push((full_name, json_val));
-                        } else {
-                            has_many_names.push((full_name, "[]".to_string()));
-                        }
-                    }
-                }
-                for (name, val) in has_many_names {
-                    form.insert(name, val);
-                }
+                transform_has_many_recursive(form, &field.fields, &full_name);
             }
-            // Row/Collapsible promote sub-fields to the same level — recurse
             FieldType::Row | FieldType::Collapsible => {
-                transform_select_has_many(form, &field.fields);
+                transform_has_many_recursive(form, &field.fields, prefix);
             }
-            // Tabs promote sub-fields to the same level — recurse into each tab
             FieldType::Tabs => {
                 for tab in &field.tabs {
-                    transform_select_has_many(form, &tab.fields);
+                    transform_has_many_recursive(form, &tab.fields, prefix);
                 }
             }
             _ => {}
         }
+    }
+
+    for (name, val) in updates {
+        form.insert(name, val);
     }
 }
 
@@ -736,5 +746,136 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0]["x"], "10");
         assert_eq!(result[0]["y"], "20");
+    }
+
+    // --- extract_join_data_from_form: Group support ---
+
+    #[test]
+    fn extract_join_data_array_inside_group() {
+        let mut form = HashMap::new();
+        form.insert("config__items[0][name]".to_string(), "foo".to_string());
+        form.insert("config__items[1][name]".to_string(), "bar".to_string());
+
+        let mut arr = make_field("items", FieldType::Array);
+        arr.fields = vec![make_field("name", FieldType::Text)];
+        let group = FieldDefinition::builder("config", FieldType::Group)
+            .fields(vec![arr])
+            .build();
+
+        let result = extract_join_data_from_form(&form, &[group]);
+        let items = result
+            .get("config__items")
+            .expect("array inside group must be extracted with __ prefix");
+        let arr = items.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0]["name"], "foo");
+        assert_eq!(arr[1]["name"], "bar");
+    }
+
+    #[test]
+    fn extract_join_data_array_inside_group_collapsible() {
+        let mut form = HashMap::new();
+        form.insert("config__items[0][val]".to_string(), "x".to_string());
+
+        let mut arr = make_field("items", FieldType::Array);
+        arr.fields = vec![make_field("val", FieldType::Text)];
+        let collapsible = FieldDefinition::builder("wrapper", FieldType::Collapsible)
+            .fields(vec![arr])
+            .build();
+        let group = FieldDefinition::builder("config", FieldType::Group)
+            .fields(vec![collapsible])
+            .build();
+
+        let result = extract_join_data_from_form(&form, &[group]);
+        let items = result
+            .get("config__items")
+            .expect("array inside group>collapsible must be extracted");
+        assert_eq!(items.as_array().unwrap()[0]["val"], "x");
+    }
+
+    #[test]
+    fn extract_join_data_array_inside_group_tabs() {
+        let mut form = HashMap::new();
+        form.insert(
+            "config__links[0][url]".to_string(),
+            "https://a.com".to_string(),
+        );
+
+        let mut arr = make_field("links", FieldType::Array);
+        arr.fields = vec![make_field("url", FieldType::Text)];
+        let tabs = FieldDefinition::builder("sections", FieldType::Tabs)
+            .tabs(vec![FieldTab::new("General", vec![arr])])
+            .build();
+        let group = FieldDefinition::builder("config", FieldType::Group)
+            .fields(vec![tabs])
+            .build();
+
+        let result = extract_join_data_from_form(&form, &[group]);
+        let links = result
+            .get("config__links")
+            .expect("array inside group>tabs must be extracted");
+        assert_eq!(links.as_array().unwrap()[0]["url"], "https://a.com");
+    }
+
+    #[test]
+    fn extract_join_data_array_inside_nested_groups() {
+        let mut form = HashMap::new();
+        form.insert(
+            "outer__inner__items[0][val]".to_string(),
+            "deep".to_string(),
+        );
+
+        let mut arr = make_field("items", FieldType::Array);
+        arr.fields = vec![make_field("val", FieldType::Text)];
+        let inner = FieldDefinition::builder("inner", FieldType::Group)
+            .fields(vec![arr])
+            .build();
+        let outer = FieldDefinition::builder("outer", FieldType::Group)
+            .fields(vec![inner])
+            .build();
+
+        let result = extract_join_data_from_form(&form, &[outer]);
+        let items = result
+            .get("outer__inner__items")
+            .expect("array inside nested groups must use __ prefix chain");
+        assert_eq!(items.as_array().unwrap()[0]["val"], "deep");
+    }
+
+    // --- transform_select_has_many: nested Group support ---
+
+    #[test]
+    fn transform_has_many_in_group_collapsible() {
+        let mut form = HashMap::new();
+        form.insert("config__tags".to_string(), "a,b".to_string());
+
+        let mut tag_field = make_field("tags", FieldType::Select);
+        tag_field.has_many = true;
+        let collapsible = FieldDefinition::builder("wrapper", FieldType::Collapsible)
+            .fields(vec![tag_field])
+            .build();
+        let group = FieldDefinition::builder("config", FieldType::Group)
+            .fields(vec![collapsible])
+            .build();
+
+        transform_select_has_many(&mut form, &[group]);
+        assert_eq!(form.get("config__tags").unwrap(), r#"["a","b"]"#);
+    }
+
+    #[test]
+    fn transform_has_many_in_nested_groups() {
+        let mut form = HashMap::new();
+        form.insert("outer__inner__tags".to_string(), "x,y".to_string());
+
+        let mut tag_field = make_field("tags", FieldType::Text);
+        tag_field.has_many = true;
+        let inner = FieldDefinition::builder("inner", FieldType::Group)
+            .fields(vec![tag_field])
+            .build();
+        let outer = FieldDefinition::builder("outer", FieldType::Group)
+            .fields(vec![inner])
+            .build();
+
+        transform_select_has_many(&mut form, &[outer]);
+        assert_eq!(form.get("outer__inner__tags").unwrap(), r#"["x","y"]"#);
     }
 }

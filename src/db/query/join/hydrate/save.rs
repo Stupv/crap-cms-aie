@@ -65,26 +65,38 @@ pub fn save_join_table_data(
     data: &HashMap<String, Value>,
     locale_ctx: Option<&LocaleContext>,
 ) -> Result<()> {
+    save_join_data_inner(conn, slug, fields, parent_id, data, locale_ctx, "")
+}
+
+fn save_join_data_inner(
+    conn: &dyn DbConnection,
+    slug: &str,
+    fields: &[FieldDefinition],
+    parent_id: &str,
+    data: &HashMap<String, Value>,
+    locale_ctx: Option<&LocaleContext>,
+    prefix: &str,
+) -> Result<()> {
     for field in fields {
         let locale = resolve_join_locale(field, locale_ctx);
         let locale_ref = locale.as_deref();
+        let field_key = if prefix.is_empty() {
+            field.name.clone()
+        } else {
+            format!("{}__{}", prefix, field.name)
+        };
         match field.field_type {
             FieldType::Relationship | FieldType::Upload => {
                 if let Some(ref rc) = field.relationship
                     && rc.has_many
                 {
                     // Only touch join table if the field was explicitly included in the data.
-                    if let Some(val) = data.get(&field.name) {
+                    if let Some(val) = data.get(&field_key) {
                         if rc.is_polymorphic() {
                             // Polymorphic: values are "collection/id" composite strings
                             let items = parse_polymorphic_values(val);
                             set_polymorphic_related(
-                                conn,
-                                slug,
-                                &field.name,
-                                parent_id,
-                                &items,
-                                locale_ref,
+                                conn, slug, &field_key, parent_id, &items, locale_ref,
                             )?;
                         } else {
                             let ids = match val {
@@ -104,13 +116,13 @@ pub fn save_join_table_data(
                                 }
                                 _ => Vec::new(),
                             };
-                            set_related_ids(conn, slug, &field.name, parent_id, &ids, locale_ref)?;
+                            set_related_ids(conn, slug, &field_key, parent_id, &ids, locale_ref)?;
                         }
                     }
                 }
             }
             FieldType::Array => {
-                if let Some(val) = data.get(&field.name) {
+                if let Some(val) = data.get(&field_key) {
                     let rows = match val {
                         Value::Array(arr) => arr
                             .iter()
@@ -137,7 +149,7 @@ pub fn save_join_table_data(
                     set_array_rows(
                         conn,
                         slug,
-                        &field.name,
+                        &field_key,
                         parent_id,
                         &rows,
                         &field.fields,
@@ -146,20 +158,47 @@ pub fn save_join_table_data(
                 }
             }
             FieldType::Blocks => {
-                if let Some(val) = data.get(&field.name) {
+                if let Some(val) = data.get(&field_key) {
                     let rows = match val {
                         Value::Array(arr) => arr.clone(),
                         _ => Vec::new(),
                     };
-                    set_block_rows(conn, slug, &field.name, parent_id, &rows, locale_ref)?;
+                    set_block_rows(conn, slug, &field_key, parent_id, &rows, locale_ref)?;
                 }
             }
+            FieldType::Group => {
+                save_join_data_inner(
+                    conn,
+                    slug,
+                    &field.fields,
+                    parent_id,
+                    data,
+                    locale_ctx,
+                    &field_key,
+                )?;
+            }
             FieldType::Row | FieldType::Collapsible => {
-                save_join_table_data(conn, slug, &field.fields, parent_id, data, locale_ctx)?;
+                save_join_data_inner(
+                    conn,
+                    slug,
+                    &field.fields,
+                    parent_id,
+                    data,
+                    locale_ctx,
+                    prefix,
+                )?;
             }
             FieldType::Tabs => {
                 for tab in &field.tabs {
-                    save_join_table_data(conn, slug, &tab.fields, parent_id, data, locale_ctx)?;
+                    save_join_data_inner(
+                        conn,
+                        slug,
+                        &tab.fields,
+                        parent_id,
+                        data,
+                        locale_ctx,
+                        prefix,
+                    )?;
                 }
             }
             _ => {}
@@ -338,6 +377,171 @@ mod tests {
                 ("pages".to_string(), "pg1".to_string()),
             ]
         );
+    }
+
+    // ── Group > Array/Blocks save ──────────────────────────────────────
+
+    #[test]
+    fn save_group_array_data() {
+        use super::super::super::arrays::find_array_rows;
+
+        let (_dir, conn) = setup_conn(
+            "CREATE TABLE posts (id TEXT PRIMARY KEY);
+             CREATE TABLE posts_config__items (
+                 id TEXT PRIMARY KEY,
+                 parent_id TEXT,
+                 _order INTEGER,
+                 label TEXT,
+                 value TEXT
+             );
+             INSERT INTO posts (id) VALUES ('p1');",
+        );
+
+        let fields = vec![
+            FieldDefinition::builder("config", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("items", FieldType::Array)
+                        .fields(vec![
+                            FieldDefinition::builder("label", FieldType::Text).build(),
+                            FieldDefinition::builder("value", FieldType::Text).build(),
+                        ])
+                        .build(),
+                ])
+                .build(),
+        ];
+
+        let mut data = HashMap::new();
+        data.insert(
+            "config__items".to_string(),
+            json!([{"label": "A", "value": "1"}]),
+        );
+
+        save_join_table_data(&conn, "posts", &fields, "p1", &data, None).unwrap();
+
+        let sub = vec![
+            FieldDefinition::builder("label", FieldType::Text).build(),
+            FieldDefinition::builder("value", FieldType::Text).build(),
+        ];
+        let rows = find_array_rows(&conn, "posts", "config__items", "p1", &sub, None).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["label"], "A");
+        assert_eq!(rows[0]["value"], "1");
+    }
+
+    #[test]
+    fn save_group_blocks_data() {
+        let (_dir, conn) = setup_conn(
+            "CREATE TABLE posts (id TEXT PRIMARY KEY);
+             CREATE TABLE posts_config__content (
+                 id TEXT PRIMARY KEY,
+                 parent_id TEXT,
+                 _order INTEGER,
+                 _block_type TEXT,
+                 data TEXT
+             );
+             INSERT INTO posts (id) VALUES ('p1');",
+        );
+
+        let fields = vec![
+            FieldDefinition::builder("config", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("content", FieldType::Blocks).build(),
+                ])
+                .build(),
+        ];
+
+        let mut data = HashMap::new();
+        data.insert(
+            "config__content".to_string(),
+            json!([{"_block_type": "hero", "heading": "Hi"}]),
+        );
+
+        save_join_table_data(&conn, "posts", &fields, "p1", &data, None).unwrap();
+
+        let rows = find_block_rows(&conn, "posts", "config__content", "p1", None).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["_block_type"], "hero");
+        assert_eq!(rows[0]["heading"], "Hi");
+    }
+
+    #[test]
+    fn save_group_relationship_data() {
+        use super::super::super::relationships::find_related_ids;
+
+        let (_dir, conn) = setup_conn(
+            "CREATE TABLE posts (id TEXT PRIMARY KEY);
+             CREATE TABLE posts_config__tags (
+                 parent_id TEXT,
+                 related_id TEXT,
+                 _order INTEGER,
+                 PRIMARY KEY (parent_id, related_id)
+             );
+             INSERT INTO posts (id) VALUES ('p1');",
+        );
+
+        let fields = vec![
+            FieldDefinition::builder("config", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("tags", FieldType::Relationship)
+                        .relationship(RelationshipConfig::new("tags", true))
+                        .build(),
+                ])
+                .build(),
+        ];
+
+        let mut data = HashMap::new();
+        data.insert("config__tags".to_string(), json!(["t1", "t2"]));
+
+        save_join_table_data(&conn, "posts", &fields, "p1", &data, None).unwrap();
+
+        let found = find_related_ids(&conn, "posts", "config__tags", "p1", None).unwrap();
+        assert_eq!(found, vec!["t1", "t2"]);
+    }
+
+    #[test]
+    fn save_group_group_array_data() {
+        use super::super::super::arrays::find_array_rows;
+
+        let (_dir, conn) = setup_conn(
+            "CREATE TABLE posts (id TEXT PRIMARY KEY);
+             CREATE TABLE posts_outer__inner__items (
+                 id TEXT PRIMARY KEY,
+                 parent_id TEXT,
+                 _order INTEGER,
+                 name TEXT
+             );
+             INSERT INTO posts (id) VALUES ('p1');",
+        );
+
+        let fields = vec![
+            FieldDefinition::builder("outer", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("inner", FieldType::Group)
+                        .fields(vec![
+                            FieldDefinition::builder("items", FieldType::Array)
+                                .fields(vec![
+                                    FieldDefinition::builder("name", FieldType::Text).build(),
+                                ])
+                                .build(),
+                        ])
+                        .build(),
+                ])
+                .build(),
+        ];
+
+        let mut data = HashMap::new();
+        data.insert(
+            "outer__inner__items".to_string(),
+            json!([{"name": "DeepItem"}]),
+        );
+
+        save_join_table_data(&conn, "posts", &fields, "p1", &data, None).unwrap();
+
+        let sub = vec![FieldDefinition::builder("name", FieldType::Text).build()];
+        let rows =
+            find_array_rows(&conn, "posts", "outer__inner__items", "p1", &sub, None).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["name"], "DeepItem");
     }
 
     #[test]

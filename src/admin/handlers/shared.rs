@@ -355,7 +355,9 @@ pub(crate) fn strip_write_denied_string_fields(
     Ok(())
 }
 
-/// Flattens document fields for form rendering. Group fields become `parent__child` keys.
+/// Flattens document fields for form rendering. Group fields become `parent__child` keys,
+/// recursively flattening nested groups (e.g. `address: { geo: { lat: "40" } }` →
+/// `address__geo__lat: "40"`).
 pub(crate) fn flatten_document_values(
     fields: &HashMap<String, Value>,
     field_defs: &[FieldDefinition],
@@ -368,18 +370,25 @@ pub(crate) fn flatten_document_values(
                     .iter()
                     .any(|f| f.name == *k && f.field_type == field::FieldType::Group)
             {
-                return obj
-                    .iter()
-                    .map(|(sub_k, sub_v)| {
-                        let col = format!("{}__{}", k, sub_k);
-                        let s = value_to_form_string(sub_v);
-                        (col, s)
-                    })
-                    .collect::<Vec<_>>();
+                let mut out = Vec::new();
+                flatten_group_value(k, obj, &mut out);
+                return out;
             }
             vec![(k.clone(), value_to_form_string(v))]
         })
         .collect()
+}
+
+/// Recursively flatten a group object into `prefix__key` pairs.
+fn flatten_group_value(prefix: &str, obj: &Map<String, Value>, out: &mut Vec<(String, String)>) {
+    for (sub_k, sub_v) in obj {
+        let col = format!("{}__{}", prefix, sub_k);
+        if let Value::Object(nested) = sub_v {
+            flatten_group_value(&col, nested, out);
+        } else {
+            out.push((col, value_to_form_string(sub_v)));
+        }
+    }
 }
 
 /// Convert a serde_json Value to a string suitable for form rendering.
@@ -715,6 +724,103 @@ mod tests {
         );
         let result = extract_editor_locale(&headers, &locale_config_enabled());
         assert_eq!(result, Some("fr".to_string()));
+    }
+
+    // --- flatten_document_values tests ---
+
+    use crate::core::field::{FieldDefinition, FieldType};
+
+    #[test]
+    fn flatten_document_values_simple_fields() {
+        let mut fields = HashMap::new();
+        fields.insert("title".to_string(), json!("Hello"));
+        fields.insert("count".to_string(), json!(42));
+
+        let defs = vec![
+            FieldDefinition::builder("title", FieldType::Text).build(),
+            FieldDefinition::builder("count", FieldType::Number).build(),
+        ];
+
+        let flat = flatten_document_values(&fields, &defs);
+        assert_eq!(flat.get("title").unwrap(), "Hello");
+        assert_eq!(flat.get("count").unwrap(), "42");
+    }
+
+    #[test]
+    fn flatten_document_values_group_fields() {
+        let mut fields = HashMap::new();
+        fields.insert(
+            "config".to_string(),
+            json!({"label": "My Config", "enabled": true}),
+        );
+
+        let defs = vec![
+            FieldDefinition::builder("config", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("label", FieldType::Text).build(),
+                    FieldDefinition::builder("enabled", FieldType::Checkbox).build(),
+                ])
+                .build(),
+        ];
+
+        let flat = flatten_document_values(&fields, &defs);
+        assert_eq!(flat.get("config__label").unwrap(), "My Config");
+        assert_eq!(flat.get("config__enabled").unwrap(), "true");
+        assert!(
+            !flat.contains_key("config"),
+            "group key should not be present"
+        );
+    }
+
+    #[test]
+    fn flatten_document_values_nested_groups() {
+        let mut fields = HashMap::new();
+        fields.insert("outer".to_string(), json!({"inner": {"deep": "value"}}));
+
+        let defs = vec![
+            FieldDefinition::builder("outer", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("inner", FieldType::Group)
+                        .fields(vec![
+                            FieldDefinition::builder("deep", FieldType::Text).build(),
+                        ])
+                        .build(),
+                ])
+                .build(),
+        ];
+
+        let flat = flatten_document_values(&fields, &defs);
+        assert_eq!(
+            flat.get("outer__inner__deep").unwrap(),
+            "value",
+            "nested group should flatten to outer__inner__deep"
+        );
+        assert!(!flat.contains_key("outer"));
+        assert!(!flat.contains_key("outer__inner"));
+    }
+
+    #[test]
+    fn flatten_document_values_group_with_array_value() {
+        // Array values inside groups should be serialized as JSON strings
+        let mut fields = HashMap::new();
+        fields.insert(
+            "meta".to_string(),
+            json!({"title": "Test", "tags": ["a", "b"]}),
+        );
+
+        let defs = vec![
+            FieldDefinition::builder("meta", FieldType::Group)
+                .fields(vec![
+                    FieldDefinition::builder("title", FieldType::Text).build(),
+                    FieldDefinition::builder("tags", FieldType::Text).build(),
+                ])
+                .build(),
+        ];
+
+        let flat = flatten_document_values(&fields, &defs);
+        assert_eq!(flat.get("meta__title").unwrap(), "Test");
+        // Array values get serialized via value_to_form_string
+        assert_eq!(flat.get("meta__tags").unwrap(), "[\"a\",\"b\"]");
     }
 
     // --- translate_validation_errors tests ---

@@ -3,6 +3,7 @@
   <legend>
     {{t label}}
     {{#if required}}<span class="required">*</span>{{/if}}
+    {{#if locale_locked}}<span class="form__locale-badge">{{t "shared_field"}}</span>{{/if}}
     <span class="form__array-count" id="array-count-{{template_id}}">{{row_count}}</span>
     <span class="form__array-legend-actions">
       <button type="button" class="form__array-legend-btn" data-action="toggle-all-rows" aria-label="{{t "toggle_collapse"}}">
@@ -87,12 +88,14 @@
     </div>
   </template>
 
+  {{#unless locale_locked}}
   <button type="button" class="button button--ghost button--small"
       data-action="add-array-row" data-template-id="{{template_id}}"
       {{#if max_rows}}data-max-rows="{{max_rows}}"{{/if}}>
     <span class="material-symbols-outlined icon--sm">add</span>
     {{t "add"}} {{#if add_label}}{{add_label}}{{else}}{{t "row"}}{{/if}}
   </button>
+  {{/unless}}
 
   {{#if error}}<p class="form__error">{{error}}</p>{{/if}}
   {{#if description}}<p class="form__help">{{t description}}</p>{{/if}}

@@ -101,14 +101,7 @@ impl HookContext {
                 .any(|f| f.name == *k && f.field_type == FieldType::Group);
 
             if is_group && let Some(obj) = v.as_object() {
-                for (sub_key, sub_val) in obj {
-                    let flat_key = format!("{}__{}", k, sub_key);
-                    let flat_val = match sub_val {
-                        JsonValue::String(s) => s.clone(),
-                        other => other.to_string(),
-                    };
-                    map.insert(flat_key, flat_val);
-                }
+                flatten_group_to_map(k, obj, &mut map);
                 continue;
             }
             // If the value is already a string (e.g. from form data), fall through
@@ -132,6 +125,28 @@ impl HookContext {
                     self.context.insert(k, json_val);
                 }
             }
+        }
+    }
+}
+
+/// Recursively flatten a group object into `prefix__key` pairs for the string map.
+fn flatten_group_to_map(
+    prefix: &str,
+    obj: &serde_json::Map<String, JsonValue>,
+    map: &mut HashMap<String, String>,
+) {
+    for (sub_key, sub_val) in obj {
+        let flat_key = format!("{}__{}", prefix, sub_key);
+        if let JsonValue::Object(nested) = sub_val {
+            flatten_group_to_map(&flat_key, nested, map);
+        } else {
+            map.insert(
+                flat_key,
+                match sub_val {
+                    JsonValue::String(s) => s.clone(),
+                    other => other.to_string(),
+                },
+            );
         }
     }
 }
@@ -268,6 +283,32 @@ mod tests {
 
         let map = ctx.to_string_map(&fields);
         assert_eq!(map.get("seo").unwrap(), "plain-string");
+    }
+
+    #[test]
+    fn string_map_nested_group_flattening() {
+        let mut data = HashMap::new();
+        data.insert(
+            "address".to_string(),
+            json!({
+                "geo": {
+                    "lat": "40.7128",
+                    "lng": "-74.0060"
+                }
+            }),
+        );
+
+        let ctx = HookContext::builder("companies", "create")
+            .data(data)
+            .build();
+
+        let fields = vec![FieldDefinition::builder("address", FieldType::Group).build()];
+
+        let map = ctx.to_string_map(&fields);
+        assert_eq!(map.get("address__geo__lat").unwrap(), "40.7128");
+        assert_eq!(map.get("address__geo__lng").unwrap(), "-74.0060");
+        assert!(!map.contains_key("address"));
+        assert!(!map.contains_key("address__geo"));
     }
 
     #[test]

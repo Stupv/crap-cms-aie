@@ -120,9 +120,9 @@ fn enriched_sub_field_nested_group_populates_values() {
     assert_eq!(ctx["field_type"], "group");
     let sub_fields = ctx["sub_fields"].as_array().unwrap();
     assert_eq!(sub_fields.len(), 2);
-    assert_eq!(sub_fields[0]["name"], "items[0][meta][author]");
+    assert_eq!(sub_fields[0]["name"], "items[0][meta][0][author]");
     assert_eq!(sub_fields[0]["value"], "Alice");
-    assert_eq!(sub_fields[1]["name"], "items[0][meta][published]");
+    assert_eq!(sub_fields[1]["name"], "items[0][meta][0][published]");
     assert_eq!(sub_fields[1]["checked"], true);
 }
 
