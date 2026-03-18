@@ -330,7 +330,7 @@ pub fn get_job_run(conn: &dyn DbConnection, id: &str) -> Result<Option<JobRun>> 
 pub fn cancel_pending_jobs(conn: &dyn DbConnection, slug: Option<&str>) -> Result<i64> {
     let deleted = if let Some(slug) = slug {
         conn.execute(
-            "DELETE FROM _crap_jobs WHERE status = 'pending' AND name = ?1",
+            "DELETE FROM _crap_jobs WHERE status = 'pending' AND slug = ?1",
             &[DbValue::Text(slug.to_string())],
         )? as i64
     } else {
@@ -840,5 +840,27 @@ mod tests {
         // Different slug should return None
         let other = last_completed_run(&conn, "other").unwrap();
         assert!(other.is_none());
+    }
+
+    /// Regression: cancel_pending_jobs used `name` instead of `slug` column.
+    #[test]
+    fn test_cancel_pending_jobs_by_slug() {
+        let (_dir, conn) = setup_db();
+
+        insert_job(&conn, "cleanup", "{}", "cli", 1, "default").unwrap();
+        insert_job(&conn, "notify", "{}", "cli", 1, "default").unwrap();
+
+        // Cancel only "cleanup" pending jobs
+        let deleted = cancel_pending_jobs(&conn, Some("cleanup")).unwrap();
+        assert_eq!(deleted, 1, "should cancel exactly one job");
+
+        // "notify" should still be pending
+        let runs = list_job_runs(&conn, Some("notify"), None, 10, 0).unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].status, JobStatus::Pending);
+
+        // Cancel all remaining pending
+        let deleted = cancel_pending_jobs(&conn, None).unwrap();
+        assert_eq!(deleted, 1, "should cancel the remaining pending job");
     }
 }
