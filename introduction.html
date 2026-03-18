@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-95b5fa60.js";
+            window.path_to_searchindex_js = "searchindex-0d4ad855.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-8a8be9f9.js"></script>
@@ -198,7 +198,7 @@
 <ul>
 <li><strong>Lua is the single source of truth for schemas.</strong> Collections and fields are defined in Lua files, not in the database. The database stores content, not structure.</li>
 <li><strong>Single binary.</strong> The admin UI (Axum) and gRPC API (Tonic) run in one process on two ports.</li>
-<li><strong>Config directory pattern.</strong> All customization lives in one directory, passed as a positional argument to each command.</li>
+<li><strong>Config directory pattern.</strong> All customization lives in one directory, auto-detected from CWD (or set explicitly with <code>--config</code>/<code>-C</code>).</li>
 <li><strong>No JS build step.</strong> The admin UI uses Handlebars templates + HTMX with plain CSS.</li>
 <li><strong>Hooks are the extension system.</strong> Lua hooks at three levels (field, collection, global) provide full lifecycle control with transaction-safe CRUD access.</li>
 </ul>

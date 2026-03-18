@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-95b5fa60.js";
+            window.path_to_searchindex_js = "../searchindex-0d4ad855.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-8a8be9f9.js"></script>
@@ -178,7 +178,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="config-directory"><a class="header" href="#config-directory">Config Directory</a></h1>
-<p>All customization lives in a single config directory, passed as the first positional argument to most commands.</p>
+<p>All customization lives in a single config directory. When you run CLI commands from inside this directory (or a subdirectory), the config is auto-detected by walking up and looking for <code>crap.toml</code>. You can also set it explicitly with <code>--config</code>/<code>-C</code> or the <code>CRAP_CONFIG_DIR</code> environment variable.</p>
 <h2 id="directory-structure"><a class="header" href="#directory-structure">Directory Structure</a></h2>
 <pre><code>my-project/
 ├── crap.toml              # Server/database/auth configuration
@@ -228,7 +228,7 @@
 }
 </code></pre>
 <p>Generate type definitions with:</p>
-<pre><code class="language-bash">crap-cms typegen ./my-project
+<pre><code class="language-bash">crap-cms typegen
 </code></pre>
 <p>This writes <code>types/crap.lua</code> with LuaLS annotations for the entire <code>crap.*</code> API. Use <code>-l all</code> to generate types for all supported languages.</p>
 

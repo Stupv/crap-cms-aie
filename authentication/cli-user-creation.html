@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-95b5fa60.js";
+            window.path_to_searchindex_js = "../searchindex-0d4ad855.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-8a8be9f9.js"></script>
@@ -181,7 +181,7 @@
 <p>The <code>user create</code> command bootstraps users without the admin UI or gRPC API. Useful for creating the first admin user.</p>
 <h2 id="interactive-mode"><a class="header" href="#interactive-mode">Interactive Mode</a></h2>
 <p>Prompts for password with hidden input and confirmation:</p>
-<pre><code class="language-bash">crap-cms user create ./my-project -e admin@example.com
+<pre><code class="language-bash">crap-cms user create -e admin@example.com
 </code></pre>
 <p>Output:</p>
 <pre><code>Password: ********
@@ -191,7 +191,7 @@ Created user abc123 in 'users'
 <p>If required fields have no default value, you’ll be prompted for those too.</p>
 <h2 id="non-interactive-mode"><a class="header" href="#non-interactive-mode">Non-Interactive Mode</a></h2>
 <p>For CI/scripting. The <code>-p</code> flag skips the prompt:</p>
-<pre><code class="language-bash">crap-cms user create ./my-project \
+<pre><code class="language-bash">crap-cms user create \
     -e admin@example.com \
     -p secret123 \
     -f role=admin \
@@ -232,14 +232,14 @@ Created user abc123 in 'users'
 </ul>
 <h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
 <pre><code class="language-bash"># Minimal (will prompt for everything else)
-crap-cms user create ./example
+crap-cms user create
 
 # Different collection
-crap-cms user create ./example -c admins \
+crap-cms user create -c admins \
     -e boss@example.com
 
 # Full non-interactive
-crap-cms user create ./example \
+crap-cms user create \
     -e editor@example.com \
     -p pass123 \
     -f name="Jane Editor" \
@@ -247,24 +247,24 @@ crap-cms user create ./example \
 </code></pre>
 <h2 id="other-user-commands"><a class="header" href="#other-user-commands">Other User Commands</a></h2>
 <pre><code class="language-bash"># Show detailed info for a user
-crap-cms user info ./example -e admin@example.com
+crap-cms user info -e admin@example.com
 
 # List all users
-crap-cms user list ./example
+crap-cms user list
 
 # Lock/unlock a user
-crap-cms user lock ./example -e user@example.com
-crap-cms user unlock ./example -e user@example.com
+crap-cms user lock -e user@example.com
+crap-cms user unlock -e user@example.com
 
 # Verify/unverify a user (requires verify_email: true on collection)
-crap-cms user verify ./example -e user@example.com
-crap-cms user unverify ./example -e user@example.com
+crap-cms user verify -e user@example.com
+crap-cms user unverify -e user@example.com
 
 # Change password
-crap-cms user change-password ./example -e user@example.com
+crap-cms user change-password -e user@example.com
 
 # Delete a user (with confirmation skip)
-crap-cms user delete ./example -e user@example.com -y
+crap-cms user delete -e user@example.com -y
 </code></pre>
 
                     </main>

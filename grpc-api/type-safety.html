@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-95b5fa60.js";
+            window.path_to_searchindex_js = "../searchindex-0d4ad855.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-8a8be9f9.js"></script>
@@ -405,7 +405,7 @@ def document_to_post(doc) -&gt; Post:
 <p>The gRPC type safety story above is for <strong>external clients</strong>. For <strong>Lua hooks and init.lua</strong>, the built-in typegen provides IDE-level type safety.</p>
 <h3 id="generate-types"><a class="header" href="#generate-types">Generate Types</a></h3>
 <p>Types are auto-generated on every server startup. You can also generate them explicitly:</p>
-<pre><code class="language-bash">crap-cms typegen ./my-project
+<pre><code class="language-bash">crap-cms typegen
 </code></pre>
 <p>This writes <code>&lt;config_dir&gt;/types/generated.lua</code> with LuaLS annotations derived from your Lua collection definitions. Use <code>-l all</code> to generate types for all supported languages (Lua, TypeScript, Go, Python, Rust).</p>
 <h3 id="what-gets-generated"><a class="header" href="#what-gets-generated">What Gets Generated</a></h3>

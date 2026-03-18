@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-95b5fa60.js";
+            window.path_to_searchindex_js = "../searchindex-0d4ad855.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-8a8be9f9.js"></script>
@@ -188,22 +188,43 @@
 <tr><th>Flag</th><th>Description</th></tr>
 </thead>
 <tbody>
+<tr><td><code>-C</code>, <code>--config &lt;PATH&gt;</code></td><td>Path to the config directory (overrides auto-detection)</td></tr>
 <tr><td><code>-V</code>, <code>--version</code></td><td>Print version and exit</td></tr>
 <tr><td><code>-h</code>, <code>--help</code></td><td>Print help</td></tr>
 </tbody>
 </table>
 </div>
+<h2 id="config-directory-resolution"><a class="header" href="#config-directory-resolution">Config Directory Resolution</a></h2>
+<p>Most commands need a config directory (the folder containing <code>crap.toml</code>). The CLI resolves it in this order:</p>
+<ol>
+<li><strong><code>--config</code> / <code>-C</code> flag</strong> — explicit path, highest priority</li>
+<li><strong><code>CRAP_CONFIG_DIR</code> environment variable</strong> — useful for CI/Docker</li>
+<li><strong>Auto-detection</strong> — walks up from the current working directory looking for <code>crap.toml</code></li>
+</ol>
+<p>If you <code>cd</code> into your project directory (or any subdirectory), commands just work without any flags:</p>
+<pre><code class="language-bash">cd my-project
+crap-cms serve
+crap-cms status
+crap-cms user list
+</code></pre>
+<p>From elsewhere, use <code>-C</code>:</p>
+<pre><code class="language-bash">crap-cms -C ./my-project serve
+crap-cms -C ./my-project status
+</code></pre>
+<p>Or set the environment variable:</p>
+<pre><code class="language-bash">export CRAP_CONFIG_DIR=./my-project
+crap-cms serve
+</code></pre>
 <h2 id="commands"><a class="header" href="#commands">Commands</a></h2>
 <h3 id="serve--start-the-server"><a class="header" href="#serve--start-the-server"><code>serve</code> — Start the server</a></h3>
-<pre><code class="language-bash">crap-cms serve &lt;CONFIG&gt; [-d] [--json] [--only &lt;admin|api&gt;] [--no-scheduler]
+<pre><code class="language-bash">crap-cms serve [-d] [--json] [--only &lt;admin|api&gt;] [--no-scheduler]
 </code></pre>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Argument / Flag</th><th>Description</th></tr>
+<tr><th>Flag</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>&lt;CONFIG&gt;</code></td><td>Path to the config directory</td></tr>
 <tr><td><code>-d</code>, <code>--detach</code></td><td>Run in the background (prints PID and exits)</td></tr>
 <tr><td><code>--json</code></td><td>Output logs as structured JSON (for log aggregation)</td></tr>
 <tr><td><code>--only &lt;admin|api&gt;</code></td><td>Start only the specified server. Omit to start both.</td></tr>
@@ -211,25 +232,22 @@
 </tbody>
 </table>
 </div>
-<pre><code class="language-bash">crap-cms serve ./my-project
-crap-cms serve ./my-project -d
-crap-cms serve ./my-project --json
-crap-cms serve ./my-project --only admin       # admin UI only
-crap-cms serve ./my-project --only api         # gRPC API only
-crap-cms serve ./my-project --no-scheduler     # both servers, no scheduler
-crap-cms serve ./my-project --only admin --no-scheduler
-crap-cms serve ./my-project -d --only api      # detached, API only
+<pre><code class="language-bash">crap-cms serve
+crap-cms serve -d
+crap-cms serve --json
+crap-cms serve --only admin       # admin UI only
+crap-cms serve --only api         # gRPC API only
+crap-cms serve --no-scheduler     # both servers, no scheduler
+crap-cms serve --only admin --no-scheduler
+crap-cms serve -d --only api      # detached, API only
 </code></pre>
 <h3 id="status--show-project-status"><a class="header" href="#status--show-project-status"><code>status</code> — Show project status</a></h3>
-<pre><code class="language-bash">crap-cms status &lt;CONFIG&gt;
+<pre><code class="language-bash">crap-cms status
 </code></pre>
 <p>Prints collections (with row counts), globals, DB size, and migration status.</p>
-<pre><code class="language-bash">crap-cms status ./my-project
-</code></pre>
 <h3 id="user--user-management"><a class="header" href="#user--user-management"><code>user</code> — User management</a></h3>
-<p>All user subcommands require a config directory as the first positional argument.</p>
 <h4 id="user-create"><a class="header" href="#user-create"><code>user create</code></a></h4>
-<pre><code class="language-bash">crap-cms user create &lt;CONFIG&gt; [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;] [-p &lt;PASSWORD&gt;] [-f &lt;KEY=VALUE&gt;]...
+<pre><code class="language-bash">crap-cms user create [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;] [-p &lt;PASSWORD&gt;] [-f &lt;KEY=VALUE&gt;]...
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -245,31 +263,31 @@ crap-cms serve ./my-project -d --only api      # detached, API only
 </table>
 </div>
 <pre><code class="language-bash"># Interactive (prompts for password)
-crap-cms user create ./my-project -e admin@example.com
+crap-cms user create -e admin@example.com
 
 # Non-interactive
-crap-cms user create ./my-project \
+crap-cms user create \
     -e admin@example.com \
     -p secret123 \
     -f role=admin \
     -f name="Admin User"
 </code></pre>
 <h4 id="user-list"><a class="header" href="#user-list"><code>user list</code></a></h4>
-<pre><code class="language-bash">crap-cms user list &lt;CONFIG&gt; [-c &lt;COLLECTION&gt;]
+<pre><code class="language-bash">crap-cms user list [-c &lt;COLLECTION&gt;]
 </code></pre>
 <p>Lists all users with ID, email, locked status, and verified status (if email verification is enabled).</p>
-<pre><code class="language-bash">crap-cms user list ./my-project
-crap-cms user list ./my-project -c admins
+<pre><code class="language-bash">crap-cms user list
+crap-cms user list -c admins
 </code></pre>
 <h4 id="user-info"><a class="header" href="#user-info"><code>user info</code></a></h4>
-<pre><code class="language-bash">crap-cms user info &lt;CONFIG&gt; [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;] [--id &lt;ID&gt;]
+<pre><code class="language-bash">crap-cms user info [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;] [--id &lt;ID&gt;]
 </code></pre>
 <p>Shows detailed info for a single user: ID, email, locked/verified status, password status, timestamps, and all field values.</p>
-<pre><code class="language-bash">crap-cms user info ./my-project -e admin@example.com
-crap-cms user info ./my-project --id abc123
+<pre><code class="language-bash">crap-cms user info -e admin@example.com
+crap-cms user info --id abc123
 </code></pre>
 <h4 id="user-delete"><a class="header" href="#user-delete"><code>user delete</code></a></h4>
-<pre><code class="language-bash">crap-cms user delete &lt;CONFIG&gt; [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;] [--id &lt;ID&gt;] [-y]
+<pre><code class="language-bash">crap-cms user delete [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;] [--id &lt;ID&gt;] [-y]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -285,16 +303,16 @@ crap-cms user info ./my-project --id abc123
 </table>
 </div>
 <h4 id="user-lock--user-unlock"><a class="header" href="#user-lock--user-unlock"><code>user lock</code> / <code>user unlock</code></a></h4>
-<pre><code class="language-bash">crap-cms user lock &lt;CONFIG&gt; [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;] [--id &lt;ID&gt;]
-crap-cms user unlock &lt;CONFIG&gt; [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;] [--id &lt;ID&gt;]
+<pre><code class="language-bash">crap-cms user lock [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;] [--id &lt;ID&gt;]
+crap-cms user unlock [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;] [--id &lt;ID&gt;]
 </code></pre>
 <h4 id="user-verify--user-unverify"><a class="header" href="#user-verify--user-unverify"><code>user verify</code> / <code>user unverify</code></a></h4>
-<pre><code class="language-bash">crap-cms user verify &lt;CONFIG&gt; [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;] [--id &lt;ID&gt;]
-crap-cms user unverify &lt;CONFIG&gt; [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;] [--id &lt;ID&gt;]
+<pre><code class="language-bash">crap-cms user verify [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;] [--id &lt;ID&gt;]
+crap-cms user unverify [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;] [--id &lt;ID&gt;]
 </code></pre>
 <p>Manually mark a user’s email as verified or unverified. Only works on collections with <code>verify_email = true</code>. Useful when email is not configured.</p>
 <h4 id="user-change-password"><a class="header" href="#user-change-password"><code>user change-password</code></a></h4>
-<pre><code class="language-bash">crap-cms user change-password &lt;CONFIG&gt; [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;] [--id &lt;ID&gt;] [-p &lt;PASSWORD&gt;]
+<pre><code class="language-bash">crap-cms user change-password [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;] [--id &lt;ID&gt;] [-p &lt;PASSWORD&gt;]
 </code></pre>
 <h3 id="init--scaffold-a-new-config-directory"><a class="header" href="#init--scaffold-a-new-config-directory"><code>init</code> — Scaffold a new config directory</a></h3>
 <pre><code class="language-bash">crap-cms init [DIR]
@@ -323,11 +341,12 @@ crap-cms user unverify &lt;CONFIG&gt; [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;]
 <pre><code class="language-bash">crap-cms init ./my-project
 </code></pre>
 <p>After scaffolding:</p>
-<pre><code class="language-bash">crap-cms serve ./my-project
+<pre><code class="language-bash">cd my-project
+crap-cms serve
 </code></pre>
 <h3 id="make--generate-scaffolding-files"><a class="header" href="#make--generate-scaffolding-files"><code>make</code> — Generate scaffolding files</a></h3>
 <h4 id="make-collection"><a class="header" href="#make-collection"><code>make collection</code></a></h4>
-<pre><code class="language-bash">crap-cms make collection &lt;CONFIG&gt; [SLUG] [-F &lt;FIELDS&gt;] [-T] [--auth] [--upload] [--versions] [--no-input] [-f]
+<pre><code class="language-bash">crap-cms make collection [SLUG] [-F &lt;FIELDS&gt;] [-T] [--auth] [--upload] [--versions] [--no-input] [-f]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -362,28 +381,28 @@ crap-cms user unverify &lt;CONFIG&gt; [-c &lt;COLLECTION&gt;] [-e &lt;EMAIL&gt;]
 </table>
 </div>
 <pre><code class="language-bash"># Basic
-crap-cms make collection ./my-project posts
+crap-cms make collection posts
 
 # With fields
-crap-cms make collection ./my-project articles \
+crap-cms make collection articles \
     -F "title:text:required,body:richtext"
 
 # With localized fields
-crap-cms make collection ./my-project pages \
+crap-cms make collection pages \
     -F "title:text:required:localized,body:textarea:localized,slug:text:required"
 
 # Auth collection
-crap-cms make collection ./my-project users --auth
+crap-cms make collection users --auth
 
 # Upload collection
-crap-cms make collection ./my-project media --upload
+crap-cms make collection media --upload
 
 # Non-interactive with versions
-crap-cms make collection ./my-project posts \
+crap-cms make collection posts \
     -F "title:text:required,body:richtext" --versions --no-input
 </code></pre>
 <h4 id="make-global"><a class="header" href="#make-global"><code>make global</code></a></h4>
-<pre><code class="language-bash">crap-cms make global &lt;CONFIG&gt; [SLUG] [-F &lt;FIELDS&gt;] [-f]
+<pre><code class="language-bash">crap-cms make global [SLUG] [-F &lt;FIELDS&gt;] [-f]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -396,11 +415,11 @@ crap-cms make collection ./my-project posts \
 </tbody>
 </table>
 </div>
-<pre><code class="language-bash">crap-cms make global ./my-project site_settings
-crap-cms make global ./my-project nav -F "links:array(label:text:required,url:text)"
+<pre><code class="language-bash">crap-cms make global site_settings
+crap-cms make global nav -F "links:array(label:text:required,url:text)"
 </code></pre>
 <h4 id="make-hook"><a class="header" href="#make-hook"><code>make hook</code></a></h4>
-<pre><code class="language-bash">crap-cms make hook &lt;CONFIG&gt; [NAME] [-t &lt;TYPE&gt;] [-c &lt;COLLECTION&gt;] [-l &lt;POSITION&gt;] [-F &lt;FIELD&gt;] [--force]
+<pre><code class="language-bash">crap-cms make hook [NAME] [-t &lt;TYPE&gt;] [-c &lt;COLLECTION&gt;] [-l &lt;POSITION&gt;] [-F &lt;FIELD&gt;] [--force]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -440,26 +459,26 @@ crap-cms make global ./my-project nav -F "links:array(label:text:required,url:te
 <li><strong>Access hooks:</strong> generic <code>crap.AccessContext</code></li>
 </ul>
 <pre><code class="language-bash"># Interactive (prompts for everything)
-crap-cms make hook ./my-project
+crap-cms make hook
 
 # Fully specified
-crap-cms make hook ./my-project auto_slug \
+crap-cms make hook auto_slug \
     -t collection -c posts -l before_change
 
 # Field hook
-crap-cms make hook ./my-project normalize_email \
+crap-cms make hook normalize_email \
     -t field -c users -l before_validate -F email
 
 # Access hook
-crap-cms make hook ./my-project owner_only \
+crap-cms make hook owner_only \
     -t access -c posts -l read
 
 # Condition hook (client-side table)
-crap-cms make hook ./my-project show_external_url \
+crap-cms make hook show_external_url \
     -t condition -c posts -l table -F post_type
 </code></pre>
 <h4 id="make-job"><a class="header" href="#make-job"><code>make job</code></a></h4>
-<pre><code class="language-bash">crap-cms make job &lt;CONFIG&gt; [SLUG] [-s &lt;SCHEDULE&gt;] [-q &lt;QUEUE&gt;] [-r &lt;RETRIES&gt;] [-t &lt;TIMEOUT&gt;] [-f]
+<pre><code class="language-bash">crap-cms make job [SLUG] [-s &lt;SCHEDULE&gt;] [-q &lt;QUEUE&gt;] [-r &lt;RETRIES&gt;] [-t &lt;TIMEOUT&gt;] [-f]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -476,19 +495,19 @@ crap-cms make hook ./my-project show_external_url \
 </table>
 </div>
 <pre><code class="language-bash"># Interactive (prompts for slug)
-crap-cms make job ./my-project
+crap-cms make job
 
 # With schedule
-crap-cms make job ./my-project cleanup_expired -s "0 3 * * *" -r 3 -t 300
+crap-cms make job cleanup_expired -s "0 3 * * *" -r 3 -t 300
 
 # Simple job (triggered from hooks)
-crap-cms make job ./my-project send_welcome_email
+crap-cms make job send_welcome_email
 </code></pre>
 <h3 id="blueprint--manage-saved-blueprints"><a class="header" href="#blueprint--manage-saved-blueprints"><code>blueprint</code> — Manage saved blueprints</a></h3>
 <h4 id="blueprint-save"><a class="header" href="#blueprint-save"><code>blueprint save</code></a></h4>
-<pre><code class="language-bash">crap-cms blueprint save &lt;CONFIG&gt; &lt;NAME&gt; [-f]
+<pre><code class="language-bash">crap-cms blueprint save &lt;NAME&gt; [-f]
 </code></pre>
-<p>Saves a config directory as a reusable blueprint (excluding <code>data/</code>, <code>uploads/</code>, <code>types/</code>). A <code>.crap-blueprint.toml</code> manifest is written with the CMS version and timestamp.</p>
+<p>Saves the current config directory as a reusable blueprint (excluding <code>data/</code>, <code>uploads/</code>, <code>types/</code>). A <code>.crap-blueprint.toml</code> manifest is written with the CMS version and timestamp.</p>
 <h4 id="blueprint-use"><a class="header" href="#blueprint-use"><code>blueprint use</code></a></h4>
 <pre><code class="language-bash">crap-cms blueprint use &lt;NAME&gt; [DIR]
 </code></pre>
@@ -502,11 +521,11 @@ crap-cms make job ./my-project send_welcome_email
 </code></pre>
 <h3 id="db--database-tools"><a class="header" href="#db--database-tools"><code>db</code> — Database tools</a></h3>
 <h4 id="db-console"><a class="header" href="#db-console"><code>db console</code></a></h4>
-<pre><code class="language-bash">crap-cms db console &lt;CONFIG&gt;
+<pre><code class="language-bash">crap-cms db console
 </code></pre>
 <p>Opens an interactive <code>sqlite3</code> session on the project database.</p>
 <h4 id="db-cleanup"><a class="header" href="#db-cleanup"><code>db cleanup</code></a></h4>
-<pre><code class="language-bash">crap-cms db cleanup &lt;CONFIG&gt; [--confirm]
+<pre><code class="language-bash">crap-cms db cleanup [--confirm]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -520,13 +539,13 @@ crap-cms make job ./my-project send_welcome_email
 </div>
 <p>Detects columns in collection tables that don’t correspond to any field in the current Lua definitions. System columns (<code>_</code>-prefixed like <code>_password_hash</code>, <code>_locked</code>) are always kept. Plugin columns are safe because plugins run during schema loading — their fields are part of the live definitions.</p>
 <pre><code class="language-bash"># Dry run — show orphans without removing them
-crap-cms db cleanup ./my-project
+crap-cms db cleanup
 
 # Actually drop orphan columns
-crap-cms db cleanup ./my-project --confirm
+crap-cms db cleanup --confirm
 </code></pre>
 <h3 id="export--export-collection-data"><a class="header" href="#export--export-collection-data"><code>export</code> — Export collection data</a></h3>
-<pre><code class="language-bash">crap-cms export &lt;CONFIG&gt; [-c &lt;COLLECTION&gt;] [-o &lt;FILE&gt;]
+<pre><code class="language-bash">crap-cms export [-c &lt;COLLECTION&gt;] [-o &lt;FILE&gt;]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -540,11 +559,11 @@ crap-cms db cleanup ./my-project --confirm
 </table>
 </div>
 <p>Export includes <code>crap_version</code> and <code>exported_at</code> metadata in the JSON envelope. On import, a version mismatch produces a warning (but does not abort).</p>
-<pre><code class="language-bash">crap-cms export ./my-project
-crap-cms export ./my-project -c posts -o posts.json
+<pre><code class="language-bash">crap-cms export
+crap-cms export -c posts -o posts.json
 </code></pre>
 <h3 id="import--import-collection-data"><a class="header" href="#import--import-collection-data"><code>import</code> — Import collection data</a></h3>
-<pre><code class="language-bash">crap-cms import &lt;CONFIG&gt; &lt;FILE&gt; [-c &lt;COLLECTION&gt;]
+<pre><code class="language-bash">crap-cms import &lt;FILE&gt; [-c &lt;COLLECTION&gt;]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -556,11 +575,11 @@ crap-cms export ./my-project -c posts -o posts.json
 </tbody>
 </table>
 </div>
-<pre><code class="language-bash">crap-cms import ./my-project backup.json
-crap-cms import ./my-project backup.json -c posts
+<pre><code class="language-bash">crap-cms import backup.json
+crap-cms import backup.json -c posts
 </code></pre>
 <h3 id="typegen--generate-typed-definitions"><a class="header" href="#typegen--generate-typed-definitions"><code>typegen</code> — Generate typed definitions</a></h3>
-<pre><code class="language-bash">crap-cms typegen &lt;CONFIG&gt; [-l &lt;LANG&gt;] [-o &lt;DIR&gt;]
+<pre><code class="language-bash">crap-cms typegen [-l &lt;LANG&gt;] [-o &lt;DIR&gt;]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -573,9 +592,9 @@ crap-cms import ./my-project backup.json -c posts
 </tbody>
 </table>
 </div>
-<pre><code class="language-bash">crap-cms typegen ./my-project
-crap-cms typegen ./my-project -l all
-crap-cms typegen ./my-project -l ts -o ./client/src/types
+<pre><code class="language-bash">crap-cms typegen
+crap-cms typegen -l all
+crap-cms typegen -l ts -o ./client/src/types
 </code></pre>
 <h3 id="proto--export-proto-file"><a class="header" href="#proto--export-proto-file"><code>proto</code> — Export proto file</a></h3>
 <pre><code class="language-bash">crap-cms proto [-o &lt;PATH&gt;]
@@ -585,7 +604,7 @@ crap-cms typegen ./my-project -l ts -o ./client/src/types
 crap-cms proto -o ./proto/
 </code></pre>
 <h3 id="migrate--run-database-migrations"><a class="header" href="#migrate--run-database-migrations"><code>migrate</code> — Run database migrations</a></h3>
-<pre><code class="language-bash">crap-cms migrate &lt;CONFIG&gt; &lt;create|up|down|list|fresh&gt;
+<pre><code class="language-bash">crap-cms migrate &lt;create|up|down|list|fresh&gt;
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -601,14 +620,14 @@ crap-cms proto -o ./proto/
 </tbody>
 </table>
 </div>
-<pre><code class="language-bash">crap-cms migrate ./my-project create backfill_slugs
-crap-cms migrate ./my-project up
-crap-cms migrate ./my-project list
-crap-cms migrate ./my-project down -s 2
-crap-cms migrate ./my-project fresh -y
+<pre><code class="language-bash">crap-cms migrate create backfill_slugs
+crap-cms migrate up
+crap-cms migrate list
+crap-cms migrate down -s 2
+crap-cms migrate fresh -y
 </code></pre>
 <h3 id="backup--backup-database"><a class="header" href="#backup--backup-database"><code>backup</code> — Backup database</a></h3>
-<pre><code class="language-bash">crap-cms backup &lt;CONFIG&gt; [-o &lt;DIR&gt;] [-i]
+<pre><code class="language-bash">crap-cms backup [-o &lt;DIR&gt;] [-i]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -621,11 +640,11 @@ crap-cms migrate ./my-project fresh -y
 </tbody>
 </table>
 </div>
-<pre><code class="language-bash">crap-cms backup ./my-project
-crap-cms backup ./my-project -o /tmp/backups -i
+<pre><code class="language-bash">crap-cms backup
+crap-cms backup -o /tmp/backups -i
 </code></pre>
 <h3 id="restore--restore-from-backup"><a class="header" href="#restore--restore-from-backup"><code>restore</code> — Restore from backup</a></h3>
-<pre><code class="language-bash">crap-cms restore &lt;CONFIG&gt; &lt;BACKUP&gt; [-i] [-y]
+<pre><code class="language-bash">crap-cms restore &lt;BACKUP&gt; [-i] [-y]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -639,8 +658,8 @@ crap-cms backup ./my-project -o /tmp/backups -i
 </table>
 </div>
 <p>Replaces the current database with a backup snapshot. Cleans up stale WAL/SHM files.</p>
-<pre><code class="language-bash">crap-cms restore ./my-project ./my-project/backups/backup-2026-03-07T10-00-00 -y
-crap-cms restore ./my-project /tmp/backups/backup-2026-03-07T10-00-00 -i -y
+<pre><code class="language-bash">crap-cms restore ./backups/backup-2026-03-07T10-00-00 -y
+crap-cms restore /tmp/backups/backup-2026-03-07T10-00-00 -i -y
 </code></pre>
 <h3 id="templates--list-and-extract-default-admin-templates"><a class="header" href="#templates--list-and-extract-default-admin-templates"><code>templates</code> — List and extract default admin templates</a></h3>
 <p>Extract the compiled-in admin templates and static files into your config directory for customization.</p>
@@ -663,7 +682,7 @@ crap-cms templates list -t templates
 crap-cms templates list -v
 </code></pre>
 <h4 id="templates-extract"><a class="header" href="#templates-extract"><code>templates extract</code></a></h4>
-<pre><code class="language-bash">crap-cms templates extract &lt;CONFIG&gt; [PATHS...] [-a] [-t &lt;TYPE&gt;] [-f]
+<pre><code class="language-bash">crap-cms templates extract [PATHS...] [-a] [-t &lt;TYPE&gt;] [-f]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -678,22 +697,21 @@ crap-cms templates list -v
 </table>
 </div>
 <pre><code class="language-bash"># Extract specific files
-crap-cms templates extract ./my-project layout/base.hbs styles.css
+crap-cms templates extract layout/base.hbs styles.css
 
 # Extract all templates
-crap-cms templates extract ./my-project --all --type templates
+crap-cms templates extract --all --type templates
 
 # Extract everything, overwriting existing
-crap-cms templates extract ./my-project --all --force
+crap-cms templates extract --all --force
 </code></pre>
 <h3 id="jobs--manage-background-jobs"><a class="header" href="#jobs--manage-background-jobs"><code>jobs</code> — Manage background jobs</a></h3>
-<p>All jobs subcommands require a config directory.</p>
 <h4 id="jobs-list"><a class="header" href="#jobs-list"><code>jobs list</code></a></h4>
-<pre><code class="language-bash">crap-cms jobs list &lt;CONFIG&gt;
+<pre><code class="language-bash">crap-cms jobs list
 </code></pre>
 <p>Lists all defined jobs with their configuration (handler, schedule, queue, retries, timeout, concurrency).</p>
 <h4 id="jobs-trigger"><a class="header" href="#jobs-trigger"><code>jobs trigger</code></a></h4>
-<pre><code class="language-bash">crap-cms jobs trigger &lt;CONFIG&gt; &lt;SLUG&gt; [-d &lt;DATA&gt;]
+<pre><code class="language-bash">crap-cms jobs trigger &lt;SLUG&gt; [-d &lt;DATA&gt;]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -707,7 +725,7 @@ crap-cms templates extract ./my-project --all --force
 </div>
 <p>Manually queue a job for execution. Works even while the server is running (SQLite WAL allows concurrent access). Prints the queued job run ID.</p>
 <h4 id="jobs-status"><a class="header" href="#jobs-status"><code>jobs status</code></a></h4>
-<pre><code class="language-bash">crap-cms jobs status &lt;CONFIG&gt; [--id &lt;ID&gt;] [-s &lt;SLUG&gt;] [-l &lt;LIMIT&gt;]
+<pre><code class="language-bash">crap-cms jobs status [--id &lt;ID&gt;] [-s &lt;SLUG&gt;] [-l &lt;LIMIT&gt;]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -723,7 +741,7 @@ crap-cms templates extract ./my-project --all --force
 </div>
 <p>Show recent job runs. If <code>--id</code> is given, shows details for that specific run. Otherwise lists recent runs across all jobs.</p>
 <h4 id="jobs-cancel"><a class="header" href="#jobs-cancel"><code>jobs cancel</code></a></h4>
-<pre><code class="language-bash">crap-cms jobs cancel &lt;CONFIG&gt; [--slug &lt;SLUG&gt;]
+<pre><code class="language-bash">crap-cms jobs cancel [--slug &lt;SLUG&gt;]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -737,7 +755,7 @@ crap-cms templates extract ./my-project --all --force
 </div>
 <p>Deletes pending jobs from the queue. Useful for clearing stuck or unwanted jobs that keep retrying.</p>
 <h4 id="jobs-purge"><a class="header" href="#jobs-purge"><code>jobs purge</code></a></h4>
-<pre><code class="language-bash">crap-cms jobs purge &lt;CONFIG&gt; [--older-than &lt;DURATION&gt;]
+<pre><code class="language-bash">crap-cms jobs purge [--older-than &lt;DURATION&gt;]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -750,23 +768,23 @@ crap-cms templates extract ./my-project --all --force
 </table>
 </div>
 <h4 id="jobs-healthcheck"><a class="header" href="#jobs-healthcheck"><code>jobs healthcheck</code></a></h4>
-<pre><code class="language-bash">crap-cms jobs healthcheck &lt;CONFIG&gt;
+<pre><code class="language-bash">crap-cms jobs healthcheck
 </code></pre>
 <p>Checks job system health and prints a summary: defined jobs, stale jobs (running but heartbeat expired), failed jobs in the last 24 hours, pending jobs waiting longer than 5 minutes, and scheduled jobs that have never completed a run.</p>
 <p>Exit status: <code>healthy</code> (no issues), <code>warning</code> (failed or long-pending jobs), <code>unhealthy</code> (stale jobs detected).</p>
-<pre><code class="language-bash">crap-cms jobs list ./my-project
-crap-cms jobs trigger ./my-project cleanup_expired
-crap-cms jobs status ./my-project
-crap-cms jobs status ./my-project --id abc123
-crap-cms jobs cancel ./my-project
-crap-cms jobs cancel ./my-project -s process_inquiry
-crap-cms jobs purge ./my-project --older-than 30d
-crap-cms jobs healthcheck ./my-project
+<pre><code class="language-bash">crap-cms jobs list
+crap-cms jobs trigger cleanup_expired
+crap-cms jobs status
+crap-cms jobs status --id abc123
+crap-cms jobs cancel
+crap-cms jobs cancel -s process_inquiry
+crap-cms jobs purge --older-than 30d
+crap-cms jobs healthcheck
 </code></pre>
 <h3 id="images--manage-image-processing-queue"><a class="header" href="#images--manage-image-processing-queue"><code>images</code> — Manage image processing queue</a></h3>
 <p>Inspect and manage the background image format conversion queue. See <a href="../uploads/image-processing.html">Image Processing</a> for how to enable queued conversion.</p>
 <h4 id="images-list"><a class="header" href="#images-list"><code>images list</code></a></h4>
-<pre><code class="language-bash">crap-cms images list &lt;CONFIG&gt; [-s &lt;STATUS&gt;] [-l &lt;LIMIT&gt;]
+<pre><code class="language-bash">crap-cms images list [-s &lt;STATUS&gt;] [-l &lt;LIMIT&gt;]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -780,11 +798,11 @@ crap-cms jobs healthcheck ./my-project
 </table>
 </div>
 <h4 id="images-stats"><a class="header" href="#images-stats"><code>images stats</code></a></h4>
-<pre><code class="language-bash">crap-cms images stats &lt;CONFIG&gt;
+<pre><code class="language-bash">crap-cms images stats
 </code></pre>
 <p>Shows counts by status (pending, processing, completed, failed) and total.</p>
 <h4 id="images-retry"><a class="header" href="#images-retry"><code>images retry</code></a></h4>
-<pre><code class="language-bash">crap-cms images retry &lt;CONFIG&gt; [--id &lt;ID&gt;] [--all] [-y]
+<pre><code class="language-bash">crap-cms images retry [--id &lt;ID&gt;] [--all] [-y]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -799,7 +817,7 @@ crap-cms jobs healthcheck ./my-project
 </table>
 </div>
 <h4 id="images-purge"><a class="header" href="#images-purge"><code>images purge</code></a></h4>
-<pre><code class="language-bash">crap-cms images purge &lt;CONFIG&gt; [--older-than &lt;DURATION&gt;]
+<pre><code class="language-bash">crap-cms images purge [--older-than &lt;DURATION&gt;]
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -811,28 +829,16 @@ crap-cms jobs healthcheck ./my-project
 </tbody>
 </table>
 </div>
-<pre><code class="language-bash">crap-cms images list ./my-project
-crap-cms images list ./my-project -s failed
-crap-cms images stats ./my-project
-crap-cms images retry ./my-project --id abc123
-crap-cms images retry ./my-project --all -y
-crap-cms images purge ./my-project --older-than 30d
+<pre><code class="language-bash">crap-cms images list
+crap-cms images list -s failed
+crap-cms images stats
+crap-cms images retry --id abc123
+crap-cms images retry --all -y
+crap-cms images purge --older-than 30d
 </code></pre>
 <h3 id="mcp--start-the-mcp-server-stdio"><a class="header" href="#mcp--start-the-mcp-server-stdio"><code>mcp</code> — Start the MCP server (stdio)</a></h3>
 <p>Start an MCP (Model Context Protocol) server over stdio for AI assistant integration.</p>
-<pre><code class="language-bash">crap-cms mcp &lt;CONFIG&gt;
-</code></pre>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Argument</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>&lt;CONFIG&gt;</code></td><td>Path to the config directory</td></tr>
-</tbody>
-</table>
-</div>
-<pre><code class="language-bash">crap-cms mcp ./my-project
+<pre><code class="language-bash">crap-cms mcp
 </code></pre>
 <p>Reads JSON-RPC 2.0 from stdin, writes responses to stdout. Use with Claude Desktop,
 Cursor, VS Code, or any MCP-compatible client. See <a href="../mcp/overview.html">MCP Overview</a>
@@ -844,6 +850,7 @@ for configuration and usage.</p>
 <tr><th>Variable</th><th>Description</th></tr>
 </thead>
 <tbody>
+<tr><td><code>CRAP_CONFIG_DIR</code></td><td>Path to the config directory (same as <code>--config</code> flag; flag takes priority)</td></tr>
 <tr><td><code>RUST_LOG</code></td><td>Controls log verbosity. Default: <code>crap_cms=debug,info</code>. Example: <code>RUST_LOG=crap_cms=trace</code></td></tr>
 <tr><td><code>CRAP_LOG_FORMAT</code></td><td>Set to <code>json</code> for structured JSON log output (same as <code>--json</code> flag)</td></tr>
 </tbody>

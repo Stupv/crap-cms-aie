@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-95b5fa60.js";
+            window.path_to_searchindex_js = "../searchindex-0d4ad855.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-8a8be9f9.js"></script>
@@ -213,7 +213,8 @@
 └── uploads/
 </code></pre>
 <h2 id="2-start-the-server"><a class="header" href="#2-start-the-server">2. Start the server</a></h2>
-<pre><code class="language-bash">crap-cms serve ./my-project
+<pre><code class="language-bash">cd my-project
+crap-cms serve
 </code></pre>
 <p>This starts:</p>
 <ul>
@@ -224,10 +225,10 @@
 <p>Visit <a href="http://localhost:3000/admin/login">http://localhost:3000/admin/login</a> and sign in with the credentials you created during init.</p>
 <p>If you skipped user creation during init, bootstrap one now:</p>
 <pre><code class="language-bash"># Interactive (prompts for password)
-crap-cms user create ./my-project -e admin@example.com
+crap-cms user create -e admin@example.com
 
 # Non-interactive
-crap-cms user create ./my-project \
+crap-cms user create \
     -e admin@example.com \
     -p secret123 \
     -f role=admin \
@@ -256,10 +257,10 @@ grpcurl -plaintext localhost:50051 crap.ContentAPI/Create \
 <pre><code class="language-bash">git clone https://github.com/dkluhzeb/crap-cms.git
 cd crap-cms
 cargo build --release
-./target/release/crap-cms serve ./example
+./target/release/crap-cms serve -C ./example
 </code></pre>
 <p>Then bootstrap an admin user:</p>
-<pre><code class="language-bash">crap-cms user create ./example -e admin@example.com
+<pre><code class="language-bash">crap-cms user create -C ./example -e admin@example.com
 </code></pre>
 
                     </main>
