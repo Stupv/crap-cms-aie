@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
 use crate::{
+    cli::{self, Spinner, Table},
     config::{CrapConfig, LocaleConfig},
     core::Registry,
     db::{DbConnection, migrate, pool, query},
@@ -34,17 +35,17 @@ pub fn migrate(config_dir: &Path, action: super::MigrateAction) -> Result<()> {
         super::MigrateAction::Create { .. } => unreachable!(),
         super::MigrateAction::Up => {
             // Schema sync from Lua definitions
-            println!("Syncing schema from Lua definitions...");
+            let spin = Spinner::new("Syncing schema...");
             migrate::sync_all(&pool, &registry, &cfg.locale)
                 .context("Failed to sync database schema")?;
-            println!("Schema sync complete.");
+            spin.finish_success("Schema sync complete");
 
             // Run pending Lua data migrations
             let migrations_dir = config_dir.join("migrations");
             let pending = migrate::get_pending_migrations(&pool, &migrations_dir)?;
 
             if pending.is_empty() {
-                println!("No pending migrations.");
+                cli::info("No pending migrations.");
             } else {
                 let hook_runner = HookRunner::builder()
                     .config_dir(&config_dir)
@@ -59,9 +60,9 @@ pub fn migrate(config_dir: &Path, action: super::MigrateAction) -> Result<()> {
                     migrate::record_migration(&tx, filename)?;
                     tx.commit()
                         .with_context(|| format!("Failed to commit migration {}", filename))?;
-                    println!("Applied: {}", filename);
+                    cli::success(&format!("Applied: {}", filename));
                 }
-                println!("{} migration(s) applied.", pending.len());
+                cli::success(&format!("{} migration(s) applied.", pending.len()));
             }
         }
         super::MigrateAction::Down { steps } => {
@@ -69,7 +70,7 @@ pub fn migrate(config_dir: &Path, action: super::MigrateAction) -> Result<()> {
             let to_rollback: Vec<_> = applied.into_iter().take(steps).collect();
 
             if to_rollback.is_empty() {
-                println!("No migrations to roll back.");
+                cli::info("No migrations to roll back.");
             } else {
                 let hook_runner = HookRunner::builder()
                     .config_dir(&config_dir)
@@ -89,9 +90,9 @@ pub fn migrate(config_dir: &Path, action: super::MigrateAction) -> Result<()> {
                     migrate::remove_migration(&tx, filename)?;
                     tx.commit()
                         .with_context(|| format!("Failed to commit rollback of {}", filename))?;
-                    println!("Rolled back: {}", filename);
+                    cli::success(&format!("Rolled back: {}", filename));
                 }
-                println!("{} migration(s) rolled back.", to_rollback.len());
+                cli::success(&format!("{} migration(s) rolled back.", to_rollback.len()));
             }
         }
         super::MigrateAction::List => {
@@ -100,18 +101,21 @@ pub fn migrate(config_dir: &Path, action: super::MigrateAction) -> Result<()> {
             let applied = migrate::get_applied_migrations(&pool)?;
 
             if all_files.is_empty() {
-                println!("No migration files found in {}", migrations_dir.display());
+                cli::info(&format!(
+                    "No migration files found in {}",
+                    migrations_dir.display()
+                ));
             } else {
-                println!("{:<50} Status", "Migration");
-                println!("{}", "-".repeat(60));
+                let mut table = Table::new(vec!["Migration", "Status"]);
                 for f in &all_files {
                     let status = if applied.contains(f) {
                         "applied"
                     } else {
                         "pending"
                     };
-                    println!("{:<50} {}", f, status);
+                    table.row(vec![f, status]);
                 }
+                table.print();
             }
         }
         super::MigrateAction::Fresh { confirm } => {
@@ -122,14 +126,14 @@ pub fn migrate(config_dir: &Path, action: super::MigrateAction) -> Result<()> {
                 );
             }
 
-            println!("Dropping all tables...");
+            let spin = Spinner::new("Dropping all tables...");
             migrate::drop_all_tables(&pool)?;
-            println!("Tables dropped.");
+            spin.finish_success("Tables dropped");
 
-            println!("Recreating schema from Lua definitions...");
+            let spin = Spinner::new("Recreating schema...");
             migrate::sync_all(&pool, &registry, &cfg.locale)
                 .context("Failed to sync database schema")?;
-            println!("Schema sync complete.");
+            spin.finish_success("Schema sync complete");
 
             // Run all migrations from scratch
             let migrations_dir = config_dir.join("migrations");
@@ -149,12 +153,12 @@ pub fn migrate(config_dir: &Path, action: super::MigrateAction) -> Result<()> {
                     migrate::record_migration(&tx, filename)?;
                     tx.commit()
                         .with_context(|| format!("Failed to commit migration {}", filename))?;
-                    println!("Applied: {}", filename);
+                    cli::success(&format!("Applied: {}", filename));
                 }
-                println!("{} migration(s) applied.", all_files.len());
+                cli::success(&format!("{} migration(s) applied.", all_files.len()));
             }
 
-            println!("Fresh migration complete.");
+            cli::success("Fresh migration complete.");
         }
     }
 
@@ -181,7 +185,7 @@ pub fn console(config_dir: &Path) -> Result<()> {
                 bail!("Database file not found: {}", db_path.display());
             }
 
-            println!("Opening SQLite console: {}", db_path.display());
+            cli::info(&format!("Opening SQLite console: {}", db_path.display()));
 
             let status = std::process::Command::new("sqlite3")
                 .arg(&db_path)
@@ -230,7 +234,7 @@ pub fn backup(config_dir: &Path, output: Option<PathBuf>, include_uploads: bool)
 
     // VACUUM INTO for a consistent snapshot
     let backup_db_path = backup_dir.join("crap.db");
-    println!("Creating database snapshot...");
+    let spin = Spinner::new("Creating database snapshot...");
     {
         let pool =
             pool::create_pool(&config_dir, &cfg).context("Failed to create database pool")?;
@@ -243,11 +247,11 @@ pub fn backup(config_dir: &Path, output: Option<PathBuf>, include_uploads: bool)
     let db_size = std::fs::metadata(&backup_db_path)
         .map(|m| m.len())
         .unwrap_or(0);
-    println!(
+    spin.finish_success(&format!(
         "Database snapshot: {} ({} bytes)",
         backup_db_path.display(),
         db_size
-    );
+    ));
 
     // Optionally backup uploads
     let mut uploads_size: Option<u64> = None;
@@ -257,7 +261,7 @@ pub fn backup(config_dir: &Path, output: Option<PathBuf>, include_uploads: bool)
 
         if uploads_dir.exists() && uploads_dir.is_dir() {
             let archive_path = backup_dir.join("uploads.tar.gz");
-            println!("Compressing uploads...");
+            let spin = Spinner::new("Compressing uploads...");
             let status = std::process::Command::new("tar")
                 .args([
                     "czf",
@@ -270,24 +274,24 @@ pub fn backup(config_dir: &Path, output: Option<PathBuf>, include_uploads: bool)
             match status {
                 Ok(s) if s.success() => {
                     uploads_size = std::fs::metadata(&archive_path).map(|m| m.len()).ok();
-                    println!(
+                    spin.finish_success(&format!(
                         "Uploads archive: {} ({} bytes)",
                         archive_path.display(),
                         uploads_size.unwrap_or(0)
-                    );
+                    ));
                 }
                 Ok(s) => {
-                    eprintln!("Warning: tar exited with status {}", s);
+                    spin.finish_warning(&format!("tar exited with status {}", s));
                 }
                 Err(e) => {
-                    eprintln!(
-                        "Warning: tar not found or failed: {}. Skipping uploads backup.",
+                    spin.finish_warning(&format!(
+                        "tar not found or failed: {}. Skipping uploads backup.",
                         e
-                    );
+                    ));
                 }
             }
         } else {
-            println!("No uploads directory found — skipping.");
+            cli::info("No uploads directory found — skipping.");
         }
     }
 
@@ -305,7 +309,7 @@ pub fn backup(config_dir: &Path, output: Option<PathBuf>, include_uploads: bool)
     std::fs::write(&manifest_path, serde_json::to_string_pretty(&manifest)?)
         .context("Failed to write manifest.json")?;
 
-    println!("\nBackup complete: {}", backup_dir.display());
+    cli::success(&format!("Backup complete: {}", backup_dir.display()));
     Ok(())
 }
 
@@ -350,31 +354,34 @@ pub fn restore(
     let manifest: Value =
         serde_json::from_str(&manifest_str).context("Failed to parse manifest.json")?;
 
-    println!("Restoring from backup:");
-    println!(
-        "  Version:   {}",
+    cli::header("Restoring from backup");
+    cli::kv(
+        "Version",
         manifest
             .get("crap_version")
             .and_then(|v| v.as_str())
-            .unwrap_or("unknown")
+            .unwrap_or("unknown"),
     );
-    println!(
-        "  Timestamp: {}",
+    cli::kv(
+        "Timestamp",
         manifest
             .get("timestamp")
             .and_then(|v| v.as_str())
-            .unwrap_or("unknown")
+            .unwrap_or("unknown"),
     );
-    println!(
-        "  DB size:   {} bytes",
-        manifest
-            .get("db_size")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0)
+    cli::kv(
+        "DB size",
+        &format!(
+            "{} bytes",
+            manifest
+                .get("db_size")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0)
+        ),
     );
 
     if let Some(size) = manifest.get("uploads_size").and_then(|v| v.as_u64()) {
-        println!("  Uploads:   {} bytes", size);
+        cli::kv("Uploads", &format!("{} bytes", size));
     }
 
     // Load config to find target DB path
@@ -388,10 +395,10 @@ pub fn restore(
     }
 
     // Replace database file
-    println!("Restoring database to {}...", db_path.display());
+    let spin = Spinner::new("Restoring database...");
     std::fs::copy(&backup_db_path, &db_path)
         .with_context(|| format!("Failed to copy database to {}", db_path.display()))?;
-    println!("Database restored.");
+    spin.finish_success("Database restored");
 
     // Remove sidecar files (e.g. WAL/SHM for SQLite) if they exist
     {
@@ -411,7 +418,7 @@ pub fn restore(
         let archive_path = backup_dir.join("uploads.tar.gz");
 
         if archive_path.exists() {
-            println!("Extracting uploads...");
+            let spin = Spinner::new("Extracting uploads...");
             let status = std::process::Command::new("tar")
                 .args([
                     "xzf",
@@ -422,24 +429,24 @@ pub fn restore(
                 .status();
             match status {
                 Ok(s) if s.success() => {
-                    println!("Uploads restored.");
+                    spin.finish_success("Uploads restored");
                 }
                 Ok(s) => {
-                    eprintln!("Warning: tar exited with status {}", s);
+                    spin.finish_warning(&format!("tar exited with status {}", s));
                 }
                 Err(e) => {
-                    eprintln!(
-                        "Warning: tar not found or failed: {}. Skipping uploads restore.",
+                    spin.finish_warning(&format!(
+                        "tar not found or failed: {}. Skipping uploads restore.",
                         e
-                    );
+                    ));
                 }
             }
         } else {
-            println!("No uploads.tar.gz in backup — skipping uploads restore.");
+            cli::info("No uploads.tar.gz in backup — skipping uploads restore.");
         }
     }
 
-    println!("\nRestore complete.");
+    cli::success("Restore complete.");
     Ok(())
 }
 
@@ -473,24 +480,26 @@ pub fn cleanup(config_dir: &Path, confirm: bool) -> Result<()> {
     let orphans = find_orphan_columns(&conn as &dyn DbConnection, &reg, &cfg.locale)?;
 
     if orphans.is_empty() {
-        println!("No orphan columns found. All columns match Lua definitions.");
+        cli::success("No orphan columns found. All columns match Lua definitions.");
 
         return Ok(());
     }
 
-    println!("Orphan columns (not in Lua definitions):\n");
+    cli::warning("Orphan columns (not in Lua definitions):");
+    println!();
     for (table, cols) in &orphans {
         for col in cols {
-            println!("  {}.{}", table, col);
+            cli::dim(&format!("  {}.{}", table, col));
         }
     }
 
     let total: usize = orphans.iter().map(|(_, cols)| cols.len()).sum();
-    println!("\n{} orphan column(s) found.", total);
+    println!();
+    cli::info(&format!("{} orphan column(s) found.", total));
 
     if !confirm {
-        println!("\nThis is a dry run. Pass --confirm to drop these columns.");
-        println!("Note: dropping columns is irreversible. Back up your database first.");
+        cli::hint("This is a dry run. Pass --confirm to drop these columns.");
+        cli::hint("Note: dropping columns is irreversible. Back up your database first.");
 
         return Ok(());
     }
@@ -507,11 +516,11 @@ pub fn cleanup(config_dir: &Path, confirm: bool) -> Result<()> {
             let sql = format!("ALTER TABLE {} DROP COLUMN {}", table, col);
             conn.execute(&sql, &[])
                 .with_context(|| format!("Failed to drop column {}.{}", table, col))?;
-            println!("Dropped: {}.{}", table, col);
+            cli::success(&format!("Dropped: {}.{}", table, col));
         }
     }
 
-    println!("\n{} column(s) dropped.", total);
+    cli::success(&format!("{} column(s) dropped.", total));
     Ok(())
 }
 

@@ -7,7 +7,7 @@ The `user create` command bootstraps users without the admin UI or gRPC API. Use
 Prompts for password with hidden input and confirmation:
 
 ```bash
-crap-cms user create ./my-project -e admin@example.com
+crap-cms user create -e admin@example.com
 ```
 
 Output:
@@ -25,7 +25,7 @@ If required fields have no default value, you'll be prompted for those too.
 For CI/scripting. The `-p` flag skips the prompt:
 
 ```bash
-crap-cms user create ./my-project \
+crap-cms user create \
     -e admin@example.com \
     -p secret123 \
     -f role=admin \
@@ -63,14 +63,14 @@ crap-cms user create ./my-project \
 
 ```bash
 # Minimal (will prompt for everything else)
-crap-cms user create ./example
+crap-cms user create
 
 # Different collection
-crap-cms user create ./example -c admins \
+crap-cms user create -c admins \
     -e boss@example.com
 
 # Full non-interactive
-crap-cms user create ./example \
+crap-cms user create \
     -e editor@example.com \
     -p pass123 \
     -f name="Jane Editor" \
@@ -81,22 +81,22 @@ crap-cms user create ./example \
 
 ```bash
 # Show detailed info for a user
-crap-cms user info ./example -e admin@example.com
+crap-cms user info -e admin@example.com
 
 # List all users
-crap-cms user list ./example
+crap-cms user list
 
 # Lock/unlock a user
-crap-cms user lock ./example -e user@example.com
-crap-cms user unlock ./example -e user@example.com
+crap-cms user lock -e user@example.com
+crap-cms user unlock -e user@example.com
 
 # Verify/unverify a user (requires verify_email: true on collection)
-crap-cms user verify ./example -e user@example.com
-crap-cms user unverify ./example -e user@example.com
+crap-cms user verify -e user@example.com
+crap-cms user unverify -e user@example.com
 
 # Change password
-crap-cms user change-password ./example -e user@example.com
+crap-cms user change-password -e user@example.com
 
 # Delete a user (with confirmation skip)
-crap-cms user delete ./example -e user@example.com -y
+crap-cms user delete -e user@example.com -y
 ```

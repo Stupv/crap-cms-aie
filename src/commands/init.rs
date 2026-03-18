@@ -1,19 +1,20 @@
 //! `init` command — scaffold a new config directory with interactive survey.
 
 use anyhow::{Context as _, Result, bail};
+use dialoguer::{Confirm, Input};
 use std::path::PathBuf;
+
+use crate::cli::{self, crap_theme};
 
 /// Handle the `init` subcommand — scaffold directory, then optionally create collections
 /// and a first admin user via interactive survey.
 #[cfg(not(tarpaulin_include))]
 pub fn run(dir: Option<PathBuf>, no_input: bool) -> Result<()> {
-    use dialoguer::{Confirm, Input};
-
     let config_dir = match dir {
         Some(d) => d,
         None if no_input => bail!("Directory path is required with --no-input"),
         None => {
-            let path: String = Input::new()
+            let path: String = Input::with_theme(&crap_theme())
                 .with_prompt("Project path")
                 .default("./crap-cms".to_string())
                 .interact_text()
@@ -40,39 +41,50 @@ pub fn run(dir: Option<PathBuf>, no_input: bool) -> Result<()> {
         crate::scaffold::make_collection(&config_dir, "media", None, &upload_opts)?;
 
         println!();
-        println!("Start the server: crap-cms serve {}", config_dir.display());
+        cli::success("Project created!");
+        cli::hint(&format!(
+            "Start the server: crap-cms serve {}",
+            config_dir.display()
+        ));
         return Ok(());
     }
 
     // --- Interactive mode ---
 
-    // Collect init options via interactive prompts
-    let admin_port: u16 = Input::new()
+    cli::info("Welcome to Crap CMS!");
+
+    // Phase 1: Server configuration
+    cli::step(1, 5, "Server Configuration");
+
+    let admin_port: u16 = Input::with_theme(&crap_theme())
         .with_prompt("Admin port")
         .default(3000)
         .interact_text()
         .context("Failed to read admin port")?;
 
-    let grpc_port: u16 = Input::new()
+    let grpc_port: u16 = Input::with_theme(&crap_theme())
         .with_prompt("gRPC port")
         .default(50051)
         .interact_text()
         .context("Failed to read gRPC port")?;
 
-    let enable_locale = Confirm::new()
+    // Phase 2: Localization
+    cli::step(2, 5, "Localization");
+
+    let enable_locale = Confirm::with_theme(&crap_theme())
         .with_prompt("Enable localization?")
         .default(false)
         .interact()
         .context("Failed to read localization preference")?;
 
     let (default_locale, locales) = if enable_locale {
-        let default: String = Input::new()
+        let default: String = Input::with_theme(&crap_theme())
             .with_prompt("Default locale")
             .default("en".to_string())
             .interact_text()
             .context("Failed to read default locale")?;
 
-        let extra: String = Input::new()
+        let extra: String = Input::with_theme(&crap_theme())
             .with_prompt("Additional locales (comma-separated, e.g. \"de,fr\")")
             .default(String::new())
             .allow_empty(true)
@@ -103,16 +115,16 @@ pub fn run(dir: Option<PathBuf>, no_input: bool) -> Result<()> {
     // 1. Scaffold the base directory
     crate::scaffold::init(Some(config_dir.clone()), &opts)?;
 
-    println!();
+    // Phase 3: Auth collection
+    cli::step(3, 5, "Auth Collection");
 
-    // 2. Auth collection
-    let auth_slug = if Confirm::new()
+    let auth_slug = if Confirm::with_theme(&crap_theme())
         .with_prompt("Create an auth collection (users with login)?")
         .default(true)
         .interact()
         .context("Failed to read auth preference")?
     {
-        let slug: String = Input::new()
+        let slug: String = Input::with_theme(&crap_theme())
             .with_prompt("Auth collection slug")
             .default("users".to_string())
             .validate_with(|input: &String| -> Result<(), String> {
@@ -122,7 +134,7 @@ pub fn run(dir: Option<PathBuf>, no_input: bool) -> Result<()> {
             .context("Failed to read auth slug")?;
 
         // Prompt for custom fields (email/password are always included automatically)
-        let fields = if Confirm::new()
+        let fields = if Confirm::with_theme(&crap_theme())
             .with_prompt("Add custom fields? (email/password are included automatically)")
             .default(false)
             .interact()
@@ -152,7 +164,7 @@ pub fn run(dir: Option<PathBuf>, no_input: bool) -> Result<()> {
     if let Some(ref auth_collection) = auth_slug {
         println!();
 
-        if Confirm::new()
+        if Confirm::with_theme(&crap_theme())
             .with_prompt("Create first admin user now?")
             .default(true)
             .interact()
@@ -172,26 +184,31 @@ pub fn run(dir: Option<PathBuf>, no_input: bool) -> Result<()> {
             ) {
                 Ok(()) => {}
                 Err(e) => {
-                    println!("Could not create user: {e}");
-                    println!("You can create a user later with:");
-                    println!("  crap-cms user create {}", config_dir.display());
+                    cli::warning(&format!("Could not create user: {e}"));
+                    cli::hint(&format!(
+                        "You can create a user later with: crap-cms user create {}",
+                        config_dir.display()
+                    ));
                 }
             }
         } else {
-            println!("You can create a user later with:");
-            println!("  crap-cms user create {}", config_dir.display());
+            cli::hint(&format!(
+                "You can create a user later with: crap-cms user create {}",
+                config_dir.display()
+            ));
         }
-        println!();
     }
 
-    // 4. Upload collection
-    if Confirm::new()
+    // Phase 4: Upload collection
+    cli::step(4, 5, "Upload Collection");
+
+    if Confirm::with_theme(&crap_theme())
         .with_prompt("Create an upload collection (file/image uploads)?")
         .default(true)
         .interact()
         .context("Failed to read upload preference")?
     {
-        let slug: String = Input::new()
+        let slug: String = Input::with_theme(&crap_theme())
             .with_prompt("Upload collection slug")
             .default("media".to_string())
             .validate_with(|input: &String| -> Result<(), String> {
@@ -201,7 +218,7 @@ pub fn run(dir: Option<PathBuf>, no_input: bool) -> Result<()> {
             .context("Failed to read upload slug")?;
 
         // Prompt for custom fields (filename/mime_type/size are included automatically)
-        let fields = if Confirm::new()
+        let fields = if Confirm::with_theme(&crap_theme())
             .with_prompt("Add custom fields? (filename/mime_type/size are included automatically)")
             .default(false)
             .interact()
@@ -224,11 +241,11 @@ pub fn run(dir: Option<PathBuf>, no_input: bool) -> Result<()> {
         crate::scaffold::make_collection(&config_dir, &slug, fields_opt.as_deref(), &opts)?;
     }
 
-    // 5. Additional collections
-    loop {
-        println!();
+    // Phase 5: Additional collections
+    cli::step(5, 5, "Additional Collections");
 
-        if !Confirm::new()
+    loop {
+        if !Confirm::with_theme(&crap_theme())
             .with_prompt("Create another collection?")
             .default(false)
             .interact()
@@ -246,7 +263,11 @@ pub fn run(dir: Option<PathBuf>, no_input: bool) -> Result<()> {
     }
 
     println!();
-    println!("Start the server: crap-cms serve {}", config_dir.display());
+    cli::success("Project created!");
+    cli::hint(&format!(
+        "Start the server: crap-cms serve {}",
+        config_dir.display()
+    ));
 
     Ok(())
 }

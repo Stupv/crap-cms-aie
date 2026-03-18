@@ -31,17 +31,18 @@ fn copy_dir(src: &Path, dst: &Path) {
     }
 }
 
-/// Run the binary with the given args and return the raw Output.
-fn run(args: &[&str]) -> std::process::Output {
+/// Run the binary with CRAP_CONFIG_DIR set, return raw Output.
+fn run_in(config_dir: &Path, args: &[&str]) -> std::process::Output {
     std::process::Command::new(crap_bin())
+        .env("CRAP_CONFIG_DIR", config_dir)
         .args(args)
         .output()
         .expect("failed to run binary")
 }
 
-/// Run the binary, assert success, and return stdout as a String.
-fn run_ok(args: &[&str]) -> String {
-    let output = run(args);
+/// Run the binary with CRAP_CONFIG_DIR set, assert success, return stdout.
+fn run_ok_in(config_dir: &Path, args: &[&str]) -> String {
+    let output = run_in(config_dir, args);
     assert!(
         output.status.success(),
         "Command {:?} failed.\nstderr: {}",
@@ -62,17 +63,19 @@ fn setup() -> (tempfile::TempDir, PathBuf) {
 /// Create a test user in the given config dir via the binary.
 /// Returns stdout from user create.
 fn create_test_user(config_dir: &Path) -> String {
-    run_ok(&[
-        "user",
-        "create",
-        config_dir.to_str().unwrap(),
-        "-e",
-        "test@example.com",
-        "-p",
-        "password123",
-        "--field",
-        "name=Test User",
-    ])
+    run_ok_in(
+        config_dir,
+        &[
+            "user",
+            "create",
+            "-e",
+            "test@example.com",
+            "-p",
+            "password123",
+            "--field",
+            "name=Test User",
+        ],
+    )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -84,12 +87,7 @@ fn export_to_file() {
     let (_tmp, config_dir) = setup();
     let out_file = _tmp.path().join("export.json");
 
-    run_ok(&[
-        "export",
-        config_dir.to_str().unwrap(),
-        "-o",
-        out_file.to_str().unwrap(),
-    ]);
+    run_ok_in(&config_dir, &["export", "-o", out_file.to_str().unwrap()]);
 
     let content = std::fs::read_to_string(&out_file).unwrap();
     let json: serde_json::Value = serde_json::from_str(&content).unwrap();
@@ -108,14 +106,10 @@ fn export_single_collection() {
     let (_tmp, config_dir) = setup();
     let out_file = _tmp.path().join("export.json");
 
-    run_ok(&[
-        "export",
-        config_dir.to_str().unwrap(),
-        "-c",
-        "posts",
-        "-o",
-        out_file.to_str().unwrap(),
-    ]);
+    run_ok_in(
+        &config_dir,
+        &["export", "-c", "posts", "-o", out_file.to_str().unwrap()],
+    );
 
     let content = std::fs::read_to_string(&out_file).unwrap();
     let json: serde_json::Value = serde_json::from_str(&content).unwrap();
@@ -129,14 +123,16 @@ fn export_nonexistent_collection_fails() {
     let (_tmp, config_dir) = setup();
     let out_file = _tmp.path().join("export.json");
 
-    let output = run(&[
-        "export",
-        config_dir.to_str().unwrap(),
-        "-c",
-        "nonexistent",
-        "-o",
-        out_file.to_str().unwrap(),
-    ]);
+    let output = run_in(
+        &config_dir,
+        &[
+            "export",
+            "-c",
+            "nonexistent",
+            "-o",
+            out_file.to_str().unwrap(),
+        ],
+    );
 
     assert!(
         !output.status.success(),
@@ -153,25 +149,19 @@ fn import_roundtrip() {
     create_test_user(&config_dir);
 
     // Export all data
-    run_ok(&[
-        "export",
-        config_dir.to_str().unwrap(),
-        "-o",
-        export_file.to_str().unwrap(),
-    ]);
+    run_ok_in(
+        &config_dir,
+        &["export", "-o", export_file.to_str().unwrap()],
+    );
 
     // Delete the user
-    run_ok(&[
-        "user",
-        "delete",
-        config_dir.to_str().unwrap(),
-        "-e",
-        "test@example.com",
-        "-y",
-    ]);
+    run_ok_in(
+        &config_dir,
+        &["user", "delete", "-e", "test@example.com", "-y"],
+    );
 
     // Verify user is gone
-    let list_out = run_ok(&["user", "list", config_dir.to_str().unwrap()]);
+    let list_out = run_ok_in(&config_dir, &["user", "list"]);
     assert!(
         list_out.contains("No users"),
         "user should be deleted, got: {}",
@@ -179,14 +169,10 @@ fn import_roundtrip() {
     );
 
     // Import the exported data
-    run_ok(&[
-        "import",
-        config_dir.to_str().unwrap(),
-        export_file.to_str().unwrap(),
-    ]);
+    run_ok_in(&config_dir, &["import", export_file.to_str().unwrap()]);
 
     // Verify user is back
-    let list_out = run_ok(&["user", "list", config_dir.to_str().unwrap()]);
+    let list_out = run_ok_in(&config_dir, &["user", "list"]);
     assert!(
         list_out.contains("test@example.com"),
         "user should be restored after import, got: {}",
@@ -204,14 +190,9 @@ fn backup_creates_directory() {
     let backup_dir = _tmp.path().join("backups");
 
     // Initialize the database by running status (triggers schema sync)
-    run_ok(&["status", config_dir.to_str().unwrap()]);
+    run_ok_in(&config_dir, &["status"]);
 
-    let stdout = run_ok(&[
-        "backup",
-        config_dir.to_str().unwrap(),
-        "-o",
-        backup_dir.to_str().unwrap(),
-    ]);
+    let stdout = run_ok_in(&config_dir, &["backup", "-o", backup_dir.to_str().unwrap()]);
 
     assert!(
         stdout.contains("Backup complete"),
@@ -246,12 +227,7 @@ fn backup_restore_roundtrip() {
     create_test_user(&config_dir);
 
     // Backup
-    run_ok(&[
-        "backup",
-        config_dir.to_str().unwrap(),
-        "-o",
-        backup_dir.to_str().unwrap(),
-    ]);
+    run_ok_in(&config_dir, &["backup", "-o", backup_dir.to_str().unwrap()]);
 
     // Find the backup subdirectory
     let entries: Vec<_> = std::fs::read_dir(&backup_dir)
@@ -261,25 +237,19 @@ fn backup_restore_roundtrip() {
     let backup_subdir = entries[0].path();
 
     // Delete the user
-    run_ok(&[
-        "user",
-        "delete",
-        config_dir.to_str().unwrap(),
-        "-e",
-        "test@example.com",
-        "-y",
-    ]);
+    run_ok_in(
+        &config_dir,
+        &["user", "delete", "-e", "test@example.com", "-y"],
+    );
 
     // Restore
-    run_ok(&[
-        "restore",
-        config_dir.to_str().unwrap(),
-        backup_subdir.to_str().unwrap(),
-        "-y",
-    ]);
+    run_ok_in(
+        &config_dir,
+        &["restore", backup_subdir.to_str().unwrap(), "-y"],
+    );
 
     // Verify user is back
-    let list_out = run_ok(&["user", "list", config_dir.to_str().unwrap()]);
+    let list_out = run_ok_in(&config_dir, &["user", "list"]);
     assert!(
         list_out.contains("test@example.com"),
         "user should exist after restore, got: {}",
@@ -293,15 +263,10 @@ fn restore_requires_confirm() {
     let backup_dir = _tmp.path().join("backups");
 
     // Initialize the database
-    run_ok(&["status", config_dir.to_str().unwrap()]);
+    run_ok_in(&config_dir, &["status"]);
 
     // Create a backup first
-    run_ok(&[
-        "backup",
-        config_dir.to_str().unwrap(),
-        "-o",
-        backup_dir.to_str().unwrap(),
-    ]);
+    run_ok_in(&config_dir, &["backup", "-o", backup_dir.to_str().unwrap()]);
 
     let entries: Vec<_> = std::fs::read_dir(&backup_dir)
         .unwrap()
@@ -310,11 +275,7 @@ fn restore_requires_confirm() {
     let backup_subdir = entries[0].path();
 
     // Restore without -y should fail
-    let output = run(&[
-        "restore",
-        config_dir.to_str().unwrap(),
-        backup_subdir.to_str().unwrap(),
-    ]);
+    let output = run_in(&config_dir, &["restore", backup_subdir.to_str().unwrap()]);
 
     assert!(!output.status.success(), "restore without -y should fail");
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -340,7 +301,7 @@ fn user_create_and_list() {
         stdout
     );
 
-    let list_out = run_ok(&["user", "list", config_dir.to_str().unwrap()]);
+    let list_out = run_ok_in(&config_dir, &["user", "list"]);
     assert!(
         list_out.contains("test@example.com"),
         "user list should contain the email, got: {}",
@@ -358,21 +319,15 @@ fn user_info_by_email() {
     let (_tmp, config_dir) = setup();
     create_test_user(&config_dir);
 
-    let stdout = run_ok(&[
-        "user",
-        "info",
-        config_dir.to_str().unwrap(),
-        "-e",
-        "test@example.com",
-    ]);
+    let stdout = run_ok_in(&config_dir, &["user", "info", "-e", "test@example.com"]);
 
     assert!(
-        stdout.contains("Email: test@example.com"),
+        stdout.contains("test@example.com"),
         "info should show email, got: {}",
         stdout
     );
     assert!(
-        stdout.contains("Collection: users"),
+        stdout.contains("users"),
         "info should show collection, got: {}",
         stdout
     );
@@ -389,13 +344,7 @@ fn user_lock_and_unlock() {
     create_test_user(&config_dir);
 
     // Lock
-    let stdout = run_ok(&[
-        "user",
-        "lock",
-        config_dir.to_str().unwrap(),
-        "-e",
-        "test@example.com",
-    ]);
+    let stdout = run_ok_in(&config_dir, &["user", "lock", "-e", "test@example.com"]);
     assert!(
         stdout.contains("Locked user"),
         "should confirm lock, got: {}",
@@ -403,27 +352,15 @@ fn user_lock_and_unlock() {
     );
 
     // Verify locked via info
-    let info = run_ok(&[
-        "user",
-        "info",
-        config_dir.to_str().unwrap(),
-        "-e",
-        "test@example.com",
-    ]);
+    let info = run_ok_in(&config_dir, &["user", "info", "-e", "test@example.com"]);
     assert!(
-        info.contains("Locked:    yes"),
+        info.contains("Locked:") && info.contains("yes"),
         "should show locked status, got: {}",
         info
     );
 
     // Unlock
-    let stdout = run_ok(&[
-        "user",
-        "unlock",
-        config_dir.to_str().unwrap(),
-        "-e",
-        "test@example.com",
-    ]);
+    let stdout = run_ok_in(&config_dir, &["user", "unlock", "-e", "test@example.com"]);
     assert!(
         stdout.contains("Unlocked user"),
         "should confirm unlock, got: {}",
@@ -431,15 +368,9 @@ fn user_lock_and_unlock() {
     );
 
     // Verify unlocked via info
-    let info = run_ok(&[
-        "user",
-        "info",
-        config_dir.to_str().unwrap(),
-        "-e",
-        "test@example.com",
-    ]);
+    let info = run_ok_in(&config_dir, &["user", "info", "-e", "test@example.com"]);
     assert!(
-        info.contains("Locked:    no"),
+        info.contains("Locked:") && info.contains("no"),
         "should show unlocked status, got: {}",
         info
     );
@@ -485,13 +416,7 @@ fn user_verify_and_unverify() {
     create_test_user(&config_dir);
 
     // Verify
-    let stdout = run_ok(&[
-        "user",
-        "verify",
-        config_dir.to_str().unwrap(),
-        "-e",
-        "test@example.com",
-    ]);
+    let stdout = run_ok_in(&config_dir, &["user", "verify", "-e", "test@example.com"]);
     assert!(
         stdout.contains("Verified user"),
         "should confirm verify, got: {}",
@@ -499,27 +424,15 @@ fn user_verify_and_unverify() {
     );
 
     // Check via info
-    let info = run_ok(&[
-        "user",
-        "info",
-        config_dir.to_str().unwrap(),
-        "-e",
-        "test@example.com",
-    ]);
+    let info = run_ok_in(&config_dir, &["user", "info", "-e", "test@example.com"]);
     assert!(
-        info.contains("Verified:  yes"),
+        info.contains("Verified:") && info.contains("yes"),
         "should show verified status, got: {}",
         info
     );
 
     // Unverify
-    let stdout = run_ok(&[
-        "user",
-        "unverify",
-        config_dir.to_str().unwrap(),
-        "-e",
-        "test@example.com",
-    ]);
+    let stdout = run_ok_in(&config_dir, &["user", "unverify", "-e", "test@example.com"]);
     assert!(
         stdout.contains("Unverified user"),
         "should confirm unverify, got: {}",
@@ -527,15 +440,9 @@ fn user_verify_and_unverify() {
     );
 
     // Check via info
-    let info = run_ok(&[
-        "user",
-        "info",
-        config_dir.to_str().unwrap(),
-        "-e",
-        "test@example.com",
-    ]);
+    let info = run_ok_in(&config_dir, &["user", "info", "-e", "test@example.com"]);
     assert!(
-        info.contains("Verified:  no"),
+        info.contains("Verified:") && info.contains("no"),
         "should show unverified status, got: {}",
         info
     );
@@ -546,21 +453,17 @@ fn user_delete_with_confirm() {
     let (_tmp, config_dir) = setup();
     create_test_user(&config_dir);
 
-    let stdout = run_ok(&[
-        "user",
-        "delete",
-        config_dir.to_str().unwrap(),
-        "-e",
-        "test@example.com",
-        "-y",
-    ]);
+    let stdout = run_ok_in(
+        &config_dir,
+        &["user", "delete", "-e", "test@example.com", "-y"],
+    );
     assert!(
         stdout.contains("Deleted user"),
         "should confirm deletion, got: {}",
         stdout
     );
 
-    let list_out = run_ok(&["user", "list", config_dir.to_str().unwrap()]);
+    let list_out = run_ok_in(&config_dir, &["user", "list"]);
     assert!(
         list_out.contains("No users"),
         "user list should be empty after delete, got: {}",
@@ -573,15 +476,17 @@ fn user_change_password() {
     let (_tmp, config_dir) = setup();
     create_test_user(&config_dir);
 
-    let stdout = run_ok(&[
-        "user",
-        "change-password",
-        config_dir.to_str().unwrap(),
-        "-e",
-        "test@example.com",
-        "-p",
-        "newpassword456",
-    ]);
+    let stdout = run_ok_in(
+        &config_dir,
+        &[
+            "user",
+            "change-password",
+            "-e",
+            "test@example.com",
+            "-p",
+            "newpassword456",
+        ],
+    );
     assert!(
         stdout.contains("Password changed"),
         "should confirm password change, got: {}",

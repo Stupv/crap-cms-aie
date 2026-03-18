@@ -51,10 +51,48 @@ fn run_ok(args: &[&str]) -> String {
     String::from_utf8_lossy(&output.stdout).to_string()
 }
 
+/// Run the binary with CRAP_CONFIG_DIR set, return raw Output.
+fn run_in(config_dir: &Path, args: &[&str]) -> std::process::Output {
+    std::process::Command::new(crap_bin())
+        .env("CRAP_CONFIG_DIR", config_dir)
+        .args(args)
+        .output()
+        .expect("failed to run binary")
+}
+
+/// Run the binary with CRAP_CONFIG_DIR set, assert success, return stdout.
+fn run_ok_in(config_dir: &Path, args: &[&str]) -> String {
+    let output = run_in(config_dir, args);
+    assert!(
+        output.status.success(),
+        "Command {:?} failed.\nstderr: {}",
+        args,
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).to_string()
+}
+
 /// Run the binary with extra env vars, assert success, return stdout.
 fn run_ok_env(args: &[&str], env: &[(&str, &str)]) -> String {
     let mut cmd = std::process::Command::new(crap_bin());
     cmd.args(args);
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    let output = cmd.output().expect("failed to run binary");
+    assert!(
+        output.status.success(),
+        "Command {:?} failed.\nstderr: {}",
+        args,
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).to_string()
+}
+
+/// Run the binary with CRAP_CONFIG_DIR and extra env vars, assert success, return stdout.
+fn run_ok_in_env(config_dir: &Path, args: &[&str], env: &[(&str, &str)]) -> String {
+    let mut cmd = std::process::Command::new(crap_bin());
+    cmd.env("CRAP_CONFIG_DIR", config_dir).args(args);
     for (k, v) in env {
         cmd.env(k, v);
     }
@@ -111,7 +149,7 @@ fn setup_with_job() -> (tempfile::TempDir, PathBuf) {
 fn typegen_lua() {
     let (_tmp, config_dir) = setup();
 
-    run_ok(&["typegen", config_dir.to_str().unwrap(), "--lang", "lua"]);
+    run_ok_in(&config_dir, &["typegen", "--lang", "lua"]);
 
     let types_dir = config_dir.join("types");
     let has_lua = std::fs::read_dir(&types_dir)
@@ -125,7 +163,7 @@ fn typegen_lua() {
 fn typegen_all_languages() {
     let (_tmp, config_dir) = setup();
 
-    run_ok(&["typegen", config_dir.to_str().unwrap(), "--lang", "all"]);
+    run_ok_in(&config_dir, &["typegen", "--lang", "all"]);
 
     let types_dir = config_dir.join("types");
     let files: Vec<String> = std::fs::read_dir(&types_dir)
@@ -182,7 +220,7 @@ fn db_cleanup_dry_run() {
     let (_tmp, config_dir) = setup();
 
     // Run cleanup in dry-run mode (no --confirm)
-    let stdout = run_ok(&["db", "cleanup", config_dir.to_str().unwrap()]);
+    let stdout = run_ok_in(&config_dir, &["db", "cleanup"]);
 
     // Should succeed and show status (either clean or listing orphans)
     assert!(
@@ -201,7 +239,7 @@ fn jobs_trigger_and_status() {
     let (_tmp, config_dir) = setup_with_job();
 
     // Trigger the job
-    let stdout = run_ok(&["jobs", "trigger", config_dir.to_str().unwrap(), "cleanup"]);
+    let stdout = run_ok_in(&config_dir, &["jobs", "trigger", "cleanup"]);
     assert!(
         stdout.contains("Queued job"),
         "should confirm job queued, got: {}",
@@ -209,13 +247,7 @@ fn jobs_trigger_and_status() {
     );
 
     // Check status
-    let stdout = run_ok(&[
-        "jobs",
-        "status",
-        config_dir.to_str().unwrap(),
-        "--slug",
-        "cleanup",
-    ]);
+    let stdout = run_ok_in(&config_dir, &["jobs", "status", "--slug", "cleanup"]);
     assert!(
         stdout.contains("cleanup") && stdout.contains("run"),
         "status should show the triggered job run, got: {}",
@@ -228,16 +260,10 @@ fn jobs_cancel() {
     let (_tmp, config_dir) = setup_with_job();
 
     // Trigger initializes the DB via init_stack()
-    run_ok(&["jobs", "trigger", config_dir.to_str().unwrap(), "cleanup"]);
+    run_ok_in(&config_dir, &["jobs", "trigger", "cleanup"]);
 
     // Cancel it
-    let stdout = run_ok(&[
-        "jobs",
-        "cancel",
-        config_dir.to_str().unwrap(),
-        "--slug",
-        "cleanup",
-    ]);
+    let stdout = run_ok_in(&config_dir, &["jobs", "cancel", "--slug", "cleanup"]);
     assert!(
         stdout.contains("Cancelled"),
         "should confirm cancellation, got: {}",
@@ -249,14 +275,14 @@ fn jobs_cancel() {
 fn jobs_healthcheck() {
     let (_tmp, config_dir) = setup_with_job();
 
-    let stdout = run_ok(&["jobs", "healthcheck", config_dir.to_str().unwrap()]);
+    let stdout = run_ok_in(&config_dir, &["jobs", "healthcheck"]);
     assert!(
         stdout.contains("Job system health"),
         "should show health status, got: {}",
         stdout
     );
     assert!(
-        stdout.contains("Defined jobs"),
+        stdout.contains("Defined:"),
         "should show defined jobs count, got: {}",
         stdout
     );
@@ -267,15 +293,9 @@ fn jobs_purge() {
     let (_tmp, config_dir) = setup_with_job();
 
     // Initialize DB (jobs purge skips sync_all, so trigger list first)
-    run_ok(&["jobs", "list", config_dir.to_str().unwrap()]);
+    run_ok_in(&config_dir, &["jobs", "list"]);
 
-    let stdout = run_ok(&[
-        "jobs",
-        "purge",
-        config_dir.to_str().unwrap(),
-        "--older-than",
-        "0s",
-    ]);
+    let stdout = run_ok_in(&config_dir, &["jobs", "purge", "--older-than", "0s"]);
     assert!(
         stdout.contains("Purged"),
         "should confirm purge, got: {}",
@@ -292,9 +312,9 @@ fn images_list_empty() {
     let (_tmp, config_dir) = setup_with_photos();
 
     // Initialize DB (images commands skip sync_all)
-    run_ok(&["status", config_dir.to_str().unwrap()]);
+    run_ok_in(&config_dir, &["status"]);
 
-    let stdout = run_ok(&["images", "list", config_dir.to_str().unwrap()]);
+    let stdout = run_ok_in(&config_dir, &["images", "list"]);
     assert!(
         stdout.contains("No queue entries") || stdout.contains("0 entr"),
         "should show empty queue, got: {}",
@@ -307,9 +327,9 @@ fn images_stats_empty() {
     let (_tmp, config_dir) = setup_with_photos();
 
     // Initialize DB (images commands skip sync_all)
-    run_ok(&["status", config_dir.to_str().unwrap()]);
+    run_ok_in(&config_dir, &["status"]);
 
-    let stdout = run_ok(&["images", "stats", config_dir.to_str().unwrap()]);
+    let stdout = run_ok_in(&config_dir, &["images", "stats"]);
     assert!(
         stdout.contains("Image processing queue"),
         "should show queue stats header, got: {}",
@@ -327,15 +347,9 @@ fn images_purge_empty() {
     let (_tmp, config_dir) = setup_with_photos();
 
     // Initialize DB (images commands skip sync_all)
-    run_ok(&["status", config_dir.to_str().unwrap()]);
+    run_ok_in(&config_dir, &["status"]);
 
-    let stdout = run_ok(&[
-        "images",
-        "purge",
-        config_dir.to_str().unwrap(),
-        "--older-than",
-        "0s",
-    ]);
+    let stdout = run_ok_in(&config_dir, &["images", "purge", "--older-than", "0s"]);
     assert!(
         stdout.contains("Purged"),
         "should confirm purge, got: {}",
@@ -352,15 +366,10 @@ fn migrate_up_and_list() {
     let (_tmp, config_dir) = setup();
 
     // Create a migration
-    run_ok(&[
-        "migrate",
-        config_dir.to_str().unwrap(),
-        "create",
-        "add_categories",
-    ]);
+    run_ok_in(&config_dir, &["migrate", "create", "add_categories"]);
 
     // Run migrate up
-    let stdout = run_ok(&["migrate", config_dir.to_str().unwrap(), "up"]);
+    let stdout = run_ok_in(&config_dir, &["migrate", "up"]);
     assert!(
         stdout.contains("applied")
             || stdout.contains("Applied")
@@ -370,7 +379,7 @@ fn migrate_up_and_list() {
     );
 
     // List migrations
-    let stdout = run_ok(&["migrate", config_dir.to_str().unwrap(), "list"]);
+    let stdout = run_ok_in(&config_dir, &["migrate", "list"]);
     assert!(
         stdout.contains("add_categories"),
         "migrate list should show the migration, got: {}",
@@ -388,16 +397,11 @@ fn migrate_down() {
     let (_tmp, config_dir) = setup();
 
     // Create a migration and run up
-    run_ok(&[
-        "migrate",
-        config_dir.to_str().unwrap(),
-        "create",
-        "add_tags",
-    ]);
-    run_ok(&["migrate", config_dir.to_str().unwrap(), "up"]);
+    run_ok_in(&config_dir, &["migrate", "create", "add_tags"]);
+    run_ok_in(&config_dir, &["migrate", "up"]);
 
     // Run migrate down
-    let stdout = run_ok(&["migrate", config_dir.to_str().unwrap(), "down"]);
+    let stdout = run_ok_in(&config_dir, &["migrate", "down"]);
     assert!(
         stdout.contains("Rolled back") || stdout.contains("rolled back"),
         "migrate down should confirm rollback, got: {}",
@@ -405,7 +409,7 @@ fn migrate_down() {
     );
 
     // Verify via list
-    let stdout = run_ok(&["migrate", config_dir.to_str().unwrap(), "list"]);
+    let stdout = run_ok_in(&config_dir, &["migrate", "list"]);
     assert!(
         stdout.contains("pending"),
         "migration should show as pending after rollback, got: {}",
@@ -418,20 +422,22 @@ fn migrate_fresh_confirm() {
     let (_tmp, config_dir) = setup();
 
     // Create a user first (to verify fresh wipes data)
-    run_ok(&[
-        "user",
-        "create",
-        config_dir.to_str().unwrap(),
-        "-e",
-        "test@example.com",
-        "-p",
-        "password123",
-        "--field",
-        "name=Test User",
-    ]);
+    run_ok_in(
+        &config_dir,
+        &[
+            "user",
+            "create",
+            "-e",
+            "test@example.com",
+            "-p",
+            "password123",
+            "--field",
+            "name=Test User",
+        ],
+    );
 
     // Run migrate fresh with -y
-    let stdout = run_ok(&["migrate", config_dir.to_str().unwrap(), "fresh", "-y"]);
+    let stdout = run_ok_in(&config_dir, &["migrate", "fresh", "-y"]);
     assert!(
         stdout.contains("Fresh migration complete"),
         "should confirm fresh migration, got: {}",
@@ -439,7 +445,7 @@ fn migrate_fresh_confirm() {
     );
 
     // Verify data is wiped
-    let list_out = run_ok(&["user", "list", config_dir.to_str().unwrap()]);
+    let list_out = run_ok_in(&config_dir, &["user", "list"]);
     assert!(
         list_out.contains("No users"),
         "user list should be empty after fresh, got: {}",
@@ -459,10 +465,7 @@ fn blueprint_save_list_remove() {
     let env = [("XDG_CONFIG_HOME", bp_home.to_str().unwrap())];
 
     // Save
-    let stdout = run_ok_env(
-        &["blueprint", "save", config_dir.to_str().unwrap(), "test-bp"],
-        &env,
-    );
+    let stdout = run_ok_in_env(&config_dir, &["blueprint", "save", "test-bp"], &env);
     assert!(
         stdout.contains("Saved blueprint 'test-bp'"),
         "should confirm save, got: {}",
@@ -503,10 +506,7 @@ fn blueprint_use() {
     let env = [("XDG_CONFIG_HOME", bp_home.to_str().unwrap())];
 
     // Save blueprint
-    run_ok_env(
-        &["blueprint", "save", config_dir.to_str().unwrap(), "test-bp"],
-        &env,
-    );
+    run_ok_in_env(&config_dir, &["blueprint", "save", "test-bp"], &env);
 
     // Use blueprint
     let stdout = run_ok_env(
@@ -533,18 +533,20 @@ fn blueprint_use() {
 fn make_hook_via_binary() {
     let (_tmp, config_dir) = setup();
 
-    let stdout = run_ok(&[
-        "make",
-        "hook",
-        config_dir.to_str().unwrap(),
-        "auto_slug",
-        "-t",
-        "collection",
-        "-c",
-        "posts",
-        "-l",
-        "before_change",
-    ]);
+    let stdout = run_ok_in(
+        &config_dir,
+        &[
+            "make",
+            "hook",
+            "auto_slug",
+            "-t",
+            "collection",
+            "-c",
+            "posts",
+            "-l",
+            "before_change",
+        ],
+    );
 
     assert!(
         stdout.contains("Created"),
@@ -576,16 +578,18 @@ fn make_hook_via_binary() {
 fn make_job_via_binary() {
     let (_tmp, config_dir) = setup();
 
-    let stdout = run_ok(&[
-        "make",
-        "job",
-        config_dir.to_str().unwrap(),
-        "cleanup",
-        "--schedule",
-        "0 3 * * *",
-        "--queue",
-        "maintenance",
-    ]);
+    let stdout = run_ok_in(
+        &config_dir,
+        &[
+            "make",
+            "job",
+            "cleanup",
+            "--schedule",
+            "0 3 * * *",
+            "--queue",
+            "maintenance",
+        ],
+    );
 
     assert!(
         stdout.contains("Created"),

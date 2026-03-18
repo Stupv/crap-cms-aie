@@ -4,6 +4,7 @@ use anyhow::{Context as _, Result, anyhow};
 use std::{fs, path::Path};
 
 use crate::{
+    cli::{self, Table},
     config::CrapConfig,
     db::{DbConnection, migrate, pool, query},
     hooks,
@@ -66,7 +67,8 @@ pub fn run(config_dir: &Path) -> Result<()> {
         .map_err(|e| anyhow!("Registry lock poisoned: {}", e))?;
 
     // Config dir
-    println!("Config:  {}", config_dir.display());
+    cli::header("Project Status");
+    cli::kv("Config", &config_dir.display().to_string());
 
     // DB info — file size only for file-based backends
     {
@@ -76,14 +78,13 @@ pub fn run(config_dir: &Path) -> Result<()> {
             "sqlite" => {
                 let db_path = cfg.db_path(&config_dir);
                 let db_size = fs::metadata(&db_path).map(|m| m.len()).unwrap_or(0);
-                println!(
-                    "Database: {} ({})",
-                    db_path.display(),
-                    format_bytes(db_size)
+                cli::kv(
+                    "Database",
+                    &format!("{} ({})", db_path.display(), format_bytes(db_size)),
                 );
             }
             other => {
-                println!("Database: {} backend", other);
+                cli::kv("Database", &format!("{} backend", other));
             }
         }
     }
@@ -94,24 +95,26 @@ pub fn run(config_dir: &Path) -> Result<()> {
     if uploads_dir.is_dir() {
         let uploads_size = dir_size(&uploads_dir);
         let file_count: usize = walkdir_count(&uploads_dir);
-        println!(
-            "Uploads: {} ({} file(s))",
-            format_bytes(uploads_size),
-            file_count
+        cli::kv(
+            "Uploads",
+            &format!("{} ({} file(s))", format_bytes(uploads_size), file_count),
         );
     }
 
     // Locale
     if cfg.locale.is_enabled() {
-        println!(
-            "Locales: {} (default: {}{})",
-            cfg.locale.locales.join(", "),
-            cfg.locale.default_locale,
-            if cfg.locale.fallback {
-                ", fallback enabled"
-            } else {
-                ""
-            }
+        cli::kv(
+            "Locales",
+            &format!(
+                "{} (default: {}{})",
+                cfg.locale.locales.join(", "),
+                cfg.locale.default_locale,
+                if cfg.locale.fallback {
+                    ", fallback enabled"
+                } else {
+                    ""
+                }
+            ),
         );
     }
     println!();
@@ -120,9 +123,9 @@ pub fn run(config_dir: &Path) -> Result<()> {
     let conn = pool.get().context("Failed to get database connection")?;
 
     if reg.collections.is_empty() {
-        println!("Collections: (none)");
+        cli::dim("Collections: (none)");
     } else {
-        println!("Collections:");
+        let mut table = Table::new(vec!["Collection", "Rows", "Tags"]);
         let mut slugs: Vec<_> = reg.collections.keys().collect();
         slugs.sort();
         for slug in slugs {
@@ -142,23 +145,25 @@ pub fn run(config_dir: &Path) -> Result<()> {
             let tag_str = if tags.is_empty() {
                 String::new()
             } else {
-                format!(" [{}]", tags.join(", "))
+                tags.join(", ")
             };
-            println!("  {:<20} {} row(s){}", slug, count, tag_str);
+            table.row(vec![slug, &count.to_string(), &tag_str]);
         }
+        table.print();
     }
     println!();
 
     // Globals
     if reg.globals.is_empty() {
-        println!("Globals: (none)");
+        cli::dim("Globals: (none)");
     } else {
-        println!("Globals:");
+        let mut table = Table::new(vec!["Global"]);
         let mut slugs: Vec<_> = reg.globals.keys().collect();
         slugs.sort();
         for slug in slugs {
-            println!("  {}", slug);
+            table.row(vec![slug]);
         }
+        table.print();
     }
     println!();
 
@@ -168,11 +173,14 @@ pub fn run(config_dir: &Path) -> Result<()> {
     let applied = migrate::get_applied_migrations(&pool).unwrap_or_default();
     let pending = all_files.iter().filter(|f| !applied.contains(*f)).count();
 
-    println!(
-        "Migrations: {} total, {} applied, {} pending",
-        all_files.len(),
-        applied.len(),
-        pending
+    cli::kv(
+        "Migrations",
+        &format!(
+            "{} total, {} applied, {} pending",
+            all_files.len(),
+            applied.len(),
+            pending
+        ),
     );
 
     // Jobs summary
@@ -202,7 +210,7 @@ pub fn run(config_dir: &Path) -> Result<()> {
         if failed_24h > 0 {
             job_parts.push(format!("{} failed (24h)", failed_24h));
         }
-        println!("Jobs: {}", job_parts.join(", "));
+        cli::kv("Jobs", &job_parts.join(", "));
     }
 
     Ok(())

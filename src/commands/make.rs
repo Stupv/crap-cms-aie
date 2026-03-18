@@ -1,9 +1,11 @@
 //! `make` command — scaffold collections, globals, hooks, and jobs.
 
 use anyhow::{Context as _, Result, anyhow, bail};
+use dialoguer::{Confirm, Input, Select};
 use std::path::Path;
 
 use crate::{
+    cli::crap_theme,
     config::CrapConfig,
     core::{FieldType, SharedRegistry},
     hooks,
@@ -12,10 +14,9 @@ use crate::{
 
 /// Dispatch the `make` subcommand.
 #[cfg(not(tarpaulin_include))] // interactive dispatcher — uses dialoguer prompts
-pub fn run(action: super::MakeAction) -> Result<()> {
+pub fn run(config_dir: &Path, action: super::MakeAction) -> Result<()> {
     match action {
         super::MakeAction::Collection {
-            config,
             slug,
             fields,
             no_timestamps,
@@ -32,45 +33,41 @@ pub fn run(action: super::MakeAction) -> Result<()> {
                 versions,
                 force,
             };
-            make_collection_command(&config, slug, fields, !no_input, &opts)
+            make_collection_command(config_dir, slug, fields, !no_input, &opts)
         }
         super::MakeAction::Global {
-            config,
             slug,
             fields,
             force,
         } => {
             let slug = match slug {
                 Some(s) => s,
-                None => {
-                    use dialoguer::Input;
-                    Input::<String>::new()
-                        .with_prompt("Global slug")
-                        .validate_with(|input: &String| -> Result<(), String> {
-                            scaffold::validate_slug(input).map_err(|e| e.to_string())
-                        })
-                        .interact_text()
-                        .context("Failed to read global slug")?
-                }
+                None => Input::with_theme(&crap_theme())
+                    .with_prompt("Global slug")
+                    .validate_with(|input: &String| -> Result<(), String> {
+                        scaffold::validate_slug(input).map_err(|e| e.to_string())
+                    })
+                    .interact_text()
+                    .context("Failed to read global slug")?,
             };
             {
                 let parsed = fields
                     .map(|s| scaffold::parse_fields_shorthand(&s))
                     .transpose()?;
-                scaffold::make_global(&config, &slug, parsed.as_deref(), force)
+                scaffold::make_global(config_dir, &slug, parsed.as_deref(), force)
             }
         }
         super::MakeAction::Hook {
-            config,
             name,
             hook_type,
             collection,
             position,
             field,
             force,
-        } => make_hook_command(&config, name, hook_type, collection, position, field, force),
+        } => make_hook_command(
+            config_dir, name, hook_type, collection, position, field, force,
+        ),
         super::MakeAction::Job {
-            config,
             slug,
             schedule,
             queue,
@@ -80,19 +77,16 @@ pub fn run(action: super::MakeAction) -> Result<()> {
         } => {
             let slug = match slug {
                 Some(s) => s,
-                None => {
-                    use dialoguer::Input;
-                    Input::<String>::new()
-                        .with_prompt("Job slug")
-                        .validate_with(|input: &String| -> Result<(), String> {
-                            scaffold::validate_slug(input).map_err(|e| e.to_string())
-                        })
-                        .interact_text()
-                        .context("Failed to read job slug")?
-                }
+                None => Input::with_theme(&crap_theme())
+                    .with_prompt("Job slug")
+                    .validate_with(|input: &String| -> Result<(), String> {
+                        scaffold::validate_slug(input).map_err(|e| e.to_string())
+                    })
+                    .interact_text()
+                    .context("Failed to read job slug")?,
             };
             scaffold::make_job(
-                &config,
+                config_dir,
                 &slug,
                 schedule.as_deref(),
                 queue.as_deref(),
@@ -113,12 +107,10 @@ pub(crate) fn make_collection_command(
     interactive: bool,
     opts: &CollectionOptions,
 ) -> Result<()> {
-    use dialoguer::{Confirm, Input};
-
     // 1. Resolve slug
     let slug = match slug {
         Some(s) => s,
-        None if interactive => Input::<String>::new()
+        None if interactive => Input::with_theme(&crap_theme())
             .with_prompt("Collection slug")
             .validate_with(|input: &String| -> Result<(), String> {
                 if input.is_empty() {
@@ -146,7 +138,7 @@ pub(crate) fn make_collection_command(
     let auth = if opts.auth {
         true
     } else if interactive {
-        Confirm::new()
+        Confirm::with_theme(&crap_theme())
             .with_prompt("Auth collection (email/password login)?")
             .default(false)
             .interact()
@@ -158,7 +150,7 @@ pub(crate) fn make_collection_command(
     let upload = if opts.upload {
         true
     } else if interactive {
-        Confirm::new()
+        Confirm::with_theme(&crap_theme())
             .with_prompt("Upload collection (file uploads)?")
             .default(false)
             .interact()
@@ -176,7 +168,7 @@ pub(crate) fn make_collection_command(
             } else {
                 "filename/mime_type/size are included automatically"
             };
-            if Confirm::new()
+            if Confirm::with_theme(&crap_theme())
                 .with_prompt(format!("Add custom fields? ({})", hint))
                 .default(false)
                 .interact()
@@ -199,7 +191,7 @@ pub(crate) fn make_collection_command(
     let no_timestamps = if opts.no_timestamps {
         true
     } else if interactive {
-        let timestamps = Confirm::new()
+        let timestamps = Confirm::with_theme(&crap_theme())
             .with_prompt("Enable timestamps?")
             .default(true)
             .interact()
@@ -213,7 +205,7 @@ pub(crate) fn make_collection_command(
     let versions = if opts.versions {
         true
     } else if interactive {
-        Confirm::new()
+        Confirm::with_theme(&crap_theme())
             .with_prompt("Enable versioning (draft/publish workflow)?")
             .default(false)
             .interact()
@@ -243,8 +235,6 @@ fn make_hook_command(
     field: Option<String>,
     force: bool,
 ) -> Result<()> {
-    use dialoguer::{Input, Select};
-
     // 1. Resolve hook type
     let hook_type = match hook_type {
         Some(t) => HookType::from_name(&t).ok_or_else(|| {
@@ -255,7 +245,7 @@ fn make_hook_command(
         })?,
         None => {
             let items = &["Collection", "Field", "Access", "Condition"];
-            let selection = Select::new()
+            let selection = Select::with_theme(&crap_theme())
                 .with_prompt("Hook type")
                 .items(items)
                 .default(0)
@@ -306,7 +296,7 @@ fn make_hook_command(
                     items.push(format!("{} (global)", g));
                 }
 
-                let selection = Select::new()
+                let selection = Select::with_theme(&crap_theme())
                     .with_prompt("Collection / Global")
                     .items(&items)
                     .default(0)
@@ -319,7 +309,7 @@ fn make_hook_command(
                     (collection_slugs[selection].clone(), false)
                 }
             } else {
-                let slug = Input::<String>::new()
+                let slug = Input::with_theme(&crap_theme())
                     .with_prompt("Collection slug")
                     .interact_text()
                     .context("Failed to read collection slug")?;
@@ -353,7 +343,7 @@ fn make_hook_command(
                 } else {
                     "Lifecycle position"
                 };
-                let selection = Select::new()
+                let selection = Select::with_theme(&crap_theme())
                     .with_prompt(prompt)
                     .items(positions)
                     .default(0)
@@ -378,7 +368,7 @@ fn make_hook_command(
                     });
 
                 if let Some(names) = field_names.filter(|n| !n.is_empty()) {
-                    let selection = Select::new()
+                    let selection = Select::with_theme(&crap_theme())
                         .with_prompt("Field")
                         .items(&names)
                         .default(0)
@@ -387,7 +377,7 @@ fn make_hook_command(
                     Some(names[selection].clone())
                 } else {
                     Some(
-                        Input::<String>::new()
+                        Input::with_theme(&crap_theme())
                             .with_prompt("Field name")
                             .interact_text()
                             .context("Failed to read field name")?,
@@ -404,7 +394,7 @@ fn make_hook_command(
         Some(n) => n,
         None => {
             let default = position.clone();
-            Input::<String>::new()
+            Input::with_theme(&crap_theme())
                 .with_prompt("Hook name")
                 .default(default)
                 .interact_text()
@@ -466,7 +456,7 @@ fn make_hook_command(
                 .iter()
                 .map(|f| format!("{} ({})", f.name, f.field_type))
                 .collect();
-            let selection = Select::new()
+            let selection = Select::with_theme(&crap_theme())
                 .with_prompt("Watch which field?")
                 .items(&labels)
                 .default(0)

@@ -142,8 +142,12 @@ pub fn blueprint_save(config_dir: &Path, name: &str, force: bool) -> Result<()> 
     write_manifest(&target)
         .with_context(|| format!("Failed to write manifest for blueprint '{}'", name))?;
 
-    println!("Saved blueprint '{}' from {}", name, config_dir.display());
-    println!("  Location: {}", target.display());
+    crate::cli::success(&format!(
+        "Saved blueprint '{}' from {}",
+        name,
+        config_dir.display()
+    ));
+    crate::cli::kv("Location", &target.display().to_string());
 
     Ok(())
 }
@@ -178,7 +182,7 @@ pub fn blueprint_use(name: &str, dir: Option<PathBuf>) -> Result<()> {
     if let Some(manifest) = read_manifest(&source)?
         && let Some(warning) = check_blueprint_version(&manifest.crap_version)
     {
-        eprintln!("Warning: {}", warning);
+        crate::cli::warning(&warning);
     }
 
     let target = dir.unwrap_or_else(|| PathBuf::from("./crap-cms"));
@@ -210,13 +214,15 @@ pub fn blueprint_use(name: &str, dir: Option<PathBuf>) -> Result<()> {
         .context("Failed to write types/crap.lua")?;
 
     let abs = target.canonicalize().unwrap_or_else(|_| target.clone());
-    println!(
+    crate::cli::success(&format!(
         "Created project from blueprint '{}': {}",
         name,
         abs.display()
-    );
-    println!();
-    println!("Start the server: crap-cms serve {}", target.display());
+    ));
+    crate::cli::hint(&format!(
+        "Start the server: crap-cms serve {}",
+        target.display()
+    ));
 
     Ok(())
 }
@@ -226,8 +232,8 @@ pub fn blueprint_list() -> Result<()> {
     let bp_dir = blueprints_dir()?;
 
     if !bp_dir.exists() {
-        println!("No blueprints saved yet.");
-        println!("Save one with: crap-cms blueprint save <dir> <name>");
+        crate::cli::info("No blueprints saved yet.");
+        crate::cli::hint("Save one with: crap-cms blueprint save <dir> <name>");
 
         return Ok(());
     }
@@ -235,30 +241,30 @@ pub fn blueprint_list() -> Result<()> {
     let names = list_blueprint_names()?;
 
     if names.is_empty() {
-        println!("No blueprints saved yet.");
-        println!("Save one with: crap-cms blueprint save <dir> <name>");
+        crate::cli::info("No blueprints saved yet.");
+        crate::cli::hint("Save one with: crap-cms blueprint save <dir> <name>");
 
         return Ok(());
     }
 
-    println!("Saved blueprints:");
+    let mut table = crate::cli::Table::new(vec!["Blueprint", "Collections", "Globals", "Version"]);
     for name in &names {
         let bp_path = bp_dir.join(name);
-        // Count collections and globals for a quick summary
         let collections = count_lua_files(&bp_path.join("collections"));
         let globals = count_lua_files(&bp_path.join("globals"));
-        // Show version from manifest if available
-        let version_tag = match read_manifest(&bp_path) {
-            Ok(Some(m)) => format!(" [v{}]", m.crap_version),
-            _ => String::new(),
+        let version = match read_manifest(&bp_path) {
+            Ok(Some(m)) => format!("v{}", m.crap_version),
+            _ => "-".to_string(),
         };
-        println!(
-            "  {} ({} collection(s), {} global(s)){}",
-            name, collections, globals, version_tag
-        );
+        table.row(vec![
+            name,
+            &collections.to_string(),
+            &globals.to_string(),
+            &version,
+        ]);
     }
-    println!();
-    println!("Use with: crap-cms blueprint use <name> [dir]");
+    table.print();
+    crate::cli::hint("Use with: crap-cms blueprint use <name> [dir]");
 
     Ok(())
 }
@@ -277,7 +283,7 @@ pub fn blueprint_remove(name: &str) -> Result<()> {
     fs::remove_dir_all(&target)
         .with_context(|| format!("Failed to remove blueprint '{}'", name))?;
 
-    println!("Removed blueprint '{}'", name);
+    crate::cli::success(&format!("Removed blueprint '{}'", name));
 
     Ok(())
 }

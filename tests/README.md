@@ -9,7 +9,7 @@
 
 ```bash
 cargo build
-crap-cms serve ./example
+crap-cms serve -C ./example
 ```
 
 This starts two servers:

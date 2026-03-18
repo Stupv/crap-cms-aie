@@ -863,10 +863,10 @@ fn make_collection_via_binary_no_input() {
     scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
 
     let output = std::process::Command::new(crap_bin())
+        .env("CRAP_CONFIG_DIR", config_dir.to_str().unwrap())
         .args([
             "make",
             "collection",
-            config_dir.to_str().unwrap(),
             "articles",
             "--fields",
             "title:text:required,body:textarea",
@@ -896,14 +896,8 @@ fn make_collection_via_binary_auth() {
     scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
 
     let output = std::process::Command::new(crap_bin())
-        .args([
-            "make",
-            "collection",
-            config_dir.to_str().unwrap(),
-            "members",
-            "--auth",
-            "--no-input",
-        ])
+        .env("CRAP_CONFIG_DIR", config_dir.to_str().unwrap())
+        .args(["make", "collection", "members", "--auth", "--no-input"])
         .output()
         .expect("failed to run binary");
 
@@ -924,14 +918,8 @@ fn make_collection_via_binary_upload() {
     scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
 
     let output = std::process::Command::new(crap_bin())
-        .args([
-            "make",
-            "collection",
-            config_dir.to_str().unwrap(),
-            "media",
-            "--upload",
-            "--no-input",
-        ])
+        .env("CRAP_CONFIG_DIR", config_dir.to_str().unwrap())
+        .args(["make", "collection", "media", "--upload", "--no-input"])
         .output()
         .expect("failed to run binary");
 
@@ -952,14 +940,8 @@ fn make_collection_via_binary_versions() {
     scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
 
     let output = std::process::Command::new(crap_bin())
-        .args([
-            "make",
-            "collection",
-            config_dir.to_str().unwrap(),
-            "articles",
-            "--versions",
-            "--no-input",
-        ])
+        .env("CRAP_CONFIG_DIR", config_dir.to_str().unwrap())
+        .args(["make", "collection", "articles", "--versions", "--no-input"])
         .output()
         .expect("failed to run binary");
 
@@ -980,10 +962,10 @@ fn make_collection_via_binary_no_timestamps() {
     scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
 
     let output = std::process::Command::new(crap_bin())
+        .env("CRAP_CONFIG_DIR", config_dir.to_str().unwrap())
         .args([
             "make",
             "collection",
-            config_dir.to_str().unwrap(),
             "logs",
             "--no-timestamps",
             "--no-input",
@@ -1008,12 +990,8 @@ fn make_collection_via_binary_no_slug_no_input_fails() {
     scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
 
     let output = std::process::Command::new(crap_bin())
-        .args([
-            "make",
-            "collection",
-            config_dir.to_str().unwrap(),
-            "--no-input",
-        ])
+        .env("CRAP_CONFIG_DIR", config_dir.to_str().unwrap())
+        .args(["make", "collection", "--no-input"])
         .output()
         .expect("failed to run binary");
 
@@ -1040,7 +1018,8 @@ fn status_via_binary() {
     copy_dir(&fixture_dir(), &config_dir);
 
     let output = std::process::Command::new(crap_bin())
-        .args(["status", config_dir.to_str().unwrap()])
+        .env("CRAP_CONFIG_DIR", config_dir.to_str().unwrap())
+        .args(["status"])
         .output()
         .expect("failed to run binary");
 
@@ -1051,7 +1030,7 @@ fn status_via_binary() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("Collections"),
+        stdout.contains("Collection"),
         "status output should mention collections"
     );
     assert!(
@@ -1071,7 +1050,8 @@ fn jobs_list_via_binary() {
     copy_dir(&fixture_dir(), &config_dir);
 
     let output = std::process::Command::new(crap_bin())
-        .args(["jobs", "list", config_dir.to_str().unwrap()])
+        .env("CRAP_CONFIG_DIR", config_dir.to_str().unwrap())
+        .args(["jobs", "list"])
         .output()
         .expect("failed to run binary");
 
@@ -1106,14 +1086,11 @@ fn templates_list_via_binary() {
 #[test]
 fn templates_extract_via_binary() {
     let tmp = tempfile::tempdir().expect("tempdir");
+    std::fs::write(tmp.path().join("crap.toml"), "[project]\nname = \"test\"\n").unwrap();
 
     let output = std::process::Command::new(crap_bin())
-        .args([
-            "templates",
-            "extract",
-            tmp.path().to_str().unwrap(),
-            "layout/base.hbs",
-        ])
+        .env("CRAP_CONFIG_DIR", tmp.path().to_str().unwrap())
+        .args(["templates", "extract", "layout/base.hbs"])
         .output()
         .expect("failed to run binary");
 
@@ -1364,10 +1341,10 @@ fn nested_fields_via_binary_e2e() {
     scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
 
     let output = std::process::Command::new(crap_bin())
+        .env("CRAP_CONFIG_DIR", config_dir.to_str().unwrap())
         .args([
             "make",
             "collection",
-            config_dir.to_str().unwrap(),
             "products",
             "--fields",
             "name:text:required,seo:group(meta_title:text,meta_desc:textarea),tags:array(label:text)",
@@ -1756,10 +1733,10 @@ fn make_collection_nested_blocks_via_binary() {
     scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
 
     let output = std::process::Command::new(crap_bin())
+        .env("CRAP_CONFIG_DIR", config_dir.to_str().unwrap())
         .args([
             "make",
             "collection",
-            config_dir.to_str().unwrap(),
             "pages",
             "--fields",
             "content:blocks(para|Paragraph(body:textarea),hero|Hero(title:text,img:upload))",
@@ -1799,10 +1776,10 @@ fn make_collection_nested_tabs_via_binary() {
     scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
 
     let output = std::process::Command::new(crap_bin())
+        .env("CRAP_CONFIG_DIR", config_dir.to_str().unwrap())
         .args([
             "make",
             "collection",
-            config_dir.to_str().unwrap(),
             "config",
             "--fields",
             "settings:tabs(General(name:text),Advanced(key:text))",
@@ -1838,10 +1815,10 @@ fn make_global_nested_via_binary() {
     scaffold::init(Some(config_dir.clone()), &scaffold::InitOptions::default()).unwrap();
 
     let output = std::process::Command::new(crap_bin())
+        .env("CRAP_CONFIG_DIR", config_dir.to_str().unwrap())
         .args([
             "make",
             "global",
-            config_dir.to_str().unwrap(),
             "nav",
             "--fields",
             "links:array(label:text:required,url:text)",

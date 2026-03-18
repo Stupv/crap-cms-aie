@@ -21,7 +21,7 @@ pub fn run(config_dir: &Path, lang_str: &str, output_dir: Option<&Path>) -> Resu
         for lang in crate::typegen::Language::all() {
             let path = crate::typegen::generate_lang(&config_dir, &reg, *lang, output_dir)
                 .with_context(|| format!("Failed to generate {} types", lang.label()))?;
-            println!("{}", path.display());
+            crate::cli::success(&format!("Generated {}", path.display()));
         }
     } else {
         let lang = crate::typegen::Language::from_name(lang_str).ok_or_else(|| {
@@ -32,7 +32,7 @@ pub fn run(config_dir: &Path, lang_str: &str, output_dir: Option<&Path>) -> Resu
         })?;
         let path = crate::typegen::generate_lang(&config_dir, &reg, lang, output_dir)
             .context("Failed to generate type definitions")?;
-        println!("{}", path.display());
+        crate::cli::success(&format!("Generated {}", path.display()));
     }
 
     Ok(())

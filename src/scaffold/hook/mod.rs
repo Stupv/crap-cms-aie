@@ -315,37 +315,28 @@ end
         format!("hooks.{}.{}", opts.collection, opts.name)
     };
 
-    println!("Created {}", file_path.display());
-    println!();
-    println!("Hook ref: {}", hook_ref);
-    println!();
+    crate::cli::success(&format!("Created {}", file_path.display()));
+    crate::cli::kv("Hook ref", &hook_ref);
 
-    match opts.hook_type {
-        HookType::Collection => {
-            println!("Add to your collection definition:");
-            println!("  hooks = {{");
-            println!("      {} = {{ \"{}\" }},", opts.position, hook_ref);
-            println!("  }},");
-        }
-        HookType::Field => {
-            println!("Add to your field definition:");
-            println!("  hooks = {{");
-            println!("      {} = {{ \"{}\" }},", opts.position, hook_ref);
-            println!("  }},");
-        }
-        HookType::Access => {
-            println!("Add to your collection definition:");
-            println!("  access = {{");
-            println!("      {} = \"{}\",", opts.position, hook_ref);
-            println!("  }},");
-        }
-        HookType::Condition => {
-            println!("Add to your field definition:");
-            println!("  admin = {{");
-            println!("      condition = \"{}\",", hook_ref);
-            println!("  }},");
-        }
-    }
+    let integration_hint = match opts.hook_type {
+        HookType::Collection => format!(
+            "Add to your collection definition:\n  hooks = {{\n      {} = {{ \"{}\" }},\n  }},",
+            opts.position, hook_ref
+        ),
+        HookType::Field => format!(
+            "Add to your field definition:\n  hooks = {{\n      {} = {{ \"{}\" }},\n  }},",
+            opts.position, hook_ref
+        ),
+        HookType::Access => format!(
+            "Add to your collection definition:\n  access = {{\n      {} = \"{}\",\n  }},",
+            opts.position, hook_ref
+        ),
+        HookType::Condition => format!(
+            "Add to your field definition:\n  admin = {{\n      condition = \"{}\",\n  }},",
+            hook_ref
+        ),
+    };
+    crate::cli::hint(&integration_hint);
 
     Ok(())
 }

@@ -1,8 +1,10 @@
 //! `images` command — manage the image processing queue.
 
 use anyhow::{Context as _, Result, anyhow, bail};
+use std::path::Path;
 
 use crate::{
+    cli::{self, Table},
     config::{CrapConfig, parse_duration_string},
     db::{pool, query},
 };
@@ -10,14 +12,12 @@ use crate::{
 /// Handle the `images` subcommand.
 // Excluded from coverage: requires full Lua + DB setup for each variant.
 #[cfg(not(tarpaulin_include))]
-pub fn run(action: super::ImagesAction) -> Result<()> {
+pub fn run(config_dir: &Path, action: super::ImagesAction) -> Result<()> {
     match action {
-        super::ImagesAction::List {
-            config,
-            status,
-            limit,
-        } => {
-            let config_dir = config.canonicalize().unwrap_or(config);
+        super::ImagesAction::List { status, limit } => {
+            let config_dir = config_dir
+                .canonicalize()
+                .unwrap_or_else(|_| config_dir.to_path_buf());
             let cfg = CrapConfig::load(&config_dir)?;
             let pool = pool::create_pool(&config_dir, &cfg)?;
 
@@ -26,16 +26,19 @@ pub fn run(action: super::ImagesAction) -> Result<()> {
             let entries = query::images::list_image_entries(&conn, status_filter, limit)?;
 
             if entries.is_empty() {
-                println!("No queue entries found.");
+                cli::info("No queue entries found.");
 
                 return Ok(());
             }
 
-            println!(
-                "{:<24} {:<12} {:<12} {:<8} {:<20} Status",
-                "ID", "Collection", "Document", "Format", "Created"
-            );
-            println!("{}", "-".repeat(90));
+            let mut table = Table::new(vec![
+                "ID",
+                "Collection",
+                "Document",
+                "Format",
+                "Created",
+                "Status",
+            ]);
 
             for e in &entries {
                 let created = e.created_at.as_deref().unwrap_or("-");
@@ -44,22 +47,26 @@ pub fn run(action: super::ImagesAction) -> Result<()> {
                 } else {
                     e.status.clone()
                 };
-                println!(
-                    "{:<24} {:<12} {:<12} {:<8} {:<20} {}",
-                    &e.id[..e.id.len().min(22)],
-                    e.collection,
-                    &e.document_id[..e.document_id.len().min(10)],
-                    e.format,
+                let id_display = &e.id[..e.id.len().min(22)];
+                let doc_display = &e.document_id[..e.document_id.len().min(10)];
+                table.row(vec![
+                    id_display,
+                    &e.collection,
+                    doc_display,
+                    &e.format,
                     created,
-                    status_str
-                );
+                    &status_str,
+                ]);
             }
 
-            println!("\n{} entry/entries", entries.len());
+            table.print();
+            table.footer(&format!("{} entry/entries", entries.len()));
             Ok(())
         }
-        super::ImagesAction::Stats { config } => {
-            let config_dir = config.canonicalize().unwrap_or(config);
+        super::ImagesAction::Stats => {
+            let config_dir = config_dir
+                .canonicalize()
+                .unwrap_or_else(|_| config_dir.to_path_buf());
             let cfg = CrapConfig::load(&config_dir)?;
             let pool = pool::create_pool(&config_dir, &cfg)?;
 
@@ -70,25 +77,22 @@ pub fn run(action: super::ImagesAction) -> Result<()> {
             let completed = query::images::count_image_entries_by_status(&conn, "completed")?;
             let failed = query::images::count_image_entries_by_status(&conn, "failed")?;
 
-            println!("Image processing queue:");
-            println!("  Pending:    {}", pending);
-            println!("  Processing: {}", processing);
-            println!("  Completed:  {}", completed);
-            println!("  Failed:     {}", failed);
-            println!(
-                "  Total:      {}",
-                pending + processing + completed + failed
+            cli::header("Image processing queue");
+            cli::kv("Pending", &pending.to_string());
+            cli::kv("Processing", &processing.to_string());
+            cli::kv("Completed", &completed.to_string());
+            cli::kv("Failed", &failed.to_string());
+            cli::kv(
+                "Total",
+                &(pending + processing + completed + failed).to_string(),
             );
 
             Ok(())
         }
-        super::ImagesAction::Retry {
-            config,
-            id,
-            all,
-            confirm,
-        } => {
-            let config_dir = config.canonicalize().unwrap_or(config);
+        super::ImagesAction::Retry { id, all, confirm } => {
+            let config_dir = config_dir
+                .canonicalize()
+                .unwrap_or_else(|_| config_dir.to_path_buf());
             let cfg = CrapConfig::load(&config_dir)?;
             let pool = pool::create_pool(&config_dir, &cfg)?;
 
@@ -99,12 +103,12 @@ pub fn run(action: super::ImagesAction) -> Result<()> {
                     bail!("Use -y to confirm retrying all failed entries");
                 }
                 let count = query::images::retry_all_failed_images(&conn)?;
-                println!("Reset {} failed entry/entries to pending", count);
+                cli::success(&format!("Reset {} failed entry/entries to pending", count));
             } else if let Some(entry_id) = id {
                 let found = query::images::retry_image_entry(&conn, &entry_id)?;
 
                 if found {
-                    println!("Reset entry {} to pending", entry_id);
+                    cli::success(&format!("Reset entry {} to pending", entry_id));
                 } else {
                     bail!("Entry '{}' not found or not in 'failed' status", entry_id);
                 }
@@ -114,8 +118,10 @@ pub fn run(action: super::ImagesAction) -> Result<()> {
 
             Ok(())
         }
-        super::ImagesAction::Purge { config, older_than } => {
-            let config_dir = config.canonicalize().unwrap_or(config);
+        super::ImagesAction::Purge { older_than } => {
+            let config_dir = config_dir
+                .canonicalize()
+                .unwrap_or_else(|_| config_dir.to_path_buf());
             let cfg = CrapConfig::load(&config_dir)?;
             let pool = pool::create_pool(&config_dir, &cfg)?;
 
@@ -127,7 +133,7 @@ pub fn run(action: super::ImagesAction) -> Result<()> {
 
             let conn = pool.get().context("Failed to get DB connection")?;
             let deleted = query::images::purge_old_image_entries(&conn, secs)?;
-            println!("Purged {} old queue entry/entries", deleted);
+            cli::success(&format!("Purged {} old queue entry/entries", deleted));
 
             Ok(())
         }

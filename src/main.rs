@@ -8,9 +8,12 @@ use anyhow::{Context as _, Result, bail};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-use crap_cms::commands::{
-    self, BlueprintAction, DbAction, ImagesAction, JobsAction, MakeAction, MigrateAction,
-    TemplatesAction, UserAction, serve::ServeMode,
+use crap_cms::{
+    cli::{self, crap_theme},
+    commands::{
+        self, BlueprintAction, DbAction, ImagesAction, JobsAction, MakeAction, MigrateAction,
+        TemplatesAction, UserAction, serve::ServeMode,
+    },
 };
 
 #[derive(Parser)]
@@ -20,6 +23,10 @@ use crap_cms::commands::{
     version
 )]
 struct Cli {
+    /// Path to the config directory (auto-detected from CWD if omitted)
+    #[arg(short = 'C', long, global = true, env = "CRAP_CONFIG_DIR")]
+    config: Option<PathBuf>,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -28,9 +35,6 @@ struct Cli {
 enum Command {
     /// Start the admin UI and gRPC servers
     Serve {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Run in the background (detached)
         #[arg(short, long)]
         detach: bool,
@@ -49,10 +53,7 @@ enum Command {
     },
 
     /// Show project status (collections, globals, migrations)
-    Status {
-        /// Path to the config directory
-        config: PathBuf,
-    },
+    Status,
 
     /// User management for auth collections
     #[command(name = "user")]
@@ -85,9 +86,6 @@ enum Command {
 
     /// Generate typed definitions from collection schemas
     Typegen {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Output language: lua, ts, go, py, rs (default: lua). Use "all" for all languages.
         #[arg(short, long, default_value = "lua")]
         lang: String,
@@ -107,18 +105,12 @@ enum Command {
     /// Run database migrations
     #[command(name = "migrate")]
     Migrate {
-        /// Path to the config directory
-        config: PathBuf,
-
         #[command(subcommand)]
         action: MigrateAction,
     },
 
     /// Backup database and optionally uploads
     Backup {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Output directory (default: <config_dir>/backups/)
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -130,9 +122,6 @@ enum Command {
 
     /// Restore database (and optionally uploads) from a backup directory
     Restore {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Path to the backup directory (e.g. backups/backup-2026-03-07T10-00-00)
         backup: PathBuf,
 
@@ -153,9 +142,6 @@ enum Command {
 
     /// Export collection data to JSON
     Export {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Export only this collection (default: all)
         #[arg(short, long)]
         collection: Option<String>,
@@ -167,9 +153,6 @@ enum Command {
 
     /// Import collection data from JSON
     Import {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// JSON file to import
         file: PathBuf,
 
@@ -197,17 +180,22 @@ enum Command {
     },
 
     /// Start the MCP (Model Context Protocol) server (stdio transport)
-    Mcp {
-        /// Path to the config directory
-        config: PathBuf,
-    },
+    Mcp,
 }
 
 #[cfg(not(tarpaulin_include))] // binary entrypoint — not unit-testable
 #[tokio::main]
-async fn main() -> Result<()> {
-    let cli = Cli::parse();
+async fn main() {
+    let cli_args = Cli::parse();
 
+    if let Err(e) = run(cli_args).await {
+        cli::error(&format!("{:#}", e));
+        std::process::exit(1);
+    }
+}
+
+#[cfg(not(tarpaulin_include))]
+async fn run(cli: Cli) -> Result<()> {
     // Initialize tracing subscriber early so all commands get logging.
     // RUST_LOG env overrides. Default: crap_cms=debug for serve, info for others.
     let use_json = matches!(&cli.command, Command::Serve { json: true, .. })
@@ -217,7 +205,7 @@ async fn main() -> Result<()> {
 
     let default_filter = match &cli.command {
         Command::Serve { .. } => "crap_cms=debug,info",
-        _ => "crap_cms=info,warn",
+        _ => "crap_cms=error",
     };
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(default_filter));
@@ -231,29 +219,39 @@ async fn main() -> Result<()> {
         tracing_subscriber::fmt().with_env_filter(env_filter).init();
     }
 
+    let config_flag = cli.config;
+
     match cli.command {
         Command::Serve {
-            config,
             detach,
             only,
             no_scheduler,
             ..
         } => {
+            let config = commands::resolve_config_dir(config_flag)?;
             if detach {
                 return commands::serve::detach(&config, only, no_scheduler);
             }
             commands::serve::run(&config, only, no_scheduler).await
         }
-        Command::Status { config } => commands::status::run(&config),
-        Command::User { action } => commands::user::run(action),
+        Command::Status => {
+            let config = commands::resolve_config_dir(config_flag)?;
+            commands::status::run(&config)
+        }
+        Command::User { action } => {
+            let config = commands::resolve_config_dir(config_flag)?;
+            commands::user::run(&config, action)
+        }
         Command::Init { dir, no_input } => commands::init::run(dir, no_input),
-        Command::Make { action } => commands::make::run(action),
+        Command::Make { action } => {
+            let config = commands::resolve_config_dir(config_flag)?;
+            commands::make::run(&config, action)
+        }
         Command::Blueprint { action } => match action {
-            BlueprintAction::Save {
-                config,
-                name,
-                force,
-            } => crap_cms::scaffold::blueprint_save(&config, &name, force),
+            BlueprintAction::Save { name, force } => {
+                let config = commands::resolve_config_dir(config_flag)?;
+                crap_cms::scaffold::blueprint_save(&config, &name, force)
+            }
             BlueprintAction::Use { name, dir } => {
                 let name = match name {
                     Some(n) => n,
@@ -263,10 +261,10 @@ async fn main() -> Result<()> {
 
                         if names.is_empty() {
                             bail!(
-                                "No blueprints saved yet.\nSave one with: crap-cms blueprint save <dir> <name>"
+                                "No blueprints saved yet.\nSave one with: crap-cms blueprint save <name>"
                             );
                         }
-                        let selection = Select::new()
+                        let selection = Select::with_theme(&crap_theme())
                             .with_prompt("Select blueprint")
                             .items(&names)
                             .interact()
@@ -287,7 +285,7 @@ async fn main() -> Result<()> {
                         if names.is_empty() {
                             bail!("No blueprints saved yet.");
                         }
-                        let selection = Select::new()
+                        let selection = Select::with_theme(&crap_theme())
                             .with_prompt("Select blueprint to remove")
                             .items(&names)
                             .interact()
@@ -298,41 +296,68 @@ async fn main() -> Result<()> {
                 crap_cms::scaffold::blueprint_remove(&name)
             }
         },
-        Command::Typegen {
-            config,
-            lang,
-            output,
-        } => commands::typegen::run(&config, &lang, output.as_deref()),
+        Command::Typegen { lang, output } => {
+            let config = commands::resolve_config_dir(config_flag)?;
+            commands::typegen::run(&config, &lang, output.as_deref())
+        }
         Command::Proto { output } => crap_cms::scaffold::proto_export(output.as_deref()),
-        Command::Migrate { config, action } => commands::db::migrate(&config, action),
+        Command::Migrate { action } => {
+            let config = commands::resolve_config_dir(config_flag)?;
+            commands::db::migrate(&config, action)
+        }
         Command::Backup {
-            config,
             output,
             include_uploads,
-        } => commands::db::backup(&config, output, include_uploads),
+        } => {
+            let config = commands::resolve_config_dir(config_flag)?;
+            commands::db::backup(&config, output, include_uploads)
+        }
         Command::Restore {
-            config,
             backup,
             include_uploads,
             confirm,
-        } => commands::db::restore(&config, &backup, include_uploads, confirm),
-        Command::Db { action } => match action {
-            DbAction::Console { config } => commands::db::console(&config),
-            DbAction::Cleanup { config, confirm } => commands::db::cleanup(&config, confirm),
+        } => {
+            let config = commands::resolve_config_dir(config_flag)?;
+            commands::db::restore(&config, &backup, include_uploads, confirm)
+        }
+        Command::Db { action } => {
+            let config = commands::resolve_config_dir(config_flag)?;
+            match action {
+                DbAction::Console => commands::db::console(&config),
+                DbAction::Cleanup { confirm } => commands::db::cleanup(&config, confirm),
+            }
+        }
+        Command::Export { collection, output } => {
+            let config = commands::resolve_config_dir(config_flag)?;
+            commands::export::export(&config, collection, output)
+        }
+        Command::Import { file, collection } => {
+            let config = commands::resolve_config_dir(config_flag)?;
+            commands::export::import(&config, &file, collection)
+        }
+        Command::Templates { action } => match action {
+            TemplatesAction::List { r#type, verbose } => commands::templates::list(r#type, verbose),
+            TemplatesAction::Extract {
+                paths,
+                all,
+                r#type,
+                force,
+            } => {
+                let config = commands::resolve_config_dir(config_flag)?;
+                commands::templates::extract(&config, &paths, all, r#type, force)
+            }
         },
-        Command::Export {
-            config,
-            collection,
-            output,
-        } => commands::export::export(&config, collection, output),
-        Command::Import {
-            config,
-            file,
-            collection,
-        } => commands::export::import(&config, &file, collection),
-        Command::Templates { action } => commands::templates::run(action),
-        Command::Jobs { action } => commands::jobs::run(action),
-        Command::Images { action } => commands::images::run(action),
-        Command::Mcp { config } => commands::mcp::run(&config).await,
+        Command::Jobs { action } => {
+            let config = commands::resolve_config_dir(config_flag)?;
+            commands::jobs::run(&config, action)
+        }
+        Command::Images { action } => {
+            let config = commands::resolve_config_dir(config_flag)?;
+            commands::images::run(&config, action)
+        }
+        Command::Mcp => {
+            let config = commands::resolve_config_dir(config_flag)?;
+            commands::mcp::run(&config).await
+        }
     }
 }

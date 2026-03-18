@@ -45,7 +45,8 @@ my-project/
 ## 2. Start the server
 
 ```bash
-crap-cms serve ./my-project
+cd my-project
+crap-cms serve
 ```
 
 This starts:
@@ -61,10 +62,10 @@ If you skipped user creation during init, bootstrap one now:
 
 ```bash
 # Interactive (prompts for password)
-crap-cms user create ./my-project -e admin@example.com
+crap-cms user create -e admin@example.com
 
 # Non-interactive
-crap-cms user create ./my-project \
+crap-cms user create \
     -e admin@example.com \
     -p secret123 \
     -f role=admin \
@@ -101,11 +102,11 @@ The repository includes an `example/` config directory with sample collections, 
 git clone https://github.com/dkluhzeb/crap-cms.git
 cd crap-cms
 cargo build --release
-./target/release/crap-cms serve ./example
+./target/release/crap-cms serve -C ./example
 ```
 
 Then bootstrap an admin user:
 
 ```bash
-crap-cms user create ./example -e admin@example.com
+crap-cms user create -C ./example -e admin@example.com
 ```

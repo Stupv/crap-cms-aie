@@ -258,9 +258,9 @@ pub fn templates_list(type_filter: Option<&str>, verbose: bool) -> Result<()> {
     }
 
     if !verbose {
-        println!("Extract a file to customize it:");
-        println!("  crap-cms templates extract <CONFIG> <PATH>");
-        println!("  crap-cms templates extract <CONFIG> --all");
+        crate::cli::hint(
+            "Extract a file to customize it:\n  crap-cms templates extract <PATH>\n  crap-cms templates extract --all",
+        );
     }
 
     Ok(())
@@ -303,7 +303,10 @@ pub fn templates_extract(
                 let dest = config_dir.join("templates").join(path);
 
                 if dest.exists() && !force {
-                    println!("  Skipped: templates/{} (exists, use --force)", path);
+                    crate::cli::warning(&format!(
+                        "Skipped: templates/{} (exists, use --force)",
+                        path
+                    ));
                     continue;
                 }
                 if let Some(parent) = dest.parent() {
@@ -313,11 +316,11 @@ pub fn templates_extract(
                 count += 1;
             }
             if want_templates && !want_static {
-                println!(
+                crate::cli::success(&format!(
                     "Extracted {} template file(s) to {}/templates/",
                     count,
                     config_dir.display()
-                );
+                ));
 
                 return Ok(());
             }
@@ -330,7 +333,7 @@ pub fn templates_extract(
                 let dest = config_dir.join("static").join(path);
 
                 if dest.exists() && !force {
-                    println!("  Skipped: static/{} (exists, use --force)", path);
+                    crate::cli::warning(&format!("Skipped: static/{} (exists, use --force)", path));
                     continue;
                 }
                 if let Some(parent) = dest.parent() {
@@ -340,21 +343,21 @@ pub fn templates_extract(
                 count += 1;
             }
             if !want_templates {
-                println!(
+                crate::cli::success(&format!(
                     "Extracted {} static file(s) to {}/static/",
                     count,
                     config_dir.display()
-                );
+                ));
 
                 return Ok(());
             }
-            println!(
+            crate::cli::success(&format!(
                 "Extracted {} file(s) ({} templates, {} static) to {}/",
                 count,
                 tpl_count,
                 count - tpl_count,
                 config_dir.display()
-            );
+            ));
         }
 
         return Ok(());
@@ -382,28 +385,31 @@ pub fn templates_extract(
                 let dest = config_dir.join(kind).join(path);
 
                 if dest.exists() && !force {
-                    println!("  Skipped: {}/{} (exists, use --force)", kind, path);
+                    crate::cli::warning(&format!(
+                        "Skipped: {}/{} (exists, use --force)",
+                        kind, path
+                    ));
                     continue;
                 }
                 if let Some(parent) = dest.parent() {
                     fs::create_dir_all(parent)?;
                 }
                 fs::write(&dest, file.contents())?;
-                println!("  \u{2713} {}/{}", kind, path);
+                crate::cli::success(&format!("{}/{}", kind, path));
                 extracted += 1;
             }
             None => {
-                println!("  Not found: {}", path);
+                crate::cli::warning(&format!("Not found: {}", path));
             }
         }
     }
 
     if extracted > 0 {
-        println!(
+        crate::cli::success(&format!(
             "Extracted {} file(s) to {}/",
             extracted,
             config_dir.display()
-        );
+        ));
     }
 
     Ok(())
@@ -437,7 +443,7 @@ pub fn proto_export(output: Option<&Path>) -> Result<()> {
             };
             fs::write(&target, PROTO_CONTENT)
                 .with_context(|| format!("Failed to write {}", target.display()))?;
-            println!("Wrote {}", target.display());
+            crate::cli::success(&format!("Wrote {}", target.display()));
         }
     }
     Ok(())

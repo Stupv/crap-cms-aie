@@ -27,7 +27,13 @@ exclude_collections = []    # Blacklist (takes precedence over include)
 Run the MCP server as a subprocess that reads JSON-RPC from stdin and writes to stdout:
 
 ```bash
-crap-cms mcp ./my-config
+crap-cms mcp
+```
+
+Or from outside the config directory:
+
+```bash
+crap-cms mcp -C /path/to/config
 ```
 
 For Claude Desktop, add to your `claude_desktop_config.json`:
@@ -37,7 +43,7 @@ For Claude Desktop, add to your `claude_desktop_config.json`:
   "mcpServers": {
     "my-cms": {
       "command": "crap-cms",
-      "args": ["mcp", "/path/to/config"]
+      "args": ["mcp", "-C", "/path/to/config"]
     }
   }
 }

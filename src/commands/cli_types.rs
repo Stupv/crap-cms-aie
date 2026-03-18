@@ -16,9 +16,6 @@ pub fn parse_key_val(s: &str) -> Result<(String, String), String> {
 pub enum MakeAction {
     /// Generate a collection Lua file
     Collection {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Collection slug (e.g., "posts"). Prompted if omitted.
         slug: Option<String>,
 
@@ -53,9 +50,6 @@ pub enum MakeAction {
 
     /// Generate a global Lua file
     Global {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Global slug (e.g., "site_settings"). Prompted if omitted.
         slug: Option<String>,
 
@@ -70,9 +64,6 @@ pub enum MakeAction {
 
     /// Generate a hook file (file-per-hook pattern)
     Hook {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Hook function name (e.g., "auto_slug"). Prompted if omitted.
         name: Option<String>,
 
@@ -99,9 +90,6 @@ pub enum MakeAction {
 
     /// Generate a job Lua file
     Job {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Job slug (e.g., "cleanup_expired"). Prompted if omitted.
         slug: Option<String>,
 
@@ -132,9 +120,6 @@ pub enum MakeAction {
 pub enum BlueprintAction {
     /// Save a config directory as a reusable blueprint
     Save {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Blueprint name (e.g., "blog", "saas-starter")
         name: String,
 
@@ -167,9 +152,6 @@ pub enum BlueprintAction {
 pub enum UserAction {
     /// Create a new user in an auth collection
     Create {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Auth collection slug
         #[arg(short, long, default_value = "users")]
         collection: String,
@@ -189,9 +171,6 @@ pub enum UserAction {
 
     /// List users in an auth collection
     List {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Auth collection slug
         #[arg(short, long, default_value = "users")]
         collection: String,
@@ -199,9 +178,6 @@ pub enum UserAction {
 
     /// Show detailed info for a single user
     Info {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Auth collection slug
         #[arg(short, long, default_value = "users")]
         collection: String,
@@ -217,9 +193,6 @@ pub enum UserAction {
 
     /// Delete a user from an auth collection
     Delete {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Auth collection slug
         #[arg(short, long, default_value = "users")]
         collection: String,
@@ -239,9 +212,6 @@ pub enum UserAction {
 
     /// Lock a user account (prevent login)
     Lock {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Auth collection slug
         #[arg(short, long, default_value = "users")]
         collection: String,
@@ -257,9 +227,6 @@ pub enum UserAction {
 
     /// Unlock a user account (allow login)
     Unlock {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Auth collection slug
         #[arg(short, long, default_value = "users")]
         collection: String,
@@ -275,9 +242,6 @@ pub enum UserAction {
 
     /// Verify a user account (mark email as verified)
     Verify {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Auth collection slug
         #[arg(short, long, default_value = "users")]
         collection: String,
@@ -293,9 +257,6 @@ pub enum UserAction {
 
     /// Unverify a user account (mark email as unverified)
     Unverify {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Auth collection slug
         #[arg(short, long, default_value = "users")]
         collection: String,
@@ -311,9 +272,6 @@ pub enum UserAction {
 
     /// Change a user's password
     ChangePassword {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Auth collection slug
         #[arg(short, long, default_value = "users")]
         collection: String,
@@ -362,15 +320,9 @@ pub enum MigrateAction {
 #[derive(Subcommand)]
 pub enum DbAction {
     /// Open an interactive SQLite console
-    Console {
-        /// Path to the config directory
-        config: PathBuf,
-    },
+    Console,
     /// Detect and optionally remove orphan columns not in Lua definitions
     Cleanup {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Actually drop orphan columns (default: dry-run report only)
         #[arg(long)]
         confirm: bool,
@@ -392,8 +344,6 @@ pub enum TemplatesAction {
     },
     /// Extract default files into the config directory for customization
     Extract {
-        /// Path to the config directory
-        config: PathBuf,
         /// File paths to extract (e.g., "layout/base.hbs" "styles.css")
         paths: Vec<String>,
         /// Extract all files
@@ -412,14 +362,9 @@ pub enum TemplatesAction {
 #[derive(Subcommand)]
 pub enum JobsAction {
     /// List defined jobs and recent runs
-    List {
-        /// Path to the config directory
-        config: PathBuf,
-    },
+    List,
     /// Trigger a job manually
     Trigger {
-        /// Path to the config directory
-        config: PathBuf,
         /// Job slug to trigger
         slug: String,
         /// JSON data to pass to the job (default: "{}")
@@ -428,8 +373,6 @@ pub enum JobsAction {
     },
     /// Show job run history
     Status {
-        /// Path to the config directory
-        config: PathBuf,
         /// Show a single job run by ID
         #[arg(long)]
         id: Option<String>,
@@ -442,25 +385,18 @@ pub enum JobsAction {
     },
     /// Cancel pending jobs (delete from queue)
     Cancel {
-        /// Path to the config directory
-        config: PathBuf,
         /// Only cancel jobs with this slug (default: all pending)
         #[arg(short, long)]
         slug: Option<String>,
     },
     /// Clean up old completed/failed job runs
     Purge {
-        /// Path to the config directory
-        config: PathBuf,
         /// Delete runs older than this (e.g., "7d", "24h", "30m")
         #[arg(long, default_value = "7d")]
         older_than: String,
     },
     /// Check job system health
-    Healthcheck {
-        /// Path to the config directory
-        config: PathBuf,
-    },
+    Healthcheck,
 }
 
 /// Actions for the `images` subcommand.
@@ -468,9 +404,6 @@ pub enum JobsAction {
 pub enum ImagesAction {
     /// List image processing queue entries
     List {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Filter by status: pending, processing, completed, failed
         #[arg(short, long)]
         status: Option<String>,
@@ -480,15 +413,9 @@ pub enum ImagesAction {
         limit: i64,
     },
     /// Show queue statistics by status
-    Stats {
-        /// Path to the config directory
-        config: PathBuf,
-    },
+    Stats,
     /// Retry failed queue entries
     Retry {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Retry a specific entry by ID
         #[arg(long)]
         id: Option<String>,
@@ -503,9 +430,6 @@ pub enum ImagesAction {
     },
     /// Purge old completed/failed entries
     Purge {
-        /// Path to the config directory
-        config: PathBuf,
-
         /// Delete entries older than this (e.g., "7d", "24h", "30m")
         #[arg(long, default_value = "7d")]
         older_than: String,

@@ -146,20 +146,20 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
         Some(cmd) => {
             let detail = match cmd {
                 "serve" => json!({
-                    "command": "crap-cms serve <CONFIG_DIR>",
+                    "command": "crap-cms serve",
                     "description": "Start the admin UI and gRPC servers",
                     "flags": [
                         { "flag": "-d, --detach", "description": "Run in the background (detached)" }
                     ],
                     "examples": [
-                        "crap-cms serve ./my-site",
-                        "crap-cms serve ./my-site --detach"
+                        "crap-cms serve",
+                        "crap-cms serve --detach"
                     ]
                 }),
                 "status" => json!({
-                    "command": "crap-cms status <CONFIG_DIR>",
+                    "command": "crap-cms status",
                     "description": "Show project status (collections, globals, migrations)",
-                    "examples": ["crap-cms status ./my-site"]
+                    "examples": ["crap-cms status"]
                 }),
                 "init" => json!({
                     "command": "crap-cms init [DIR]",
@@ -169,7 +169,7 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                     ],
                     "examples": [
                         "crap-cms init",
-                        "crap-cms init ./my-site"
+                        "crap-cms init"
                     ]
                 }),
                 "make" | "make collection" | "make global" | "make hook" | "make job" => json!({
@@ -178,7 +178,7 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                     "subcommands": [
                         {
                             "name": "collection",
-                            "usage": "crap-cms make collection <CONFIG_DIR> [SLUG] [OPTIONS]",
+                            "usage": "crap-cms make collection [SLUG] [OPTIONS]",
                             "description": "Generate a collection Lua file",
                             "flags": [
                                 { "flag": "-F, --fields <FIELDS>", "description": "Inline field shorthand (e.g., 'title:text:required,status:select')" },
@@ -190,13 +190,13 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                                 { "flag": "-f, --force", "description": "Overwrite existing file" }
                             ],
                             "examples": [
-                                "crap-cms make collection ./my-site posts -F 'title:text:required,body:richtext,status:select'",
-                                "crap-cms make collection ./my-site users --auth --no-input"
+                                "crap-cms make collection posts -F 'title:text:required,body:richtext,status:select'",
+                                "crap-cms make collection users --auth --no-input"
                             ]
                         },
                         {
                             "name": "global",
-                            "usage": "crap-cms make global <CONFIG_DIR> [SLUG] [OPTIONS]",
+                            "usage": "crap-cms make global [SLUG] [OPTIONS]",
                             "description": "Generate a global Lua file",
                             "flags": [
                                 { "flag": "-F, --fields <FIELDS>", "description": "Inline field shorthand" },
@@ -205,7 +205,7 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                         },
                         {
                             "name": "hook",
-                            "usage": "crap-cms make hook <CONFIG_DIR> [NAME] [OPTIONS]",
+                            "usage": "crap-cms make hook [NAME] [OPTIONS]",
                             "description": "Generate a hook file",
                             "flags": [
                                 { "flag": "-t, --type <TYPE>", "description": "Hook type: collection, field, or access" },
@@ -217,7 +217,7 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                         },
                         {
                             "name": "job",
-                            "usage": "crap-cms make job <CONFIG_DIR> [SLUG] [OPTIONS]",
+                            "usage": "crap-cms make job [SLUG] [OPTIONS]",
                             "description": "Generate a job Lua file",
                             "flags": [
                                 { "flag": "-s, --schedule <CRON>", "description": "Cron schedule expression" },
@@ -234,7 +234,7 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                     "command": "crap-cms blueprint <SUBCOMMAND>",
                     "description": "Manage saved blueprints",
                     "subcommands": [
-                        { "name": "save", "usage": "crap-cms blueprint save <CONFIG_DIR> <NAME> [-f]", "description": "Save a config directory as a reusable blueprint" },
+                        { "name": "save", "usage": "crap-cms blueprint save <NAME> [-f]", "description": "Save a config directory as a reusable blueprint" },
                         { "name": "use", "usage": "crap-cms blueprint use [NAME] [DIR]", "description": "Create a new project from a saved blueprint" },
                         { "name": "list", "usage": "crap-cms blueprint list", "description": "List all saved blueprints" },
                         { "name": "remove", "usage": "crap-cms blueprint remove [NAME]", "description": "Remove a saved blueprint" }
@@ -252,7 +252,7 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                     "subcommands": [
                         {
                             "name": "create",
-                            "usage": "crap-cms user create <CONFIG_DIR> [OPTIONS]",
+                            "usage": "crap-cms user create [OPTIONS]",
                             "description": "Create a new user",
                             "flags": [
                                 { "flag": "-c, --collection <SLUG>", "description": "Auth collection slug (default: users)" },
@@ -261,14 +261,14 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                                 { "flag": "-f, --field <KEY=VALUE>", "description": "Extra fields (repeatable)" }
                             ],
                             "examples": [
-                                "crap-cms user create ./my-site -e admin@example.com",
-                                "crap-cms user create ./my-site -e admin@example.com -p secret -f role=admin -f name='Admin'"
+                                "crap-cms user create -e admin@example.com",
+                                "crap-cms user create -e admin@example.com -p secret -f role=admin -f name='Admin'"
                             ]
                         },
-                        { "name": "list", "usage": "crap-cms user list <CONFIG_DIR> [-c <SLUG>]", "description": "List users in an auth collection" },
+                        { "name": "list", "usage": "crap-cms user list [-c <SLUG>]", "description": "List users in an auth collection" },
                         {
                             "name": "delete",
-                            "usage": "crap-cms user delete <CONFIG_DIR> [OPTIONS]",
+                            "usage": "crap-cms user delete [OPTIONS]",
                             "description": "Delete a user",
                             "flags": [
                                 { "flag": "-e, --email <EMAIL>", "description": "User email" },
@@ -276,11 +276,11 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                                 { "flag": "-y, --confirm", "description": "Skip confirmation prompt" }
                             ]
                         },
-                        { "name": "lock", "usage": "crap-cms user lock <CONFIG_DIR> [-e <EMAIL>] [--id <ID>]", "description": "Lock a user account (prevent login)" },
-                        { "name": "unlock", "usage": "crap-cms user unlock <CONFIG_DIR> [-e <EMAIL>] [--id <ID>]", "description": "Unlock a user account" },
+                        { "name": "lock", "usage": "crap-cms user lock [-e <EMAIL>] [--id <ID>]", "description": "Lock a user account (prevent login)" },
+                        { "name": "unlock", "usage": "crap-cms user unlock [-e <EMAIL>] [--id <ID>]", "description": "Unlock a user account" },
                         {
                             "name": "change-password",
-                            "usage": "crap-cms user change-password <CONFIG_DIR> [OPTIONS]",
+                            "usage": "crap-cms user change-password [OPTIONS]",
                             "description": "Change a user's password",
                             "flags": [
                                 { "flag": "-e, --email <EMAIL>", "description": "User email" },
@@ -292,42 +292,42 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                 }),
                 "migrate" | "migrate create" | "migrate up" | "migrate down" | "migrate list"
                 | "migrate fresh" => json!({
-                    "command": "crap-cms migrate <CONFIG_DIR> <SUBCOMMAND>",
+                    "command": "crap-cms migrate <SUBCOMMAND>",
                     "description": "Run database migrations",
                     "subcommands": [
-                        { "name": "create", "usage": "crap-cms migrate <CONFIG_DIR> create <NAME>", "description": "Create a new migration file" },
-                        { "name": "up", "usage": "crap-cms migrate <CONFIG_DIR> up", "description": "Schema sync + run pending Lua data migrations" },
-                        { "name": "down", "usage": "crap-cms migrate <CONFIG_DIR> down [-s <N>]", "description": "Rollback last N data migrations (default: 1)" },
-                        { "name": "list", "usage": "crap-cms migrate <CONFIG_DIR> list", "description": "Show all migration files with applied/pending status" },
-                        { "name": "fresh", "usage": "crap-cms migrate <CONFIG_DIR> fresh -y", "description": "Drop all tables, recreate from Lua definitions, run all migrations (destructive!)" }
+                        { "name": "create", "usage": "crap-cms migrate create <NAME>", "description": "Create a new migration file" },
+                        { "name": "up", "usage": "crap-cms migrate up", "description": "Schema sync + run pending Lua data migrations" },
+                        { "name": "down", "usage": "crap-cms migrate down [-s <N>]", "description": "Rollback last N data migrations (default: 1)" },
+                        { "name": "list", "usage": "crap-cms migrate list", "description": "Show all migration files with applied/pending status" },
+                        { "name": "fresh", "usage": "crap-cms migrate fresh -y", "description": "Drop all tables, recreate from Lua definitions, run all migrations (destructive!)" }
                     ],
                     "examples": [
-                        "crap-cms migrate ./my-site up",
-                        "crap-cms migrate ./my-site create add_categories",
-                        "crap-cms migrate ./my-site down -s 2",
-                        "crap-cms migrate ./my-site fresh -y"
+                        "crap-cms migrate up",
+                        "crap-cms migrate create add_categories",
+                        "crap-cms migrate down -s 2",
+                        "crap-cms migrate fresh -y"
                     ]
                 }),
                 "backup" => json!({
-                    "command": "crap-cms backup <CONFIG_DIR> [OPTIONS]",
+                    "command": "crap-cms backup [OPTIONS]",
                     "description": "Backup database and optionally uploads",
                     "flags": [
                         { "flag": "-o, --output <DIR>", "description": "Output directory (default: <config_dir>/backups/)" },
                         { "flag": "-i, --include-uploads", "description": "Also compress the uploads directory" }
                     ],
                     "examples": [
-                        "crap-cms backup ./my-site",
-                        "crap-cms backup ./my-site -o /backups -i"
+                        "crap-cms backup",
+                        "crap-cms backup -o /backups -i"
                     ]
                 }),
                 "db" | "db console" | "db cleanup" => json!({
                     "command": "crap-cms db <SUBCOMMAND>",
                     "description": "Database tools",
                     "subcommands": [
-                        { "name": "console", "usage": "crap-cms db console <CONFIG_DIR>", "description": "Open an interactive SQLite console" },
+                        { "name": "console", "usage": "crap-cms db console", "description": "Open an interactive SQLite console" },
                         {
                             "name": "cleanup",
-                            "usage": "crap-cms db cleanup <CONFIG_DIR> [--confirm]",
+                            "usage": "crap-cms db cleanup [--confirm]",
                             "description": "Detect and optionally remove orphan columns not in Lua definitions",
                             "flags": [
                                 { "flag": "--confirm", "description": "Actually drop orphan columns (default: dry-run report)" }
@@ -336,38 +336,38 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                     ]
                 }),
                 "export" => json!({
-                    "command": "crap-cms export <CONFIG_DIR> [OPTIONS]",
+                    "command": "crap-cms export [OPTIONS]",
                     "description": "Export collection data to JSON",
                     "flags": [
                         { "flag": "-c, --collection <SLUG>", "description": "Export only this collection (default: all)" },
                         { "flag": "-o, --output <FILE>", "description": "Output file (default: stdout)" }
                     ],
                     "examples": [
-                        "crap-cms export ./my-site",
-                        "crap-cms export ./my-site -c posts -o posts.json"
+                        "crap-cms export",
+                        "crap-cms export -c posts -o posts.json"
                     ]
                 }),
                 "import" => json!({
-                    "command": "crap-cms import <CONFIG_DIR> <FILE> [OPTIONS]",
+                    "command": "crap-cms import <FILE> [OPTIONS]",
                     "description": "Import collection data from JSON",
                     "flags": [
                         { "flag": "-c, --collection <SLUG>", "description": "Import only this collection (default: all in file)" }
                     ],
                     "examples": [
-                        "crap-cms import ./my-site backup.json",
-                        "crap-cms import ./my-site posts.json -c posts"
+                        "crap-cms import backup.json",
+                        "crap-cms import posts.json -c posts"
                     ]
                 }),
                 "typegen" => json!({
-                    "command": "crap-cms typegen <CONFIG_DIR> [OPTIONS]",
+                    "command": "crap-cms typegen [OPTIONS]",
                     "description": "Generate typed definitions from collection schemas",
                     "flags": [
                         { "flag": "-l, --lang <LANG>", "description": "Output language: lua, ts, go, py, rs, all (default: lua)" },
                         { "flag": "-o, --output <DIR>", "description": "Output directory (default: <config>/types/)" }
                     ],
                     "examples": [
-                        "crap-cms typegen ./my-site -l ts",
-                        "crap-cms typegen ./my-site -l all -o ./types"
+                        "crap-cms typegen -l ts",
+                        "crap-cms typegen -l all -o ./types"
                     ]
                 }),
                 "proto" => json!({
@@ -396,7 +396,7 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                         },
                         {
                             "name": "extract",
-                            "usage": "crap-cms templates extract <CONFIG_DIR> [PATHS...] [OPTIONS]",
+                            "usage": "crap-cms templates extract [PATHS...] [OPTIONS]",
                             "description": "Extract default files into config directory for customization",
                             "flags": [
                                 { "flag": "-a, --all", "description": "Extract all files" },
@@ -411,10 +411,10 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                     "command": "crap-cms jobs <SUBCOMMAND>",
                     "description": "Manage background jobs",
                     "subcommands": [
-                        { "name": "list", "usage": "crap-cms jobs list <CONFIG_DIR>", "description": "List defined jobs and recent runs" },
+                        { "name": "list", "usage": "crap-cms jobs list", "description": "List defined jobs and recent runs" },
                         {
                             "name": "trigger",
-                            "usage": "crap-cms jobs trigger <CONFIG_DIR> <SLUG> [OPTIONS]",
+                            "usage": "crap-cms jobs trigger <SLUG> [OPTIONS]",
                             "description": "Trigger a job manually",
                             "flags": [
                                 { "flag": "-d, --data <JSON>", "description": "JSON data to pass to the job" }
@@ -422,7 +422,7 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                         },
                         {
                             "name": "status",
-                            "usage": "crap-cms jobs status <CONFIG_DIR> [OPTIONS]",
+                            "usage": "crap-cms jobs status [OPTIONS]",
                             "description": "Show job run history",
                             "flags": [
                                 { "flag": "--id <ID>", "description": "Show a single job run by ID" },
@@ -432,13 +432,13 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                         },
                         {
                             "name": "purge",
-                            "usage": "crap-cms jobs purge <CONFIG_DIR> [OPTIONS]",
+                            "usage": "crap-cms jobs purge [OPTIONS]",
                             "description": "Clean up old completed/failed job runs",
                             "flags": [
                                 { "flag": "--older-than <DURATION>", "description": "Delete runs older than this (e.g., '7d', '24h'). Default: 7d" }
                             ]
                         },
-                        { "name": "healthcheck", "usage": "crap-cms jobs healthcheck <CONFIG_DIR>", "description": "Check job system health" }
+                        { "name": "healthcheck", "usage": "crap-cms jobs healthcheck", "description": "Check job system health" }
                     ]
                 }),
                 "images" | "images list" | "images stats" | "images retry" | "images purge" => {
@@ -448,17 +448,17 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                         "subcommands": [
                             {
                                 "name": "list",
-                                "usage": "crap-cms images list <CONFIG_DIR> [OPTIONS]",
+                                "usage": "crap-cms images list [OPTIONS]",
                                 "description": "List image processing queue entries",
                                 "flags": [
                                     { "flag": "-s, --status <STATUS>", "description": "Filter: pending, processing, completed, failed" },
                                     { "flag": "-l, --limit <N>", "description": "Max entries (default: 20)" }
                                 ]
                             },
-                            { "name": "stats", "usage": "crap-cms images stats <CONFIG_DIR>", "description": "Show queue statistics by status" },
+                            { "name": "stats", "usage": "crap-cms images stats", "description": "Show queue statistics by status" },
                             {
                                 "name": "retry",
-                                "usage": "crap-cms images retry <CONFIG_DIR> [OPTIONS]",
+                                "usage": "crap-cms images retry [OPTIONS]",
                                 "description": "Retry failed queue entries",
                                 "flags": [
                                     { "flag": "--id <ID>", "description": "Retry a specific entry by ID" },
@@ -468,7 +468,7 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                             },
                             {
                                 "name": "purge",
-                                "usage": "crap-cms images purge <CONFIG_DIR> [OPTIONS]",
+                                "usage": "crap-cms images purge [OPTIONS]",
                                 "description": "Purge old completed/failed entries",
                                 "flags": [
                                     { "flag": "--older-than <DURATION>", "description": "Delete entries older than this (e.g., '7d'). Default: 7d" }
@@ -478,9 +478,9 @@ pub(super) fn exec_cli_reference(args: &Value) -> Result<String> {
                     })
                 }
                 "mcp" => json!({
-                    "command": "crap-cms mcp <CONFIG_DIR>",
+                    "command": "crap-cms mcp",
                     "description": "Start the MCP (Model Context Protocol) server using stdio transport",
-                    "examples": ["crap-cms mcp ./my-site"]
+                    "examples": ["crap-cms mcp"]
                 }),
                 _ => {
                     json!({ "error": format!("Unknown command: '{}'. Call cli_reference without a command argument to see all available commands.", cmd) })

@@ -206,7 +206,7 @@ pub fn make_collection(
     fs::write(&file_path, &lua)
         .with_context(|| format!("Failed to write {}", file_path.display()))?;
 
-    println!("Created {}", file_path.display());
+    crate::cli::success(&format!("Created {}", file_path.display()));
 
     Ok(())
 }

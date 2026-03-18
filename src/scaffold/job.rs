@@ -101,20 +101,16 @@ return M
     fs::write(&file_path, &lua)
         .with_context(|| format!("Failed to write {}", file_path.display()))?;
 
-    println!("Created {}", file_path.display());
-    println!();
-    println!("Handler ref: {}", handler_ref);
+    crate::cli::success(&format!("Created {}", file_path.display()));
+    crate::cli::kv("Handler ref", &handler_ref);
 
     if schedule.is_some() {
-        println!();
-        println!("This job has a cron schedule and will run automatically.");
+        crate::cli::hint("This job has a cron schedule and will run automatically.");
     } else {
-        println!();
-        println!("Queue from hooks:");
-        println!("  crap.jobs.queue(\"{}\", {{ key = \"value\" }})", slug);
-        println!();
-        println!("Or trigger from CLI:");
-        println!("  crap-cms jobs trigger <config> {}", slug);
+        crate::cli::hint(&format!(
+            "Queue from hooks:\n  crap.jobs.queue(\"{}\", {{ key = \"value\" }})\n\nOr trigger from CLI:\n  crap-cms jobs trigger {}",
+            slug, slug
+        ));
     }
 
     Ok(())
