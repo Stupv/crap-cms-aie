@@ -113,17 +113,20 @@ class CrapConfirm extends HTMLElement {
     /** @type {HTMLButtonElement} */
     const confirmBtn = this.shadowRoot.querySelector('.btn-confirm');
 
+    // Use capture phase so this runs before HTMX's handler on the child
+    // form. Without capture, HTMX's direct listener on the form fires
+    // first (target phase) and sends the request before we can intercept.
     this.addEventListener('submit', (e) => {
       if (this._confirmed) {
         this._confirmed = false;
         return; // let re-submit through
       }
       e.preventDefault();
-      e.stopPropagation();
+      e.stopImmediatePropagation();
       this._pendingForm = /** @type {HTMLFormElement} */ (e.target);
       messageEl.textContent = this.getAttribute('message') || 'Are you sure?';
       dialog.showModal();
-    });
+    }, true);
 
     cancelBtn.addEventListener('click', () => {
       this._pendingForm = null;

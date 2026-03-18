@@ -26,7 +26,7 @@ fn make_array_def() -> CollectionDefinition {
 
 // ── 28. add_row_button_creates_row ────────────────────────────────────────
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn add_row_button_creates_row() {
     let (base_url, server_handle, app) =
         browser::spawn_server(vec![make_array_def(), make_users_def()], vec![]).await;
@@ -66,7 +66,7 @@ async fn add_row_button_creates_row() {
 
 // ── 29. remove_row_button_removes_row ─────────────────────────────────────
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn remove_row_button_removes_row() {
     let (base_url, server_handle, app) =
         browser::spawn_server(vec![make_array_def(), make_users_def()], vec![]).await;
@@ -116,7 +116,7 @@ async fn remove_row_button_removes_row() {
 
 // ── 30. reorder_rows_updates_indices ──────────────────────────────────────
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn reorder_rows_updates_indices() {
     let (base_url, server_handle, app) =
         browser::spawn_server(vec![make_array_def(), make_users_def()], vec![]).await;

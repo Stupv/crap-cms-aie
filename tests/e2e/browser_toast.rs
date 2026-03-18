@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::browser;
 use crate::helpers::*;
 
@@ -21,7 +23,7 @@ fn make_toast_def() -> CollectionDefinition {
 
 // ── 32. toast_on_validation_error ─────────────────────────────────────────
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn toast_on_validation_error() {
     let (base_url, server_handle, app) =
         browser::spawn_server(vec![make_toast_def(), make_users_def()], vec![]).await;
@@ -39,29 +41,30 @@ async fn toast_on_validation_error() {
         .wait_for_navigation()
         .await
         .unwrap();
+    // Wait for JS/HTMX to initialize
+    tokio::time::sleep(Duration::from_millis(500)).await;
 
-    // Submit with empty required field
-    page.find_element("button[type=\"submit\"]")
-        .await
-        .unwrap()
-        .click()
+    // Submit with empty required field using requestSubmit to ensure HTMX intercepts
+    page.evaluate("() => document.querySelector('#edit-form')?.requestSubmit()")
         .await
         .unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // Wait for validation fetch + toast rendering
+    tokio::time::sleep(Duration::from_millis(2000)).await;
 
-    // Check for toast element (the web component or its shadow DOM content)
-    let toasts = page.find_elements("crap-toast").await.unwrap();
-    assert!(
-        !toasts.is_empty(),
-        "should show <crap-toast> on validation error"
-    );
+    // Toast should exist
+    let has_toast = page
+        .evaluate("() => !!document.querySelector('crap-toast')")
+        .await
+        .unwrap();
+    let toast_found: bool = has_toast.into_value().unwrap_or(false);
+    assert!(toast_found, "should show <crap-toast> on validation error");
 
     server_handle.abort();
 }
 
 // ── 33. toast_on_successful_save ──────────────────────────────────────────
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn toast_on_successful_save() {
     let (base_url, server_handle, app) =
         browser::spawn_server(vec![make_toast_def(), make_users_def()], vec![]).await;
@@ -97,7 +100,7 @@ async fn toast_on_successful_save() {
         .click()
         .await
         .unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+    tokio::time::sleep(Duration::from_millis(1000)).await;
 
     // After successful save, should redirect to edit page (htmx or standard)
     // Toast may or may not be visible depending on redirect behavior

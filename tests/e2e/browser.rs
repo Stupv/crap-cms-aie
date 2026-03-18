@@ -4,7 +4,9 @@ use chromiumoxide::Browser;
 use chromiumoxide::BrowserConfig;
 use chromiumoxide::Page;
 use tokio::task::JoinHandle;
+use tokio_stream::StreamExt;
 
+use crap_cms::config::CrapConfig;
 use crap_cms::core::collection::{CollectionDefinition, GlobalDefinition};
 
 use crate::helpers::{self, TestApp};
@@ -28,6 +30,36 @@ pub async fn spawn_server(
     (base_url, handle, app)
 }
 
+/// Like `spawn_server` but with a custom `CrapConfig` (e.g. for locale tests).
+pub async fn spawn_server_with_config(
+    collections: Vec<CollectionDefinition>,
+    globals: Vec<GlobalDefinition>,
+    config: CrapConfig,
+) -> (String, JoinHandle<()>, TestApp) {
+    let app = helpers::setup_app_with_config(collections, globals, config);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr: SocketAddr = listener.local_addr().unwrap();
+    let base_url = format!("http://{addr}");
+
+    let router = app.router.clone();
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+
+    (base_url, handle, app)
+}
+
+/// Evaluate JS that returns a string from within a shadow root.
+pub async fn shadow_eval(page: &Page, host_selector: &str, js: &str) -> String {
+    let script = format!(
+        "() => {{ const host = document.querySelector('{host_selector}'); \
+         if (!host || !host.shadowRoot) return ''; \
+         return (function(root) {{ {js} }})(host.shadowRoot); }}"
+    );
+    let result = page.evaluate(script).await.unwrap();
+    result.into_value::<String>().unwrap_or_default()
+}
+
 /// Launch a headless Chrome browser. Returns the browser and a join handle
 /// for the websocket event loop.
 pub async fn launch_browser() -> (Browser, JoinHandle<()>) {
@@ -41,13 +73,7 @@ pub async fn launch_browser() -> (Browser, JoinHandle<()>) {
     .await
     .unwrap();
 
-    let handle = tokio::spawn(async move {
-        while let Some(h) = handler.next().await {
-            if h.is_err() {
-                break;
-            }
-        }
-    });
+    let handle = tokio::spawn(async move { while handler.next().await.is_some() {} });
 
     (browser, handle)
 }
@@ -55,12 +81,9 @@ pub async fn launch_browser() -> (Browser, JoinHandle<()>) {
 /// Log in via the browser by navigating to the login page, filling
 /// email/password, and submitting.
 pub async fn browser_login(page: &Page, base_url: &str, email: &str, password: &str) {
-    page.goto(format!("{base_url}/admin/login"))
-        .await
-        .unwrap()
-        .wait_for_navigation()
-        .await
-        .unwrap();
+    page.goto(format!("{base_url}/admin/login")).await.unwrap();
+    // Wait for page to fully load
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     page.find_element("input[name=\"email\"]")
         .await
@@ -89,5 +112,6 @@ pub async fn browser_login(page: &Page, base_url: &str, email: &str, password: &
         .await
         .unwrap();
 
-    page.wait_for_navigation().await.unwrap();
+    // Wait for login redirect to complete
+    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
 }
