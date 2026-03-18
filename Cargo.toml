@@ -99,9 +99,19 @@ infer = "0.19.0"
 tokio-util = { version = "0.7.18", features = ["rt"] }
 tonic-health = "0.14.5"
 
+[features]
+browser-tests = ["dep:chromiumoxide"]
+
+[dependencies.chromiumoxide]
+version = "0.7"
+optional = true
+default-features = false
+features = ["tokio-runtime"]
+
 [dev-dependencies]
 tempfile = "3"
 http-body-util = "0.1"
+scraper = "0.22"
 
 [profile.dev.package.image]
 opt-level = 2
@@ -112,7 +122,7 @@ opt-level = 2
 tonic-prost-build = "0.14"
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)', 'cfg(tarpaulin_include)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)', 'cfg(tarpaulin_include)', 'cfg(feature, values("browser-tests"))'] }
 
 [profile.release]
 lto = true

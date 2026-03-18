@@ -113,6 +113,22 @@ pub fn build_enriched_children_from_data(
                         child_ctx["collapsed"] = json!(child.admin.collapsed);
                     }
                 }
+                FieldType::Group => {
+                    // Group inside Array row: add [0] index for form parser compatibility
+                    let group_prefix = format!("{}[0]", child_name);
+                    let sub_fields = build_enriched_children_from_data(
+                        &child.fields,
+                        child_raw,
+                        &group_prefix,
+                        locale_locked,
+                        non_default_locale,
+                        depth + 1,
+                        errors,
+                    );
+
+                    child_ctx["sub_fields"] = json!(sub_fields);
+                    child_ctx["collapsed"] = json!(child.admin.collapsed);
+                }
                 FieldType::Tabs => {
                     let tabs_ctx: Vec<_> = child
                         .tabs

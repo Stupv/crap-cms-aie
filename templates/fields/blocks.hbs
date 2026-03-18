@@ -3,6 +3,7 @@
   <legend>
     {{t label}}
     {{#if required}}<span class="required">*</span>{{/if}}
+    {{#if locale_locked}}<span class="form__locale-badge">{{t "shared_field"}}</span>{{/if}}
     <span class="form__array-count" id="array-count-{{template_id}}">{{row_count}}</span>
     <span class="form__array-legend-actions">
       <button type="button" class="form__array-legend-btn" data-action="toggle-all-rows" aria-label="{{t "toggle_collapse"}}">
@@ -91,6 +92,7 @@
   </template>
   {{/each}}
 
+  {{#unless locale_locked}}
   <crap-block-picker{{#if picker}} data-picker="{{picker}}"{{/if}}>
     <select id="block-type-{{template_id}}" class="form__blocks-select">
       {{#each block_definitions}}
@@ -104,6 +106,7 @@
       {{t "add"}} {{#if add_label}}{{add_label}}{{else}}{{t "block"}}{{/if}}
     </button>
   </crap-block-picker>
+  {{/unless}}
 
   {{#if error}}<p class="form__error">{{error}}</p>{{/if}}
   {{#if description}}<p class="form__help">{{t description}}</p>{{/if}}

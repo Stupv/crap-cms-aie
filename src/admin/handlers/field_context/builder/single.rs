@@ -11,7 +11,6 @@ use crate::{
 
 use super::super::{MAX_FIELD_DEPTH, count_errors_in_fields, safe_template_id};
 use super::build_select_options;
-use super::field_type_extras::{FieldRecursionCtx, apply_field_type_extras};
 
 /// Resolve the full form name for a field, accounting for layout transparency.
 fn resolve_full_name(field: &FieldDefinition, name_prefix: &str) -> String {
@@ -22,6 +21,9 @@ fn resolve_full_name(field: &FieldDefinition, name_prefix: &str) -> String {
         FieldType::Tabs | FieldType::Row | FieldType::Collapsible
     ) {
         name_prefix.to_string() // transparent — layout wrappers don't add their name
+    } else if !name_prefix.contains('[') {
+        // Top-level group chain: continue using __ naming (matches DB columns)
+        format!("{}__{}", name_prefix, field.name)
     } else {
         format!("{}[{}]", name_prefix, field.name)
     }
@@ -193,57 +195,35 @@ pub fn build_single_field_context(
             }
         }
         FieldType::Group => {
-            // Group sub-fields use double-underscore naming at top level,
-            // but when nested inside Array/Blocks they use bracketed names.
-            let sub_fields: Vec<_> = if name_prefix.is_empty() {
-                // Top-level group: use col_name pattern (group__subfield)
-                field.fields.iter().map(|sf| {
-                    let col_name = format!("{}__{}", field.name, sf.name);
-                    let sub_value = values.get(&col_name).cloned().unwrap_or_default();
-                    let sub_label = sf.admin.label.as_ref()
-                        .map(|ls| ls.resolve_default().to_string())
-                        .unwrap_or_else(|| auto_label_from_name(&sf.name));
-                    let sf_locale_locked = non_default_locale && !field.localized;
-
-                    let mut sub_ctx = json!({
-                        "name": col_name,
-                        "field_type": sf.field_type.as_str(),
-                        "label": sub_label,
-                        "required": sf.required,
-                        "value": sub_value,
-                        "placeholder": sf.admin.placeholder.as_ref().map(|ls| ls.resolve_default()),
-                        "description": sf.admin.description.as_ref().map(|ls| ls.resolve_default()),
-                        "readonly": sf.admin.readonly || sf_locale_locked,
-                        "localized": field.localized,
-                        "locale_locked": sf_locale_locked,
-                    });
-
-                    // Recurse for nested composites
-                    let extras_ctx = FieldRecursionCtx::builder(values, errors, &col_name)
-                        .non_default_locale(non_default_locale)
-                        .depth(depth + 1)
-                        .build();
-                    apply_field_type_extras(sf, &sub_value, &mut sub_ctx, &extras_ctx);
-
-                    sub_ctx
-                }).collect()
+            // Use recursive path for both top-level and nested groups.
+            // resolve_full_name handles __ vs bracket naming and layout transparency.
+            let prefix = if name_prefix.is_empty() {
+                field.name.clone()
             } else {
-                // Nested group: use bracketed naming via recursion
-                field
-                    .fields
-                    .iter()
-                    .map(|sf| {
-                        build_single_field_context(
-                            sf,
-                            values,
-                            errors,
-                            &full_name,
-                            non_default_locale,
-                            depth + 1,
-                        )
-                    })
-                    .collect()
+                full_name.clone()
             };
+
+            // If the group is localized, all children are editable in any locale.
+            let child_non_default_locale = if field.localized {
+                false
+            } else {
+                non_default_locale
+            };
+
+            let sub_fields: Vec<_> = field
+                .fields
+                .iter()
+                .map(|sf| {
+                    build_single_field_context(
+                        sf,
+                        values,
+                        errors,
+                        &prefix,
+                        child_non_default_locale,
+                        depth + 1,
+                    )
+                })
+                .collect();
 
             ctx["sub_fields"] = json!(sub_fields);
             ctx["collapsed"] = json!(field.admin.collapsed);

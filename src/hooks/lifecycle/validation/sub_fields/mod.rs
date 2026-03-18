@@ -58,8 +58,17 @@ fn validate_children_recursive(
     for sf in fields {
         match sf.field_type {
             FieldType::Group => {
-                let new_prefix = format!("{}{}__", group_prefix, sf.name);
-                validate_children_recursive(ctx, &sf.fields, &new_prefix, errors);
+                // Navigate into the Group's nested object and validate children.
+                // Form parser stores Group data as nested objects (e.g., {"meta": {"title": "..."}}).
+                let data_key = format!("{}{}", group_prefix, sf.name);
+                if let Some(group_val) = ctx.row_obj.get(&data_key)
+                    && let Some(group_obj) = group_val.as_object()
+                {
+                    let qualified = format!("{}[{}][{}]", ctx.parent_name, ctx.idx, data_key);
+                    validate_sub_fields_inner(
+                        ctx.lua, &sf.fields, group_obj, &qualified, 0, ctx.table, errors,
+                    );
+                }
             }
             FieldType::Row | FieldType::Collapsible => {
                 validate_children_recursive(ctx, &sf.fields, group_prefix, errors);

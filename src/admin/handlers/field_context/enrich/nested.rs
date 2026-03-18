@@ -33,7 +33,6 @@ pub fn build_enriched_sub_field_context(
     opts: &SubFieldOpts,
 ) -> Value {
     let locale_locked = opts.locale_locked;
-    let non_default_locale = opts.non_default_locale;
     let depth = opts.depth;
     let errors = opts.errors;
     let indexed_name = if matches!(
@@ -103,15 +102,9 @@ pub fn build_enriched_sub_field_context(
         FieldType::Blocks => {
             field_types::sub_blocks(&mut sub_ctx, sf, raw_value, &indexed_name, opts)
         }
-        FieldType::Group => field_types::sub_group(
-            &mut sub_ctx,
-            sf,
-            raw_value,
-            &indexed_name,
-            locale_locked,
-            non_default_locale,
-            depth,
-        ),
+        FieldType::Group => {
+            field_types::sub_group(&mut sub_ctx, sf, raw_value, &indexed_name, opts)
+        }
         FieldType::Row | FieldType::Collapsible => {
             field_types::sub_row_collapsible(&mut sub_ctx, sf, raw_value, &indexed_name, opts)
         }

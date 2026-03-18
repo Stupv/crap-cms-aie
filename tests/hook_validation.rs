@@ -1010,11 +1010,11 @@ fn validate_group_in_array_row_required_subfield() {
 
     let fields = vec![array_field];
     let mut data = HashMap::new();
-    // Group sub-fields in array rows use group__subfield keys
+    // Group sub-fields in array rows use nested object format
     data.insert(
         "items".to_string(),
         serde_json::json!([
-            { "meta__author": "" }
+            { "meta": { "author": "" } }
         ]),
     );
 
@@ -1026,7 +1026,7 @@ fn validate_group_in_array_row_required_subfield() {
     assert!(
         err.errors
             .iter()
-            .any(|e| e.field.contains("items[0][meta__author]")),
+            .any(|e| e.field.contains("items[0][meta][0][author]")),
         "Should have group-in-array validation error, got: {:?}",
         err.errors
     );
@@ -1051,7 +1051,7 @@ fn validate_group_date_subfield_in_array_row() {
     data.insert(
         "items".to_string(),
         serde_json::json!([
-            { "meta__published_at": "bad-date" }
+            { "meta": { "published_at": "bad-date" } }
         ]),
     );
 
@@ -1063,7 +1063,7 @@ fn validate_group_date_subfield_in_array_row() {
     assert!(
         err.errors
             .iter()
-            .any(|e| e.field.contains("items[0][meta__published_at]")
+            .any(|e| e.field.contains("items[0][meta][0][published_at]")
                 && e.message.contains("valid date")),
         "Should have group-date validation error in array row, got: {:?}",
         err.errors
@@ -1091,7 +1091,7 @@ fn validate_group_custom_validate_in_array_row() {
     data.insert(
         "items".to_string(),
         serde_json::json!([
-            { "meta__score": -10 }
+            { "meta": { "score": -10 } }
         ]),
     );
 
@@ -1103,7 +1103,7 @@ fn validate_group_custom_validate_in_array_row() {
     assert!(
         err.errors
             .iter()
-            .any(|e| e.field.contains("items[0][meta__score]")),
+            .any(|e| e.field.contains("items[0][meta][0][score]")),
         "Should have custom validate error for group sub-field in array row, got: {:?}",
         err.errors
     );
@@ -1424,7 +1424,7 @@ fn validate_group_inside_tabs_inside_array_via_hook_runner() {
     let mut data = HashMap::new();
     data.insert(
         "items".to_string(),
-        serde_json::json!([{"meta__title": ""}]),
+        serde_json::json!([{"meta": {"title": ""}}]),
     );
 
     let conn = pool.get().expect("DB connection");
@@ -1434,5 +1434,9 @@ fn validate_group_inside_tabs_inside_array_via_hook_runner() {
         result.is_err(),
         "Required field inside Group inside Tabs inside Array must be rejected by HookRunner"
     );
-    assert!(result.unwrap_err().errors[0].field.contains("meta__title"));
+    assert!(
+        result.unwrap_err().errors[0]
+            .field
+            .contains("meta][0][title")
+    );
 }

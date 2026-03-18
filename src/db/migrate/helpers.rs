@@ -153,15 +153,30 @@ pub(super) fn sync_join_tables(
     fields: &[FieldDefinition],
     locale_config: &LocaleConfig,
 ) -> Result<()> {
+    sync_join_tables_inner(conn, collection_slug, fields, locale_config, "")
+}
+
+fn sync_join_tables_inner(
+    conn: &dyn DbConnection,
+    collection_slug: &str,
+    fields: &[FieldDefinition],
+    locale_config: &LocaleConfig,
+    prefix: &str,
+) -> Result<()> {
     for field in fields {
         let has_locale_col = field.localized && locale_config.is_enabled();
+        let full_name = if prefix.is_empty() {
+            field.name.clone()
+        } else {
+            format!("{}__{}", prefix, field.name)
+        };
 
         match field.field_type {
             FieldType::Relationship | FieldType::Upload => {
                 if let Some(ref rc) = field.relationship
                     && rc.has_many
                 {
-                    let table_name = format!("{}_{}", collection_slug, field.name);
+                    let table_name = format!("{}_{}", collection_slug, full_name);
 
                     if !table_exists(conn, &table_name)? {
                         let poly_col = if rc.is_polymorphic() {
@@ -223,7 +238,7 @@ pub(super) fn sync_join_tables(
                 }
             }
             FieldType::Array => {
-                let table_name = format!("{}_{}", collection_slug, field.name);
+                let table_name = format!("{}_{}", collection_slug, full_name);
                 let flat_subs = flatten_array_sub_fields(&field.fields);
 
                 if !table_exists(conn, &table_name)? {
@@ -276,7 +291,7 @@ pub(super) fn sync_join_tables(
                 }
             }
             FieldType::Blocks => {
-                let table_name = format!("{}_{}", collection_slug, field.name);
+                let table_name = format!("{}_{}", collection_slug, full_name);
 
                 if !table_exists(conn, &table_name)? {
                     let locale_col = if has_locale_col {
@@ -305,12 +320,33 @@ pub(super) fn sync_join_tables(
                     ensure_locale_column(conn, &table_name, &locale_config.default_locale)?;
                 }
             }
+            FieldType::Group => {
+                sync_join_tables_inner(
+                    conn,
+                    collection_slug,
+                    &field.fields,
+                    locale_config,
+                    &full_name,
+                )?;
+            }
             FieldType::Row | FieldType::Collapsible => {
-                sync_join_tables(conn, collection_slug, &field.fields, locale_config)?;
+                sync_join_tables_inner(
+                    conn,
+                    collection_slug,
+                    &field.fields,
+                    locale_config,
+                    prefix,
+                )?;
             }
             FieldType::Tabs => {
                 for tab in &field.tabs {
-                    sync_join_tables(conn, collection_slug, &tab.fields, locale_config)?;
+                    sync_join_tables_inner(
+                        conn,
+                        collection_slug,
+                        &tab.fields,
+                        locale_config,
+                        prefix,
+                    )?;
                 }
             }
             _ => {}
@@ -918,6 +954,200 @@ mod tests {
             !cols.contains("layout"),
             "layout wrapper should NOT be a column"
         );
+    }
+
+    // ── Group > Array/Blocks prefixed join tables ─────────────────────────
+
+    #[test]
+    fn group_array_creates_prefixed_join_table() {
+        let (_dir, pool) = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection(
+            "posts",
+            vec![
+                FieldDefinition::builder("config", FieldType::Group)
+                    .fields(vec![
+                        FieldDefinition::builder("items", FieldType::Array)
+                            .fields(vec![
+                                text_field("name"),
+                                FieldDefinition::builder("score", FieldType::Number).build(),
+                            ])
+                            .build(),
+                    ])
+                    .build(),
+            ],
+        );
+        super::super::collection::create_collection_table(&conn, "posts", &def, &no_locale())
+            .unwrap();
+        sync_join_tables(&conn, "posts", &def.fields, &no_locale()).unwrap();
+
+        assert!(
+            table_exists(&conn, "posts_config__items").unwrap(),
+            "Group > Array should create prefixed join table posts_config__items"
+        );
+        let cols = get_table_columns(&conn, "posts_config__items").unwrap();
+        assert!(cols.contains("name"), "should have name column");
+        assert!(cols.contains("score"), "should have score column");
+        assert!(cols.contains("parent_id"));
+        assert!(cols.contains("_order"));
+    }
+
+    #[test]
+    fn group_blocks_creates_prefixed_join_table() {
+        let (_dir, pool) = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection(
+            "posts",
+            vec![
+                FieldDefinition::builder("config", FieldType::Group)
+                    .fields(vec![
+                        FieldDefinition::builder("content", FieldType::Blocks).build(),
+                    ])
+                    .build(),
+            ],
+        );
+        super::super::collection::create_collection_table(&conn, "posts", &def, &no_locale())
+            .unwrap();
+        sync_join_tables(&conn, "posts", &def.fields, &no_locale()).unwrap();
+
+        assert!(
+            table_exists(&conn, "posts_config__content").unwrap(),
+            "Group > Blocks should create prefixed join table posts_config__content"
+        );
+        let cols = get_table_columns(&conn, "posts_config__content").unwrap();
+        assert!(
+            cols.contains("_block_type"),
+            "should have _block_type column"
+        );
+        assert!(cols.contains("data"), "should have data column");
+    }
+
+    #[test]
+    fn group_array_localized_creates_table_with_locale() {
+        let (_dir, pool) = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection(
+            "posts",
+            vec![
+                FieldDefinition::builder("config", FieldType::Group)
+                    .fields(vec![
+                        FieldDefinition::builder("items", FieldType::Array)
+                            .localized(true)
+                            .fields(vec![text_field("label")])
+                            .build(),
+                    ])
+                    .build(),
+            ],
+        );
+        super::super::collection::create_collection_table(&conn, "posts", &def, &locale_en_de())
+            .unwrap();
+        sync_join_tables(&conn, "posts", &def.fields, &locale_en_de()).unwrap();
+
+        assert!(
+            table_exists(&conn, "posts_config__items").unwrap(),
+            "Group > localized Array should create prefixed join table"
+        );
+        let cols = get_table_columns(&conn, "posts_config__items").unwrap();
+        assert!(
+            cols.contains("_locale"),
+            "localized Array inside Group should have _locale column"
+        );
+        assert!(cols.contains("label"));
+    }
+
+    #[test]
+    fn group_relationship_creates_prefixed_junction_table() {
+        let (_dir, pool) = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection(
+            "posts",
+            vec![
+                FieldDefinition::builder("config", FieldType::Group)
+                    .fields(vec![
+                        FieldDefinition::builder("tags", FieldType::Relationship)
+                            .relationship(RelationshipConfig::new("tags", true))
+                            .build(),
+                    ])
+                    .build(),
+            ],
+        );
+        super::super::collection::create_collection_table(&conn, "posts", &def, &no_locale())
+            .unwrap();
+        sync_join_tables(&conn, "posts", &def.fields, &no_locale()).unwrap();
+
+        assert!(
+            table_exists(&conn, "posts_config__tags").unwrap(),
+            "Group > Relationship should create prefixed junction table"
+        );
+        let cols = get_table_columns(&conn, "posts_config__tags").unwrap();
+        assert!(cols.contains("parent_id"));
+        assert!(cols.contains("related_id"));
+        assert!(cols.contains("_order"));
+    }
+
+    #[test]
+    fn group_group_array_creates_deeply_prefixed_join_table() {
+        let (_dir, pool) = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection(
+            "posts",
+            vec![
+                FieldDefinition::builder("outer", FieldType::Group)
+                    .fields(vec![
+                        FieldDefinition::builder("inner", FieldType::Group)
+                            .fields(vec![
+                                FieldDefinition::builder("items", FieldType::Array)
+                                    .fields(vec![text_field("name")])
+                                    .build(),
+                            ])
+                            .build(),
+                    ])
+                    .build(),
+            ],
+        );
+        super::super::collection::create_collection_table(&conn, "posts", &def, &no_locale())
+            .unwrap();
+        sync_join_tables(&conn, "posts", &def.fields, &no_locale()).unwrap();
+
+        assert!(
+            table_exists(&conn, "posts_outer__inner__items").unwrap(),
+            "Group > Group > Array should create double-prefixed join table"
+        );
+        let cols = get_table_columns(&conn, "posts_outer__inner__items").unwrap();
+        assert!(cols.contains("name"));
+        assert!(cols.contains("parent_id"));
+        assert!(cols.contains("_order"));
+    }
+
+    #[test]
+    fn group_group_blocks_creates_deeply_prefixed_join_table() {
+        let (_dir, pool) = in_memory_pool();
+        let conn = pool.get().unwrap();
+        let def = simple_collection(
+            "posts",
+            vec![
+                FieldDefinition::builder("outer", FieldType::Group)
+                    .fields(vec![
+                        FieldDefinition::builder("inner", FieldType::Group)
+                            .fields(vec![
+                                FieldDefinition::builder("content", FieldType::Blocks).build(),
+                            ])
+                            .build(),
+                    ])
+                    .build(),
+            ],
+        );
+        super::super::collection::create_collection_table(&conn, "posts", &def, &no_locale())
+            .unwrap();
+        sync_join_tables(&conn, "posts", &def.fields, &no_locale()).unwrap();
+
+        assert!(
+            table_exists(&conn, "posts_outer__inner__content").unwrap(),
+            "Group > Group > Blocks should create double-prefixed join table"
+        );
+        let cols = get_table_columns(&conn, "posts_outer__inner__content").unwrap();
+        assert!(cols.contains("_block_type"));
+        assert!(cols.contains("data"));
     }
 
     #[test]

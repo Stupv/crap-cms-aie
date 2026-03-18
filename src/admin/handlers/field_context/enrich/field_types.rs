@@ -366,15 +366,22 @@ pub(super) fn sub_blocks(
 }
 
 /// Enrich a nested Group sub-field context.
+///
+/// Group inside Array/Blocks uses `[0]` index notation to match the form parser's
+/// convention (Group is treated as a single-element composite). For example,
+/// `items[0][meta][0][title]` for field "title" inside Group "meta" inside Array "items".
 pub(super) fn sub_group(
     sub_ctx: &mut Value,
     sf: &FieldDefinition,
     raw_value: Option<&Value>,
     indexed_name: &str,
-    locale_locked: bool,
-    non_default_locale: bool,
-    depth: usize,
+    opts: &super::SubFieldOpts,
 ) {
+    let locale_locked = opts.locale_locked;
+    let non_default_locale = opts.non_default_locale;
+    let depth = opts.depth;
+    let errors = opts.errors;
+
     let group_obj = match raw_value {
         Some(Value::Object(_)) => raw_value,
         _ => None,
@@ -388,13 +395,30 @@ pub(super) fn sub_group(
                 .and_then(|v| v.as_object())
                 .and_then(|m| m.get(&nested_sf.name));
 
-            let nested_name = format!("{}[{}]", indexed_name, nested_sf.name);
+            // Use [0] index for Group children: items[0][meta][0][title]
+            let is_wrapper = matches!(
+                nested_sf.field_type,
+                FieldType::Tabs | FieldType::Row | FieldType::Collapsible
+            );
+            let nested_name = if is_wrapper {
+                format!("{}[0]", indexed_name)
+            } else {
+                format!("{}[0][{}]", indexed_name, nested_sf.name)
+            };
 
             let nested_val = nested_raw
                 .map(|v| match v {
                     Value::String(s) => s.clone(),
                     Value::Null => String::new(),
-                    other => other.to_string(),
+                    other => match nested_sf.field_type {
+                        FieldType::Array
+                        | FieldType::Blocks
+                        | FieldType::Group
+                        | FieldType::Row
+                        | FieldType::Collapsible
+                        | FieldType::Tabs => String::new(),
+                        _ => other.to_string(),
+                    },
                 })
                 .unwrap_or_default();
 
@@ -417,18 +441,45 @@ pub(super) fn sub_group(
                 "description": nested_sf.admin.description.as_ref().map(|ls| ls.resolve_default()),
             });
 
-            let empty_vals = HashMap::new();
-            let empty_errs = HashMap::new();
-            let extras_ctx =
-                crate::admin::handlers::field_context::builder::FieldRecursionCtx::builder(
-                    &empty_vals,
-                    &empty_errs,
-                    &nested_name,
-                )
-                .non_default_locale(non_default_locale)
-                .depth(depth + 1)
-                .build();
-            apply_field_type_extras(nested_sf, &nested_val, &mut nested_ctx, &extras_ctx);
+            if let Some(err) = errors.get(&nested_name) {
+                nested_ctx["error"] = json!(err);
+            }
+
+            if depth >= super::super::MAX_FIELD_DEPTH {
+                return nested_ctx;
+            }
+
+            // Dispatch composite children to their respective enrichment functions
+            match nested_sf.field_type {
+                FieldType::Group => {
+                    sub_group(&mut nested_ctx, nested_sf, nested_raw, &nested_name, opts);
+                }
+                FieldType::Row | FieldType::Collapsible => {
+                    sub_row_collapsible(&mut nested_ctx, nested_sf, nested_raw, &nested_name, opts);
+                }
+                FieldType::Tabs => {
+                    sub_tabs(&mut nested_ctx, nested_sf, nested_raw, &nested_name, opts);
+                }
+                FieldType::Array => {
+                    sub_array(&mut nested_ctx, nested_sf, nested_raw, &nested_name, opts);
+                }
+                FieldType::Blocks => {
+                    sub_blocks(&mut nested_ctx, nested_sf, nested_raw, &nested_name, opts);
+                }
+                _ => {
+                    let empty_vals = HashMap::new();
+                    let extras_ctx =
+                        crate::admin::handlers::field_context::builder::FieldRecursionCtx::builder(
+                            &empty_vals,
+                            errors,
+                            &nested_name,
+                        )
+                        .non_default_locale(non_default_locale)
+                        .depth(depth + 1)
+                        .build();
+                    apply_field_type_extras(nested_sf, &nested_val, &mut nested_ctx, &extras_ctx);
+                }
+            }
 
             nested_ctx
         })
