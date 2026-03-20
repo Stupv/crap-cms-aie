@@ -19,3 +19,6 @@ CLAUDE.md
 # OS
 .DS_Store
 Thumbs.db
+
+# AIE state (auto-generated)
+.aie/
