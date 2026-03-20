@@ -275,7 +275,7 @@ end
                 }
             } else {
                 // No field info available — generic template
-                r#"    -- TODO: replace "field_name" with the field to watch
+                r#"    -- STEP: replace "field_name" with the field you want to watch
 
     return { field = "field_name", equals = "value" }"#
                     .to_string()
