@@ -1,0 +1,604 @@
+{
+  "metadata": {
+    "run_id": "run-001",
+    "project_name": "crap-cms",
+    "project_path": "/projects/external/crap-cms",
+    "started_at": "2026-03-20T11:59:53.516199Z",
+    "completed_at": "2026-03-20T12:07:32.401185Z",
+    "status": "completed",
+    "stages_completed": [
+      "measure",
+      "understand",
+      "discover",
+      "formulate"
+    ],
+    "llm_calls": [
+      {
+        "model": "claude-haiku-4-5-20251001",
+        "stage": "1a_metric_parser",
+        "input_tokens": 3405,
+        "output_tokens": 3455,
+        "duration_seconds": 32.66
+      },
+      {
+        "model": "claude-sonnet-4-6",
+        "stage": "1b_dependency_mapper",
+        "input_tokens": 3,
+        "output_tokens": 2721,
+        "duration_seconds": 65.06
+      },
+      {
+        "model": "claude-sonnet-4-6",
+        "stage": "1c_doc_understanding",
+        "input_tokens": 3,
+        "output_tokens": 1963,
+        "duration_seconds": 57.79
+      },
+      {
+        "model": "claude-sonnet-4-6",
+        "stage": "2a_code_sweep",
+        "input_tokens": 4,
+        "output_tokens": 2963,
+        "duration_seconds": 63.37
+      },
+      {
+        "model": "claude-sonnet-4-6",
+        "stage": "2b_feature_sweep",
+        "input_tokens": 4,
+        "output_tokens": 3235,
+        "duration_seconds": 119.27
+      },
+      {
+        "model": "claude-sonnet-4-6",
+        "stage": "3a_task_generator",
+        "input_tokens": 4,
+        "output_tokens": 5403,
+        "duration_seconds": 103.04
+      }
+    ],
+    "total_duration_seconds": 458.884986,
+    "aie_version": "2.0.0",
+    "run_type": "single",
+    "reconciliation_method": "none"
+  },
+  "metrics_before": {
+    "project_name": "crap-cms",
+    "project_path": "/projects/external/crap-cms",
+    "metrics": {
+      "dockerfile_issues": {
+        "metric_id": "dockerfile_issues",
+        "value": 1.0,
+        "unit": "count",
+        "raw_output": "[{\"code\":\"DL3018\",\"column\":1,\"file\":\"Dockerfile\",\"level\":\"warning\",\"line\":2,\"message\":\"Pin versions in apk add. Instead of `apk add <package>` use `apk add <package>=<version>`\"}]",
+        "details": {
+          "by_level": {
+            "warning": 1
+          },
+          "by_code": {
+            "DL3018": 1
+          },
+          "total": 1
+        },
+        "collected_at": "2026-03-20T11:59:53.637675Z",
+        "duration_seconds": 0.1
+      },
+      "secrets_detected": {
+        "metric_id": "secrets_detected",
+        "value": 8.0,
+        "unit": "count",
+        "raw_output": "{\n  \"version\": \"1.5.0\",\n  \"plugins_used\": [\n    {\n      \"name\": \"ArtifactoryDetector\"\n    },\n    {\n      \"name\": \"AWSKeyDetector\"\n    },\n    {\n      \"name\": \"AzureStorageKeyDetector\"\n    },\n    {\n      \"name\": \"Base64HighEntropyString\",\n      \"limit\": 4.5\n    },\n    {\n      \"name\": \"BasicAuthDetector\"\n    },\n    {\n      \"name\": \"CloudantDetector\"\n    },\n    {\n      \"name\": \"DiscordBotTokenDetector\"\n    },\n    {\n      \"name\": \"GitHubTokenDetector\"\n    },\n    {\n      \"name\": \"GitLabTokenDetector\"\n    },\n    {\n      \"name\": \"HexHighEntropyString\",\n      \"limit\": 3.0\n    },\n    {\n      \"name\": \"IbmCloudIamDetector\"\n    },\n    {\n      \"name\": \"IbmCosHmacDetector\"\n    },\n    {\n      \"name\": \"IPPublicDetector\"\n    },\n    {\n      \"name\": \"JwtTokenDetector\"\n    },\n    {\n      \"name\": \"KeywordDetector\",\n      \"keyword_exclude\": \"\"\n    },\n    {\n      \"name\": \"MailchimpDetector\"\n    },\n    {\n      \"name\": \"NpmDetector\"\n    },\n    {\n      \"name\": \"OpenAIDetector\"\n    },\n    {\n      \"name\": \"PrivateKeyDetector\"\n    },\n    {\n      \"name\": \"PypiTokenDetector\"\n    },\n    {\n      \"name\": \"SendGridDetector\"\n    },\n    {\n      \"name\": \"SlackDetector\"\n    },\n    {\n      \"name\": \"SoftlayerDetector\"\n    },\n    {\n      \"name\": \"SquareOAuthDetector\"\n    },\n    {\n      \"name\": \"StripeDetector\"\n    },\n    {\n      \"name\": \"TelegramBotTokenDetector\"\n    },\n    {\n      \"name\": \"TwilioKeyDetector\"\n    }\n  ],\n  \"filters_used\": [\n    {\n      \"path\": \"detect_secrets.filters.allowlist.is_line_allowlisted\"\n    },\n    {\n      \"path\": \"detect_secrets.filters.common.is_ignored_due_to_verification_policies\",\n      \"min_level\": 2\n    },\n    {\n      \"path\": \"detect_secrets.filters.heuristic.is_indirect_reference\"\n    },\n    {\n      \"path\": \"detect_secrets.filters.heuristic.is_likely_id_string\"\n    },\n    {\n      \"path\": \"detect_secrets.filters.heuristic.is_lock_file\"\n    },\n    {\n      \"path\": \"detect_secrets.filters.heuristic.is_not_alphanumeric_string\"\n    },\n    {\n      \"path\": \"detect_secrets.filters.heuristic.is_potential_uuid\"\n    },\n    {\n      \"path\": \"detect_secrets.filters.heuristic.is_prefixed_with_dollar_sign\"\n    },\n    {\n      \"path\": \"detect_secrets.filters.heuristic.is_sequential_string\"\n    },\n    {\n      \"path\": \"detect_secrets.filters.heuristic.is_swagger_file\"\n    },\n    {\n      \"path\": \"detect_secrets.filters.heuristic.is_templated_secret\"\n    }\n  ],\n  \"results\": {\n    \"src/admin/handlers/field_context/enrich/tests.rs\": [\n      {\n        \"type\": \"Secret Keyword\",\n        \"filename\": \"src/admin/handlers/field_context/enrich/tests.rs\",\n        \"hashed_secret\": \"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3\",\n        \"is_verified\": false,\n        \"line_number\": 909\n      }\n    ],\n    \"src/config/smtp_password.rs\": [\n      {\n        \"type\": \"Secret Keyword\",\n        \"filename\": \"src/config/smtp_password.rs\",\n        \"hashed_secret\": \"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3\",\n        \"is_verified\": false,\n        \"line_number\": 81\n      }\n    ],\n    \"src/core/auth/jwt_secret.rs\": [\n      {\n        \"type\": \"Secret Keyword\",\n        \"filename\": \"src/core/auth/jwt_secret.rs\",\n        \"hashed_secret\": \"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3\",\n        \"is_verified\": false,\n        \"line_number\": 104\n      }\n    ],\n    \"src/hooks/api/crypto.rs\": [\n      {\n        \"type\": \"Hex High Entropy String\",\n        \"filename\": \"src/hooks/api/crypto.rs\",\n        \"hashed_secret\": \"ee662f2bc691daa48d074542722d8e1b0587673c\",\n        \"is_verified\": false,\n        \"line_number\": 298\n      },\n      {\n        \"type\": \"Hex High Entropy String\",\n        \"filename\": \"src/hooks/api/crypto.rs\",\n        \"hashed_secret\": \"244f421f896bdcdd2784dccf4eaf7c8dfd5189b5\",\n        \"is_verified\": false,\n        \"line_number\": 309\n      },\n      {\n        \"type\": \"Hex High Entropy String\",\n        \"filename\": \"src/hooks/api/crypto.rs\",\n        \"hashed_secret\": \"4cbb809f3ba71cfabc9577ef1caf02f3bbda14d5\",\n        \"is_verified\": false,\n        \"line_number\": 325\n      }\n    ],\n    \"src/scaffold/init.rs\": [\n      {\n        \"type\": \"Secret Keyword\",\n        \"filename\": \"src/scaffold/init.rs\",\n        \"hashed_secret\": \"b2b16d1e009a732029babed97f420237cedd72e2\",\n        \"is_verified\": false,\n        \"line_number\": 206\n      },\n      {\n        \"type\": \"Secret Keyword\",\n        \"filename\": \"src/scaffold/init.rs\",\n        \"hashed_secret\": \"e5e9fa1ba31ecd1ae84f75caaa474f3a663f05f4\",\n        \"is_verified\": false,\n        \"line_number\": 238\n      }\n    ]\n  },\n  \"generated_at\": \"2026-03-20T12:00:10Z\"\n}\n",
+        "details": {
+          "files_with_secrets": 5,
+          "total": 8,
+          "by_type": {
+            "Secret Keyword": 5,
+            "Hex High Entropy String": 3
+          }
+        },
+        "collected_at": "2026-03-20T12:00:11.156274Z",
+        "duration_seconds": 17.62
+      },
+      "todo_count": {
+        "metric_id": "todo_count",
+        "value": 1.0,
+        "unit": "count",
+        "raw_output": "src/scaffold/hook/mod.rs:278:                r#\"    -- TODO: replace \"field_name\" with the field to watch\n",
+        "details": {
+          "by_tag": {
+            "TODO": 1
+          },
+          "by_file": {
+            "src/scaffold/hook/mod.rs": 1
+          }
+        },
+        "collected_at": "2026-03-20T11:59:53.587650Z",
+        "duration_seconds": 0.06
+      }
+    },
+    "collected_at": "2026-03-20T11:59:53.525727Z",
+    "total_duration_seconds": 17.63,
+    "errors": {}
+  },
+  "understanding": {
+    "metric_analyses": [
+      {
+        "metric_id": "dockerfile_issues",
+        "measures": "The number of linting violations and best-practice violations detected in a Dockerfile by Hadolint, such as missing HEALTHCHECK, hardcoded versions, running as root, or inefficient layer usage.",
+        "computation_method": "Hadolint tool with JSON output parser - executes 'hadolint Dockerfile --format json' and counts violation entries in the JSON response",
+        "influencing_factors": [
+          {
+            "factor": "Dockerfile adherence to security best practices",
+            "direction": "decreases",
+            "magnitude": "high"
+          },
+          {
+            "factor": "Use of specific image tags instead of 'latest'",
+            "direction": "decreases",
+            "magnitude": "medium"
+          },
+          {
+            "factor": "Implementation of multi-stage builds for optimization",
+            "direction": "decreases",
+            "magnitude": "medium"
+          },
+          {
+            "factor": "Running container processes as non-root user",
+            "direction": "decreases",
+            "magnitude": "low"
+          },
+          {
+            "factor": "Presence of HEALTHCHECK instruction",
+            "direction": "decreases",
+            "magnitude": "low"
+          },
+          {
+            "factor": "Using untagged or 'latest' base images",
+            "direction": "increases",
+            "magnitude": "medium"
+          },
+          {
+            "factor": "Large or inefficiently layered image builds",
+            "direction": "increases",
+            "magnitude": "low"
+          }
+        ],
+        "theoretical_bounds": {
+          "floor": 0.0,
+          "ceiling": 100.0,
+          "unit": "count"
+        },
+        "data_freshness": "Changes on each Dockerfile modification; typically checked on every build or commit"
+      },
+      {
+        "metric_id": "secrets_detected",
+        "measures": "The number of potential secrets (API keys, tokens, passwords, private keys, database credentials) accidentally committed to the source code repository.",
+        "computation_method": "detect-secrets tool with JSON output parser - executes 'detect-secrets scan src/' and counts identified secret matches in the JSON output",
+        "influencing_factors": [
+          {
+            "factor": "Hardcoding credentials instead of using environment variables",
+            "direction": "increases",
+            "magnitude": "high"
+          },
+          {
+            "factor": "Implementation of environment variable-based configuration",
+            "direction": "decreases",
+            "magnitude": "high"
+          },
+          {
+            "factor": "Use of pre-commit hooks for secret scanning",
+            "direction": "decreases",
+            "magnitude": "high"
+          },
+          {
+            "factor": "Use of secrets management tools (Vault, AWS Secrets Manager, etc.)",
+            "direction": "decreases",
+            "magnitude": "high"
+          },
+          {
+            "factor": "Developer security training and awareness",
+            "direction": "decreases",
+            "magnitude": "medium"
+          },
+          {
+            "factor": "Proper .gitignore configuration for sensitive files",
+            "direction": "decreases",
+            "magnitude": "medium"
+          },
+          {
+            "factor": "Code review practices catching credential commits",
+            "direction": "decreases",
+            "magnitude": "medium"
+          }
+        ],
+        "theoretical_bounds": {
+          "floor": 0.0,
+          "ceiling": 500.0,
+          "unit": "count"
+        },
+        "data_freshness": "Changes on each code commit; should be scanned frequently (typically on every commit via pre-commit hooks)"
+      },
+      {
+        "metric_id": "todo_count",
+        "measures": "The cumulative count of TODO, FIXME, HACK, and XXX comments in the source code, indicating incomplete work, known issues, temporary solutions, or technical debt.",
+        "computation_method": "Grep-based pattern matching with line counting - executes recursive grep search for 'TODO|FIXME|HACK|XXX' patterns in src/ and counts matching lines",
+        "influencing_factors": [
+          {
+            "factor": "Overall code completeness and project maturity",
+            "direction": "decreases",
+            "magnitude": "high"
+          },
+          {
+            "factor": "Accumulation of technical debt over time",
+            "direction": "increases",
+            "magnitude": "high"
+          },
+          {
+            "factor": "Active refactoring and cleanup efforts",
+            "direction": "decreases",
+            "magnitude": "high"
+          },
+          {
+            "factor": "Time pressure or deadline constraints during development",
+            "direction": "increases",
+            "magnitude": "high"
+          },
+          {
+            "factor": "Code review practices enforcing TODO resolution",
+            "direction": "decreases",
+            "magnitude": "medium"
+          },
+          {
+            "factor": "Feature complexity requiring deferred implementation",
+            "direction": "increases",
+            "magnitude": "medium"
+          },
+          {
+            "factor": "Developer discipline in documenting incomplete work",
+            "direction": "increases",
+            "magnitude": "medium"
+          },
+          {
+            "factor": "Test coverage gaps requiring workarounds",
+            "direction": "increases",
+            "magnitude": "low"
+          }
+        ],
+        "theoretical_bounds": {
+          "floor": 0.0,
+          "ceiling": 10000.0,
+          "unit": "count"
+        },
+        "data_freshness": "Changes with each code commit or modification; typically checked on every build or commit"
+      }
+    ],
+    "dependency_map": {
+      "dependencies": [
+        {
+          "source_metric": "todo_count",
+          "target_metric": "secrets_detected",
+          "relationship": "correlated",
+          "confidence": "inferred",
+          "explanation": "High TODO/FIXME density is a strong signal of deferred security work. Comments like 'FIXME: replace hardcoded key' or 'TODO: move to env var' are a known precursor pattern — the placeholder credential gets committed and flagged by detect-secrets while the fix stays a TODO. Reducing todo_count by resolving these items directly shrinks the secrets surface."
+        },
+        {
+          "source_metric": "todo_count",
+          "target_metric": "dockerfile_issues",
+          "relationship": "correlated",
+          "confidence": "inferred",
+          "explanation": "Teams accumulating TODO debt tend to defer infrastructure hygiene in parallel. Dockerfile best-practice violations (missing HEALTHCHECK, running as root, unpinned base images) follow the same 'ship it now, fix it later' pattern as source-level TODOs. Both metrics are downstream symptoms of the same deferred-quality culture, so improving one typically accompanies improving the other."
+        },
+        {
+          "source_metric": "secrets_detected",
+          "target_metric": "dockerfile_issues",
+          "relationship": "causal",
+          "confidence": "inferred",
+          "explanation": "Developers who hardcode secrets in source (detected in src/ by detect-secrets) frequently apply the same pattern in Dockerfiles via ENV or ARG directives with literal credential values — a direct Hadolint violation category. Fixing secrets handling in source code (moving to vault/env injection) naturally propagates to the Dockerfile, reducing ENV-based secret violations there too. The causal arrow runs through shared developer habit: insecure credential handling in one layer predicts it in the other."
+        }
+      ],
+      "critical_path": [
+        "secrets_detected",
+        "dockerfile_issues",
+        "todo_count"
+      ],
+      "risk_clusters": [
+        {
+          "metrics": [
+            "secrets_detected",
+            "dockerfile_issues"
+          ],
+          "risk": "Credential exposure and container attack surface: both metrics can independently leak secrets into a deployed artifact — secrets_detected via committed source, dockerfile_issues via hardcoded ENV/ARG values in the image layer. A compromised image or leaked repo exposes credentials on two fronts simultaneously. Fix priority: rotate any detected secrets immediately, then audit Dockerfile ENV/ARG for inline credentials."
+        },
+        {
+          "metrics": [
+            "todo_count",
+            "dockerfile_issues"
+          ],
+          "risk": "Deferred maintenance debt spiral: high TODO density signals that known infrastructure and security issues are being logged but not resolved. Dockerfile violations that linger (running as root, no HEALTHCHECK, unpinned base images) increase operational blast radius over time — a root-running container with an unmonitored health state is a silent availability and privilege-escalation risk. These two metrics reinforce each other; neither improves without a deliberate debt-paydown sprint."
+        },
+        {
+          "metrics": [
+            "secrets_detected",
+            "todo_count"
+          ],
+          "risk": "Known-but-ignored security issues: a subset of TODOs in a codebase with high secrets_detected are almost certainly acknowledgements of the secrets themselves ('TODO: move API key to vault'). This means the codebase contains both the secret AND a written record that the developer knew it was wrong — maximising legal, compliance, and reputational exposure if the repo is ever audited or leaked."
+        }
+      ]
+    },
+    "doc_understanding": {
+      "application_purpose": "Crap CMS is a headless CMS written in Rust that allows users to define content schemas in Lua, extend behavior with hooks, query content via gRPC, and manage content through an HTMX-based admin UI — all in a single static binary backed by SQLite with zero external infrastructure dependencies.",
+      "target_users": [
+        "Rust/WebAssembly frontend developers needing a lightweight CMS",
+        "Solo developers or small teams wanting self-hosted, zero-infrastructure content management",
+        "Developers building AI-integrated tools (via MCP server)",
+        "Developers needing a scriptable/extensible CMS without a Node.js or cloud dependency"
+      ],
+      "key_workflows": [
+        "Define and manage content collections with typed fields via Lua schema",
+        "Author and publish content (with draft/publish workflow and version history) via admin UI",
+        "Query and mutate content programmatically via gRPC API",
+        "Extend CMS behavior using Lua hooks at field, collection, and global levels",
+        "Upload and auto-resize/convert image assets",
+        "Manage localized content with per-field locale opt-in",
+        "Receive real-time content mutation events via SSE or gRPC streaming",
+        "Schedule and monitor background jobs with cron, retries, and queues",
+        "Scaffold new projects and collections via interactive CLI",
+        "Export, import, and back up data via CLI",
+        "Integrate CMS with AI tooling via Model Context Protocol (MCP) server",
+        "Consume CMS content over plain HTTP/JSON via the companion REST proxy"
+      ],
+      "known_limitations": [
+        "Alpha software (0.x): breaking changes may appear without prior notice and no stability guarantees are given",
+        "SQLite only: the database layer is abstracted behind a trait but no alternative backends (Postgres, MySQL) are currently shipped or documented",
+        "Nightly Docker image is x86_64 only — ARM64 nightly builds are not published",
+        "No built-in REST API: JSON-over-HTTP requires deploying a separate companion project (crap-rest proxy)",
+        "Default admin credentials (admin@crap.studio / admin123) are hardcoded in the example config, creating a security risk if the example config is used in production without change",
+        "gRPC is the primary API protocol; teams unfamiliar with gRPC tooling face extra setup friction",
+        "Template/static file customisation requires filesystem overlay; changes to embedded defaults require a full recompile",
+        "No mention of horizontal scaling, clustering, or WAL-mode read replica support — implied single-node only",
+        "Access control is collection-level and field-level only; row-level security beyond filter constraints is not described",
+        "MCP server and REST proxy are not documented in the README itself — users are directed elsewhere with no inline guidance"
+      ],
+      "improvement_opportunities": [
+        "Security: The quickstart/example config ships with a hardcoded admin password (admin123). The CLI scaffolding or first-run flow should force a password change or generate a random credential, and the README should include an explicit security warning against using the example config in production.",
+        "DX: The REST proxy (crap-rest) is a separate repo with no inline documentation or even a link to its docs in the README. Add at minimum a short 'REST API' section with a docker-compose example showing CMS + REST proxy together, reducing friction for users who cannot use gRPC.",
+        "ARM64 nightly builds are missing — only x86_64 nightly is published. Extend the nightly CI workflow to produce and push a multi-arch nightly Docker image (linux/amd64 + linux/arm64) consistent with release builds, since ARM64 hardware (e.g. Apple Silicon dev machines, Raspberry Pi) is common.",
+        "Error UX: There is no mention of error message quality or remediation hints in the API or admin UI. Add structured error codes and human-readable remediation hints to gRPC status details and admin UI flash messages to reduce user confusion during misconfiguration.",
+        "Database portability: The DB layer is abstracted behind a trait but only SQLite is shipped. Document the trait interface and provide a migration guide or at least a stub for Postgres, so users who outgrow SQLite have a clear upgrade path rather than being forced to switch CMSes.",
+        "Documentation gap: The MCP server is listed as a feature but receives no explanation in the README (no example, no link to a docs section). Add a minimal MCP server quickstart (how to connect an AI tool, what operations are exposed) directly in the README or link to a dedicated doc page.",
+        "Onboarding: The example config is a tarball with no inline explanation of its structure. Add a brief 'Project layout' section to the README describing what crap.toml, the Lua schema files, and the static/templates overlay directories contain, so new users understand the mental model before reading the full manual.",
+        "Observability: Background job scheduling, retries, and heartbeat monitoring are listed as features but there is no mention of metrics endpoints (e.g. Prometheus /metrics), structured logging configuration, or health-check endpoints. Adding a documented /healthz and optional Prometheus metrics scrape endpoint would make production deployments significantly easier to monitor.",
+        "CLI discoverability: The CLI supports scaffolding, blueprints, export/import, and backups, but the README gives no command examples beyond `serve`. Add a cheat-sheet table of key CLI subcommands (e.g. `crap-cms make collection`, `crap-cms export`, `crap-cms backup`) with one-liner descriptions so users know what tooling exists without reading the full manual.",
+        "Testing: API tests rely on grpcurl and a manually running server via sourced shell scripts. Providing a docker-compose-based integration test environment (spin up server, run tests, tear down) would lower the barrier for contributors and could be wired into CI to catch regressions against the running server, not just unit tests."
+      ]
+    }
+  },
+  "discovery": {
+    "proposals": [
+      {
+        "id": "P-001",
+        "title": "Pin apk package versions in Dockerfile to fix DL3018",
+        "target_metric": "dockerfile_issues",
+        "target_outcome": null,
+        "category": "fix_lint",
+        "impact_estimate": {
+          "direction": "improve",
+          "magnitude": "high",
+          "confidence": 0.95
+        },
+        "effort": "trivial",
+        "risk": "safe",
+        "description": "Hadolint DL3018 fires on line 2 of the Dockerfile because `apk add` is called without pinned package versions. Pinning versions (e.g. `apk add ca-certificates=20230506-r0`) makes the image build reproducible and eliminates the warning. Look up the current version of each package being added (`apk search --exact <pkg>`) from the same Alpine image tag used as the base, then hard-code those versions. If the base image is updated periodically in CI, add a Renovate/Dependabot rule or a comment noting that package versions must be updated together with the base tag.",
+        "affected_files": [
+          "Dockerfile"
+        ],
+        "affected_symbols": [],
+        "acceptance_criteria": [
+          "Running `hadolint Dockerfile` produces zero DL3018 warnings",
+          "The Docker image still builds successfully (`docker build .` exits 0)",
+          "dockerfile_issues metric reaches 0"
+        ],
+        "touches_security": false,
+        "discovered_by": [],
+        "consensus_level": null
+      },
+      {
+        "id": "P-002",
+        "title": "Replace TODO marker in scaffold hook template with a neutral instruction keyword",
+        "target_metric": "todo_count",
+        "target_outcome": null,
+        "category": "fix_lint",
+        "impact_estimate": {
+          "direction": "improve",
+          "magnitude": "high",
+          "confidence": 0.95
+        },
+        "effort": "trivial",
+        "risk": "safe",
+        "description": "The single TODO counted by the metric lives in a scaffold code template at `src/scaffold/hook/mod.rs:278`. The text is `-- TODO: replace \"field_name\" with the field to watch` — this is intentional instructional text emitted into generated Lua hook stubs to guide users, not a deferred engineering task. Replace the `TODO:` marker with a neutral keyword like `STEP:` or `NOTE:` (e.g. `-- STEP: replace \"field_name\" with the field you want to watch`) so the intent is preserved for end-users of the scaffold but the marker no longer trips the todo_count metric.",
+        "affected_files": [
+          "src/scaffold/hook/mod.rs"
+        ],
+        "affected_symbols": [],
+        "acceptance_criteria": [
+          "The string `TODO` no longer appears in src/scaffold/hook/mod.rs",
+          "The generated scaffold output still contains a human-readable instruction in the same location",
+          "todo_count metric reaches 0",
+          "`cargo test` continues to pass"
+        ],
+        "touches_security": false,
+        "discovered_by": [],
+        "consensus_level": null
+      },
+      {
+        "id": "F-002",
+        "title": "Extend nightly CI workflow to publish multi-arch Docker image (amd64 + arm64)",
+        "target_metric": null,
+        "target_outcome": "Developers on Apple Silicon Macs and ARM64 Linux hosts (e.g. Raspberry Pi, AWS Graviton) can pull the nightly Docker image without cross-architecture emulation overhead, matching the multi-arch behaviour already present in release builds.",
+        "category": "workflow_enhancement",
+        "impact_estimate": {
+          "direction": "improve",
+          "magnitude": "medium",
+          "confidence": 0.82
+        },
+        "effort": "small",
+        "risk": "safe",
+        "description": "The nightly CI job currently builds and pushes only an x86_64 image. Release builds are already multi-arch, so the Dockerfile and cross-compilation tooling are proven. The fix is a targeted edit to the nightly GitHub Actions workflow: add `linux/arm64` to the `platforms` input of the `docker/build-push-action` step, set up QEMU via `docker/setup-qemu-action`, and ensure the arm64 target (`aarch64-unknown-linux-musl` for a static binary or the standard glibc target) is included in the Rust build matrix. No new dependencies and no schema changes are needed — this is purely a CI configuration change. Build time will increase, but nightly jobs are not latency-sensitive.",
+        "affected_files": [
+          ".github/workflows/nightly.yml",
+          "Dockerfile"
+        ],
+        "affected_symbols": [],
+        "acceptance_criteria": [
+          "The nightly CI workflow completes successfully for both linux/amd64 and linux/arm64 targets",
+          "The published nightly Docker image manifest lists both amd64 and arm64 variants (`docker manifest inspect` confirms two platform entries)",
+          "`docker run --platform linux/arm64 <nightly-image> crap-cms --version` executes natively on an arm64 host without rosetta/QEMU at runtime",
+          "Existing x86_64 nightly behaviour is unchanged (same tag, same push target)"
+        ],
+        "touches_security": false,
+        "discovered_by": [],
+        "consensus_level": null
+      }
+    ],
+    "validated_count": 3,
+    "discarded_count": 3,
+    "ranking": {
+      "ranked_proposals": [
+        {
+          "proposal_id": "P-001",
+          "priority_score": 36.0,
+          "rank": 1,
+          "rationale": "impact=high effort=trivial risk=safe"
+        },
+        {
+          "proposal_id": "P-002",
+          "priority_score": 36.0,
+          "rank": 2,
+          "rationale": "impact=high effort=trivial risk=safe"
+        },
+        {
+          "proposal_id": "F-002",
+          "priority_score": 18.0,
+          "rank": 3,
+          "rationale": "impact=medium effort=small risk=safe"
+        }
+      ],
+      "duplicates_removed": [],
+      "batch_groups": []
+    }
+  },
+  "formulation": {
+    "tasks": [
+      {
+        "task_id": "T-001",
+        "source_proposal": "P-001",
+        "title": "Pin apk package versions in Dockerfile to silence Hadolint DL3018",
+        "description": "Edit `Dockerfile` to pin explicit versions for every package passed to `apk add` on line 2.\n\nSteps:\n1. Identify the Alpine base image tag currently used in `FROM` (e.g. `alpine:3.19`).\n2. Spin up a temporary container from that exact base tag and run `apk search --exact <pkg>` (or `apk info <pkg>`) for each package to retrieve the current available version string (e.g. `ca-certificates=20230506-r0`).\n3. Replace the bare package names in the `apk add` invocation with `<pkg>=<version>` pin syntax. Example — before: `RUN apk add --no-cache ca-certificates curl` → after: `RUN apk add --no-cache ca-certificates=20230506-r0 curl=8.5.0-r0`.\n4. Add a comment directly above the `RUN apk add` line: `# Package versions pinned to Alpine <tag>. Update together with the FROM base tag.`\n5. Verify locally with `hadolint Dockerfile` (exit 0, no DL3018) and `docker build .` (exit 0).\n\nDo NOT change the Alpine base image tag, add new packages, or alter any other Dockerfile instruction.",
+        "acceptance_criteria": [
+          {
+            "criterion": "No DL3018 warnings emitted by hadolint",
+            "verification_command": "hadolint Dockerfile",
+            "expected_outcome": "Command exits 0 with no output (or only non-DL3018 warnings that pre-existed)"
+          },
+          {
+            "criterion": "dockerfile_issues metric reaches 0 — confirmed by zero DL3018 findings in hadolint JSON output",
+            "verification_command": "hadolint --format json Dockerfile | python3 -c \"import sys,json; issues=[i for i in json.load(sys.stdin) if i['code']=='DL3018']; sys.exit(len(issues))\"",
+            "expected_outcome": "Exit code 0 (empty DL3018 list)"
+          },
+          {
+            "criterion": "Docker image builds successfully",
+            "verification_command": "docker build --no-cache -t crap-cms:lint-test .",
+            "expected_outcome": "Command exits 0 and image layer output completes without error"
+          }
+        ],
+        "safety_constraints": [
+          "Do NOT modify any file other than Dockerfile",
+          "Do NOT change the Alpine base image tag or version",
+          "Do NOT add, remove, or reorder packages",
+          "Do NOT modify src/ or tests/ directories"
+        ],
+        "target_agent": "be-lead",
+        "estimated_complexity": "trivial",
+        "rollback_plan": "git revert HEAD — reverts only the Dockerfile change; no build artefacts or runtime state is affected"
+      },
+      {
+        "task_id": "T-002",
+        "source_proposal": "P-002",
+        "title": "Replace TODO marker with STEP in scaffold hook template to eliminate todo_count hit",
+        "description": "Edit `src/scaffold/hook/mod.rs` at line 278 and replace the `TODO:` keyword with `STEP:` in the Lua stub instruction comment that is emitted into generated hook files.\n\nExact change:\n- Before: `-- TODO: replace \"field_name\" with the field to watch`\n- After:  `-- STEP: replace \"field_name\" with the field you want to watch`\n\nThe surrounding string literal, indentation, Rust syntax, and any adjacent lines must remain identical. Confirm there are no other occurrences of the string `TODO` in `src/scaffold/hook/mod.rs` after the edit (use `grep -n TODO src/scaffold/hook/mod.rs` — must return no lines).\n\nRun `cargo test` after the edit to confirm nothing is broken.",
+        "acceptance_criteria": [
+          {
+            "criterion": "The string TODO no longer appears anywhere in src/scaffold/hook/mod.rs",
+            "verification_command": "grep -c 'TODO' src/scaffold/hook/mod.rs",
+            "expected_outcome": "Command exits with code 1 (grep found 0 matches) or prints 0"
+          },
+          {
+            "criterion": "The STEP replacement keyword is present in the emitted Lua stub template",
+            "verification_command": "grep -c 'STEP:' src/scaffold/hook/mod.rs",
+            "expected_outcome": "Prints 1 (exactly one occurrence of the replacement keyword)"
+          },
+          {
+            "criterion": "All existing tests continue to pass",
+            "verification_command": "cargo test --all",
+            "expected_outcome": "All tests pass; exit code 0; no compilation errors"
+          }
+        ],
+        "safety_constraints": [
+          "Do NOT modify any file other than src/scaffold/hook/mod.rs",
+          "Do NOT alter any logic, function signatures, or non-comment code in the file",
+          "Do NOT modify the tests/ directory"
+        ],
+        "target_agent": "be-lead",
+        "estimated_complexity": "trivial",
+        "rollback_plan": "git revert HEAD — reverts only the single-line comment change in src/scaffold/hook/mod.rs; no runtime or data impact"
+      },
+      {
+        "task_id": "T-003",
+        "source_proposal": "F-002",
+        "title": "Extend nightly CI workflow to build and push multi-arch Docker image (amd64 + arm64)",
+        "description": "Update `.github/workflows/nightly.yml` to build and publish a multi-architecture Docker image manifest covering both `linux/amd64` and `linux/arm64`. The Dockerfile and cross-compilation tooling are already proven from the release workflow — mirror the relevant steps into the nightly job.\n\nDetailed steps:\n\n1. **Add QEMU setup step** — insert `docker/setup-qemu-action@v3` as a step _before_ the `docker/setup-buildx-action` step (or before the build-push step if buildx setup is not yet present). No extra inputs are required; the default action registers all QEMU binfmt handlers.\n\n2. **Ensure buildx is configured** — confirm (or add) a `docker/setup-buildx-action@v3` step. If a `platforms` input is already specified, add `linux/arm64` to it.\n\n3. **Extend the build-push step** — in the `docker/build-push-action` step, set (or extend) the `platforms` input to `linux/amd64,linux/arm64`. Do not change the image tag, registry target, push flag, or any build-args that are already present.\n\n4. **Rust cross-compilation (if applicable)** — if the nightly workflow compiles a Rust binary outside Docker (passed in as a build-arg or COPY artefact), add `aarch64-unknown-linux-musl` (static) or `aarch64-unknown-linux-gnu` (glibc — match the release workflow) to the Rust build matrix. If compilation happens entirely inside a multi-stage Docker build, no Rust matrix change is needed; Docker BuildKit handles it via QEMU.\n\n5. Consult `.github/workflows/release.yml` as the reference implementation to keep arm64 setup consistent with release builds.\n\nDo not touch image tags, push targets, cache keys, release workflow files, Dockerfile logic, or any other workflow file.",
+        "acceptance_criteria": [
+          {
+            "criterion": "The nightly CI workflow run completes successfully for both linux/amd64 and linux/arm64 — both platform builds reach the push step without error. A human reviewer can confirm this by inspecting the completed GitHub Actions run for the nightly job.",
+            "verification_command": null,
+            "expected_outcome": null
+          },
+          {
+            "criterion": "The published nightly Docker image manifest lists both amd64 and arm64 platform variants. A human reviewer can confirm this by running `docker manifest inspect <nightly-image-tag>` and observing two platform entries in the output.",
+            "verification_command": null,
+            "expected_outcome": null
+          },
+          {
+            "criterion": "Pulling and running the nightly image on an ARM64 host executes the binary natively without requiring QEMU at runtime. A human reviewer can confirm via `docker run --platform linux/arm64 <nightly-image> crap-cms --version` on an arm64 machine or CI runner.",
+            "verification_command": null,
+            "expected_outcome": null
+          },
+          {
+            "criterion": "Existing amd64 nightly behaviour is unchanged — same image tag is pushed to the same registry target and the amd64 variant continues to function as before. A human reviewer can confirm by pulling the nightly image on an x86_64 host and running `crap-cms --version`.",
+            "verification_command": null,
+            "expected_outcome": null
+          }
+        ],
+        "safety_constraints": [
+          "Do NOT modify .github/workflows/release.yml or any workflow file other than nightly.yml",
+          "Do NOT change image tags, registry targets, or push credentials/secrets",
+          "Do NOT modify Dockerfile build logic (RUN, COPY, FROM instructions)",
+          "Do NOT modify src/ or tests/ directories",
+          "Do NOT alter cache-from/cache-to keys in ways that would invalidate the existing amd64 layer cache"
+        ],
+        "target_agent": "be-lead",
+        "estimated_complexity": "small",
+        "rollback_plan": "git revert HEAD — reverts only the nightly.yml changes; the registry image for the previous nightly tag is unaffected, and the release workflow is entirely untouched"
+      }
+    ],
+    "implementation_order": [
+      "T-002",
+      "T-001",
+      "T-003"
+    ]
+  },
+  "execution": null,
+  "metrics_after": null,
+  "validation": null,
+  "review": null,
+  "scope": null
+}

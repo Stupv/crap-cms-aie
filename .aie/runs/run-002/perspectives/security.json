@@ -1,0 +1,19 @@
+{
+  "perspective_name": "security",
+  "raw_output": {
+    "findings": [],
+    "summary": "No source code was provided for analysis. The File Tree and Symbol Summary sections for the `crap-cms` Rust project are both empty, and no file contents were included in the context. A security review cannot be performed without access to the actual source files. Please re-run the review with the source files included (e.g., ensure the `src/` directory is indexed and its contents are passed as context)."
+  },
+  "metadata": {
+    "model": "claude-sonnet-4-6",
+    "stage": "review_security",
+    "input_tokens": 4,
+    "output_tokens": 476,
+    "duration_seconds": 22.8
+  },
+  "success": true,
+  "error": null,
+  "error_type": null,
+  "error_detail": null,
+  "duration_seconds": 22.8
+}
